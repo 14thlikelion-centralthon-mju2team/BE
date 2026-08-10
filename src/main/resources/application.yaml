@@ -7,8 +7,7 @@ spring:
     password: ${DB_PASSWORD:backend}
   jpa:
     hibernate:
-      # ponytail: #6(V1__init.sql) 머지 전까지 update. 머지 후 dev로 리베이스하면서 validate로 되돌릴 것
-      ddl-auto: update
+      ddl-auto: validate
     open-in-view: false
   flyway:
     enabled: true
