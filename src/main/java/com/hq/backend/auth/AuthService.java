@@ -104,6 +104,7 @@ public class AuthService {
                     .provider("google")
                     .providerUid(info.sub())
                     .email(info.email())
+                    .nickname(defaultNickname(info.email()))
                     .timezone("Asia/Seoul")
                     .createdAt(Instant.now())
                     .build());
