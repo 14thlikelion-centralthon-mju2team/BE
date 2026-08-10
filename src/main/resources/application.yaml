@@ -2,12 +2,16 @@ spring:
   application:
     name: backend
   datasource:
-    url: jdbc:postgresql://localhost:5432/vium
-    username: parkchan
-    password:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:backend}
+    username: ${DB_USER:backend}
+    password: ${DB_PASSWORD:backend}
   jpa:
     hibernate:
+      # ponytail: #6(V1__init.sql) 머지 전까지 update. 머지 후 dev로 리베이스하면서 validate로 되돌릴 것
       ddl-auto: update
+    open-in-view: false
+  flyway:
+    enabled: true
   jackson:
     property-naming-strategy: SNAKE_CASE
 
