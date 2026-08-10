@@ -15,6 +15,12 @@ spring:
   jackson:
     property-naming-strategy: SNAKE_CASE
 
+oauth:
+  google:
+    token-info-url: https://oauth2.googleapis.com/tokeninfo
+    # ponytail: Vium용 구글 OAuth 클라이언트 ID 미발급 — 발급 전까지 aud 검증이 항상 실패함(fail-closed)
+    client-id: ${OAUTH_GOOGLE_CLIENT_ID:}
+
 app:
   jwt:
     # ponytail: 로컬 개발용 기본값. 배포 시 JWT_SECRET 환경변수로 반드시 교체 (setting/security 티켓)

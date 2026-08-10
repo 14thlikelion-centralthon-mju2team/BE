@@ -1,5 +1,7 @@
 package com.hq.backend.auth;
 
+import com.hq.backend.auth.dto.GoogleLoginRequest;
+import com.hq.backend.auth.dto.GoogleUserInfoResponse;
 import com.hq.backend.auth.dto.LoginRequest;
 import com.hq.backend.auth.dto.SignupRequest;
 import com.hq.backend.auth.dto.SignupResponse;
@@ -11,10 +13,14 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 @Service
 @RequiredArgsConstructor
@@ -25,6 +31,13 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final RestClient restClient;
+
+    @Value("${oauth.google.token-info-url}")
+    private String googleTokenInfoUrl;
+
+    @Value("${oauth.google.client-id}")
+    private String googleClientId;
 
     @Transactional
     public SignupResponse signup(SignupRequest request) {
@@ -60,6 +73,46 @@ public class AuthService {
                 .filter(u -> u.getPasswordHash() != null && passwordEncoder.matches(request.password(), u.getPasswordHash()))
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다."));
 
+        return issueTokens(user);
+    }
+
+    @Transactional
+    public TokenResponse loginWithGoogle(GoogleLoginRequest request) {
+        GoogleUserInfoResponse info;
+        try {
+            info = restClient.get()
+                    .uri(googleTokenInfoUrl + "?id_token=" + request.idToken())
+                    .retrieve()
+                    .body(GoogleUserInfoResponse.class);
+        } catch (RestClientResponseException e) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_GOOGLE_TOKEN", "구글 토큰이 유효하지 않습니다.");
+        }
+
+        if (info == null || !googleClientId.equals(info.aud())) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_GOOGLE_TOKEN", "유효하지 않은 구글 토큰입니다.");
+        }
+
+        User user = userRepository.findByProviderAndProviderUid("google", info.sub())
+                .orElseGet(() -> createGoogleUser(info));
+
+        return issueTokens(user);
+    }
+
+    private User createGoogleUser(GoogleUserInfoResponse info) {
+        try {
+            return userRepository.save(User.builder()
+                    .provider("google")
+                    .providerUid(info.sub())
+                    .email(info.email())
+                    .timezone("Asia/Seoul")
+                    .createdAt(Instant.now())
+                    .build());
+        } catch (DataIntegrityViolationException e) {
+            throw new ApiException(HttpStatus.CONFLICT, "EMAIL_EXISTS", "이미 다른 방식으로 가입된 이메일입니다.");
+        }
+    }
+
+    private TokenResponse issueTokens(User user) {
         return new TokenResponse(
                 jwtService.generateAccessToken(user.getId()),
                 jwtService.generateRefreshToken(user.getId()),

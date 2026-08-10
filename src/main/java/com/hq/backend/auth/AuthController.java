@@ -1,5 +1,6 @@
 package com.hq.backend.auth;
 
+import com.hq.backend.auth.dto.GoogleLoginRequest;
 import com.hq.backend.auth.dto.LoginRequest;
 import com.hq.backend.auth.dto.SignupRequest;
 import com.hq.backend.auth.dto.SignupResponse;
@@ -29,5 +30,10 @@ public class AuthController {
     @PostMapping("/email/login")
     public TokenResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
+    }
+
+    @PostMapping("/google")
+    public TokenResponse loginWithGoogle(@Valid @RequestBody GoogleLoginRequest request) {
+        return authService.loginWithGoogle(request);
     }
 }
