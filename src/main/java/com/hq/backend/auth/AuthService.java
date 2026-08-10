@@ -37,14 +37,22 @@ public class AuthService {
 
         User user = userRepository.save(User.builder()
                 .provider("email")
+                .providerUid(request.email())
                 .email(request.email())
                 .passwordHash(passwordEncoder.encode(request.password()))
+                .nickname(defaultNickname(request.email()))
                 .timezone("Asia/Seoul")
                 .ageConfirmedAt(Instant.now())
                 .createdAt(Instant.now())
                 .build());
 
         return new SignupResponse(user.getId(), user.getEmail(), user.getProvider(), true);
+    }
+
+    // users.nickname은 not null이지만 가입 요청에 닉네임 입력을 받지 않으므로 임시값을 채운다.
+    // 닉네임 설정 기능이 생기면 그때 덮어쓰면 된다.
+    private String defaultNickname(String email) {
+        return email.substring(0, email.indexOf('@'));
     }
 
     public TokenResponse login(LoginRequest request) {
