@@ -60,9 +60,20 @@ class PlaceServiceTest {
     void 다른_유저의_장소를_수정하려_하면_404() {
         UUID userId = UUID.randomUUID();
         UUID placeId = UUID.randomUUID();
-        when(placeRepository.findByIdAndUserId(placeId, userId)).thenReturn(Optional.empty());
+        when(placeRepository.findByIdAndUserIdAndArchivedAtIsNull(placeId, userId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service().updatePlace(userId, placeId, new UpdatePlaceRequest(null, null, null, null)))
+                .isInstanceOf(ApiException.class)
+                .hasFieldOrPropertyWithValue("code", "PLACE_NOT_FOUND");
+    }
+
+    @Test
+    void 삭제된_장소에_enter하면_404() {
+        UUID userId = UUID.randomUUID();
+        UUID placeId = UUID.randomUUID();
+        when(placeRepository.findByIdAndUserIdAndArchivedAtIsNull(placeId, userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().enter(userId, placeId))
                 .isInstanceOf(ApiException.class)
                 .hasFieldOrPropertyWithValue("code", "PLACE_NOT_FOUND");
     }
@@ -71,7 +82,7 @@ class PlaceServiceTest {
     void enter_이력이_없는_장소를_exit하면_거부한다() {
         UUID userId = UUID.randomUUID();
         UUID placeId = UUID.randomUUID();
-        when(placeRepository.findByIdAndUserId(placeId, userId))
+        when(placeRepository.findByIdAndUserIdAndArchivedAtIsNull(placeId, userId))
                 .thenReturn(Optional.of(Place.builder().id(placeId).userId(userId).createdAt(Instant.now()).build()));
         when(placeVisitRepository.findFirstByUserIdAndPlaceIdAndExitedAtIsNullOrderByEnteredAtDesc(userId, placeId))
                 .thenReturn(Optional.empty());
@@ -79,5 +90,27 @@ class PlaceServiceTest {
         assertThatThrownBy(() -> service().exit(userId, placeId))
                 .isInstanceOf(ApiException.class)
                 .hasFieldOrPropertyWithValue("code", "OPEN_VISIT_NOT_FOUND");
+    }
+
+    @Test
+    void enter를_연속_호출하면_이전_visit을_닫고_새로_연다() {
+        UUID userId = UUID.randomUUID();
+        UUID placeId = UUID.randomUUID();
+        PlaceVisit openVisit = PlaceVisit.builder()
+                .id(1L)
+                .userId(userId)
+                .placeId(placeId)
+                .enteredAt(Instant.now().minusSeconds(60))
+                .build();
+        when(placeRepository.findByIdAndUserIdAndArchivedAtIsNull(placeId, userId))
+                .thenReturn(Optional.of(Place.builder().id(placeId).userId(userId).createdAt(Instant.now()).build()));
+        when(placeVisitRepository.findFirstByUserIdAndPlaceIdAndExitedAtIsNullOrderByEnteredAtDesc(userId, placeId))
+                .thenReturn(Optional.of(openVisit));
+        when(placeVisitRepository.save(org.mockito.ArgumentMatchers.any(PlaceVisit.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        service().enter(userId, placeId);
+
+        assertThat(openVisit.getExitedAt()).isNotNull();
     }
 }

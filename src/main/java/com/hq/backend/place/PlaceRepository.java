@@ -9,5 +9,5 @@ public interface PlaceRepository extends JpaRepository<Place, UUID> {
 
     List<Place> findByUserIdAndArchivedAtIsNull(UUID userId);
 
-    Optional<Place> findByIdAndUserId(UUID id, UUID userId);
+    Optional<Place> findByIdAndUserIdAndArchivedAtIsNull(UUID id, UUID userId);
 }

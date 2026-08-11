@@ -80,6 +80,12 @@ public class PlaceService {
     public PlaceVisitResponse enter(UUID userId, UUID placeId) {
         findOwnedPlace(userId, placeId);
 
+        // 지오펜스 enter 이벤트는 중복 발생할 수 있다(앱 재시작 등) — 이전에 안 닫힌 방문이
+        // 남아있으면 고아로 만들지 말고 지금 시각으로 먼저 닫은 뒤 새로 연다.
+        placeVisitRepository
+                .findFirstByUserIdAndPlaceIdAndExitedAtIsNullOrderByEnteredAtDesc(userId, placeId)
+                .ifPresent(open -> open.setExitedAt(Instant.now()));
+
         PlaceVisit visit = placeVisitRepository.save(PlaceVisit.builder()
                 .userId(userId)
                 .placeId(placeId)
@@ -103,7 +109,7 @@ public class PlaceService {
     }
 
     private Place findOwnedPlace(UUID userId, UUID placeId) {
-        return placeRepository.findByIdAndUserId(placeId, userId)
+        return placeRepository.findByIdAndUserIdAndArchivedAtIsNull(placeId, userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PLACE_NOT_FOUND", "장소를 찾을 수 없습니다."));
     }
 
