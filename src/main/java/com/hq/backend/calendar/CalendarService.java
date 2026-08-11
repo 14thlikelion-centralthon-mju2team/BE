@@ -169,7 +169,9 @@ public class CalendarService {
                             && item.end() != null && item.end().dateTime() != null)
                     .map(item -> new BusyBlockResponse(item.start().dateTime(), item.end().dateTime(), SOURCE_GOOGLE))
                     .toList();
-        } catch (RestClientException e) {
+        } catch (RestClientException | IllegalStateException e) {
+            // IllegalStateException은 BytesEncryptor.decrypt() 실패(암호화 키 로테이션, 저장된
+            // 값 손상 등)일 때 던져진다 — RestClientException과 별개 원인이라 같이 잡아야 한다.
             return List.of();
         }
     }

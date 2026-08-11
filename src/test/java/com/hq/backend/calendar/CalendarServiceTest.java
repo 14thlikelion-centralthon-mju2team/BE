@@ -225,6 +225,30 @@ class CalendarServiceTest {
         assertThat(result).isEmpty();
     }
 
+    // BytesEncryptor.decrypt()는 복호화 실패 시 IllegalStateException을 던진다(RestClientException이
+    // 아님) — 암호화 키 로테이션이나 저장된 값 손상 시 실제로 발생할 수 있는 케이스.
+    @Test
+    void refresh_token_복호화가_실패해도_전체_요청은_안_죽고_user_events만_반환한다() {
+        UUID userId = UUID.randomUUID();
+        CalendarConnection connection = CalendarConnection.builder()
+                .id(UUID.randomUUID())
+                .userId(userId)
+                .provider("google")
+                .refreshTokenEnc(new byte[] {1, 2, 3})
+                .scope("calendar.readonly")
+                .connectedAt(Instant.now())
+                .build();
+        when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.of(connection));
+        when(calendarTokenEncryptor.decrypt(any()))
+                .thenThrow(new IllegalStateException("Unable to invoke Cipher due to bad padding"));
+        when(userEventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
+                .thenReturn(List.of());
+
+        List<BusyBlockResponse> result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
+
+        assertThat(result).isEmpty();
+    }
+
     @Test
     void 구글_이벤트와_user_events를_합쳐서_시간순으로_반환하고_종일일정은_건너뛴다() {
         UUID userId = UUID.randomUUID();
