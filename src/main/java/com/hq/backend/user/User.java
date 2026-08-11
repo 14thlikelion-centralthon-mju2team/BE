@@ -25,14 +25,21 @@ public class User {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(nullable = false)
     private String provider;
+
+    @Column(nullable = false)
     private String providerUid;
 
     @Column(unique = true, nullable = false)
     private String email;
 
     private String passwordHash;
+
+    @Column(nullable = false)
     private String nickname;
+
+    @Column(nullable = false)
     private String timezone;
     private Instant ageConfirmedAt;
     private Instant archivedAt;
