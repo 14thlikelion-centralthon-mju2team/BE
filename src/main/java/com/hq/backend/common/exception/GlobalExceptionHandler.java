@@ -3,6 +3,7 @@ package com.hq.backend.common.exception;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -22,5 +23,13 @@ public class GlobalExceptionHandler {
         String code = "email".equals(fieldError.getField()) ? "INVALID_EMAIL" : "INVALID_REQUEST";
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(Map.of("error", code, "message", fieldError.getDefaultMessage()));
+    }
+
+    // enum 필드에 존재하지 않는 값이 오는 등, 요청 본문 자체를 역직렬화하지 못할 때
+    // (검증 이전 단계라 MethodArgumentNotValidException보다 먼저 발생) 표준 포맷으로 응답한다.
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, String>> handleMessageNotReadable(HttpMessageNotReadableException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", "INVALID_REQUEST", "message", "요청 본문을 읽을 수 없습니다."));
     }
 }
