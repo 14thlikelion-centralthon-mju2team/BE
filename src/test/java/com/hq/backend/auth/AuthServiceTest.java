@@ -2,7 +2,7 @@ package com.hq.backend.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.hq.backend.auth.dto.GoogleLoginRequest;
@@ -10,6 +10,7 @@ import com.hq.backend.auth.dto.GoogleUserInfoResponse;
 import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.user.User;
 import com.hq.backend.user.UserRepository;
+import java.net.URI;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,7 +44,7 @@ class AuthServiceTest {
         ReflectionTestUtils.setField(authService, "googleClientId", "vium-client-id");
 
         when(restClient.get()).thenReturn(requestHeadersUriSpec);
-        when(requestHeadersUriSpec.uri(anyString())).thenReturn(requestHeadersSpec);
+        when(requestHeadersUriSpec.uri(any(URI.class))).thenReturn(requestHeadersSpec);
         when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
     }
 

@@ -9,6 +9,7 @@ import com.hq.backend.auth.dto.TokenResponse;
 import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.user.User;
 import com.hq.backend.user.UserRepository;
+import java.net.URI;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.util.UriComponentsBuilder;
 
 @Service
 @RequiredArgsConstructor
@@ -78,10 +80,18 @@ public class AuthService {
 
     @Transactional
     public TokenResponse loginWithGoogle(GoogleLoginRequest request) {
+        // id_token을 문자열로 이어붙이면 {}가 든 값이 URI 템플릿 변수로 해석돼 500이 난다.
+        // encode()로 쿼리 파라미터를 인코딩한 URI를 넘겨 템플릿 확장을 우회한다.
+        URI uri = UriComponentsBuilder.fromUriString(googleTokenInfoUrl)
+                .queryParam("id_token", request.idToken())
+                .encode()
+                .build()
+                .toUri();
+
         GoogleUserInfoResponse info;
         try {
             info = restClient.get()
-                    .uri(googleTokenInfoUrl + "?id_token=" + request.idToken())
+                    .uri(uri)
                     .retrieve()
                     .body(GoogleUserInfoResponse.class);
         } catch (RestClientResponseException e) {
