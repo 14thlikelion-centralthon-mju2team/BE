@@ -41,8 +41,9 @@ public class JwtService {
         return accessTokenExpirationMs / 1000;
     }
 
-    // feat/consents에서 추가: 지금까지는 토큰 발급만 했지 검증하는 코드가 없어서
-    // "이 요청을 누가 보냈는지" 알아낼 방법이 없었다. 역할/권한 체계는 setting/security
+    // feat/actions-routines에서 추가: 지금까지는 토큰 발급만 했지 검증하는 코드가 없어서
+    // "이 요청을 누가 보냈는지" 알아낼 방법이 없었다. routines가 user_id 소유권 검증을
+    // 요구해서(§7 공통 계약) 최소한의 파싱만 추가한다. 역할/권한 체계는 setting/security
     // (Phase 6, 백A 담당) 범위라 여기서는 손대지 않는다.
     public UUID getUserId(String token) {
         try {
