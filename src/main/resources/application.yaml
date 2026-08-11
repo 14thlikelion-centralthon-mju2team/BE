@@ -23,6 +23,7 @@ oauth:
     # 같은 프로젝트여도 client-secret은 별도 발급 필요 — 로그인은 id_token 검증만 해서 안 씀).
     client-id: ${OAUTH_GOOGLE_CLIENT_ID:}
     client-secret: ${OAUTH_GOOGLE_CLIENT_SECRET:}
+    calendar-events-url: https://www.googleapis.com/calendar/v3/calendars/primary/events
 
 app:
   jwt:
