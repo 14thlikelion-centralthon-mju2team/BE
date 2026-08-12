@@ -3,6 +3,7 @@ package com.hq.backend.calendar;
 import com.hq.backend.calendar.dto.BusyBlockResponse;
 import com.hq.backend.calendar.dto.CalendarConnectionResponse;
 import com.hq.backend.calendar.dto.ConnectCalendarRequest;
+import com.hq.backend.calendar.dto.DensityResponse;
 import com.hq.backend.calendar.dto.GoogleCalendarEventsResponse;
 import com.hq.backend.calendar.dto.GoogleTokenResponse;
 import com.hq.backend.common.exception.ApiException;
@@ -107,15 +108,17 @@ public class CalendarService {
     }
 
     @Transactional(readOnly = true)
-    public List<BusyBlockResponse> getDensity(UUID userId, LocalDate date) {
+    public DensityResponse getDensity(UUID userId, LocalDate date) {
         Instant rangeStart = date.atStartOfDay(DEFAULT_ZONE).toInstant();
         Instant rangeEnd = date.plusDays(1).atStartOfDay(DEFAULT_ZONE).toInstant();
 
+        GoogleFetchResult googleResult = fetchGoogleBusyBlocks(userId, rangeStart, rangeEnd);
+
         List<BusyBlockResponse> blocks = new ArrayList<>();
-        blocks.addAll(fetchGoogleBusyBlocks(userId, rangeStart, rangeEnd));
+        blocks.addAll(googleResult.blocks());
         blocks.addAll(fetchUserEventBusyBlocks(userId, rangeStart, rangeEnd));
         blocks.sort(Comparator.comparing(BusyBlockResponse::startsAt));
-        return blocks;
+        return new DensityResponse(googleResult.synced(), blocks);
     }
 
     private List<BusyBlockResponse> fetchUserEventBusyBlocks(UUID userId, Instant rangeStart, Instant rangeEnd) {
@@ -130,18 +133,24 @@ public class CalendarService {
     // 넘어간다. TRD 4장 "권한 상태 3단계 전부 안 끊긴다" 원칙과 같은 이유: 캘린더 연동은
     // user_events 기반 밀도 계산에 곁들이는 부가 신호일 뿐, 이게 실패했다고 API 전체가
     // 500을 낼 이유는 없다.
-    private List<BusyBlockResponse> fetchGoogleBusyBlocks(UUID userId, Instant rangeStart, Instant rangeEnd) {
+    //
+    // 다만 "앱이 안 죽는다"와 "결과가 항상 맞다"는 다른 얘기다(#29) — 연동 자체가 없는
+    // 사용자(할 게 없었을 뿐)와 연동은 돼있는데 이번 호출에서 실패한 사용자를 구분해야
+    // 클라이언트가 "오늘 일정이 없다"와 "동기화가 끊겼다"를 구분해서 보여줄 수 있다.
+    // 그래서 synced 플래그를 별도로 리턴한다 — 연결 없음은 synced=true(실패가 아님),
+    // 연결은 있는데 토큰 갱신·API 호출이 실패한 경우만 synced=false.
+    private GoogleFetchResult fetchGoogleBusyBlocks(UUID userId, Instant rangeStart, Instant rangeEnd) {
         Optional<CalendarConnection> connection =
                 calendarConnectionRepository.findByUserIdAndProvider(userId, PROVIDER_GOOGLE);
         if (connection.isEmpty() || connection.get().getRevokedAt() != null) {
-            return List.of();
+            return new GoogleFetchResult(true, List.of());
         }
 
         try {
             byte[] decrypted = calendarTokenEncryptor.decrypt(connection.get().getRefreshTokenEnc());
             Optional<String> accessToken = refreshAccessToken(new String(decrypted, StandardCharsets.UTF_8));
             if (accessToken.isEmpty()) {
-                return List.of();
+                return new GoogleFetchResult(false, List.of());
             }
 
             URI uri = UriComponentsBuilder.fromUriString(googleCalendarEventsUrl)
@@ -160,20 +169,24 @@ public class CalendarService {
                     .body(GoogleCalendarEventsResponse.class);
 
             if (response == null || response.items() == null) {
-                return List.of();
+                return new GoogleFetchResult(false, List.of());
             }
 
             // ponytail: 종일 일정(date만 있고 dateTime 없음)은 건너뛴다 — GoogleEventDateTime 참고.
-            return response.items().stream()
+            List<BusyBlockResponse> blocks = response.items().stream()
                     .filter(item -> item.start() != null && item.start().dateTime() != null
                             && item.end() != null && item.end().dateTime() != null)
                     .map(item -> new BusyBlockResponse(item.start().dateTime(), item.end().dateTime(), SOURCE_GOOGLE))
                     .toList();
+            return new GoogleFetchResult(true, blocks);
         } catch (RestClientException | IllegalStateException e) {
             // IllegalStateException은 BytesEncryptor.decrypt() 실패(암호화 키 로테이션, 저장된
             // 값 손상 등)일 때 던져진다 — RestClientException과 별개 원인이라 같이 잡아야 한다.
-            return List.of();
+            return new GoogleFetchResult(false, List.of());
         }
+    }
+
+    private record GoogleFetchResult(boolean synced, List<BusyBlockResponse> blocks) {
     }
 
     private Optional<String> refreshAccessToken(String refreshToken) {
