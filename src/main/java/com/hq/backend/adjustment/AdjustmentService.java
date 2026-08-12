@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 // 전부 DB 트리거 trg_apply_adjustment가 처리한다(V1__init.sql). 여기서는 그 검증을 앱
 // 레벨에서 먼저 해서 흔한 케이스는 깔끔한 4xx로 응답하고, 트리거는 최종 안전망으로만 쓴다 —
 // 이 서비스 안에서 read-then-insert 사이에 진짜 레이스가 나면 트리거가 여전히 막아준다.
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AdjustmentService {
@@ -70,8 +72,14 @@ public class AdjustmentService {
                     .build());
             return toResponse(saved);
         } catch (DataAccessException e) {
-            // 위에서 다 확인했는데도 여기서 실패한다면 read-then-insert 사이의 진짜 레이스뿐이다
-            // — trg_apply_adjustment의 낙관적 잠금 UPDATE가 0행이라 던진 stale adjustment.
+            // 위에서 다 확인했는데도 여기서 실패한다면 지금은 read-then-insert 사이의 진짜
+            // 레이스(stale adjustment)뿐이지만, trg_apply_adjustment는 그 외에도 3가지를 더
+            // raise한다(routine_task not found·user_id mismatch·ladder mismatch,
+            // V1__init.sql apply_adjustment()). 사전 검증 순서가 바뀌거나 트리거에 케이스가
+            // 추가되면 다른 원인이 여기로 와서 STALE_ADJUSTMENT로 잘못 보고될 수 있다 —
+            // 응답 코드는 그대로 두되 실제 원인은 로그에 남겨서 나중에 추적 가능하게 한다.
+            log.warn("adjustments INSERT가 트리거에서 거부됨 (userId={}, routineTaskId={}): {}",
+                    userId, request.routineTaskId(), e.getMessage(), e);
             throw new ApiException(HttpStatus.CONFLICT, "STALE_ADJUSTMENT",
                     "beforeActionId가 현재 상태와 다릅니다. 최신 상태를 다시 조회해주세요.");
         }

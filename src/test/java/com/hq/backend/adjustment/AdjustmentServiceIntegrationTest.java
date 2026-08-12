@@ -133,6 +133,35 @@ class AdjustmentServiceIntegrationTest {
                 .hasFieldOrPropertyWithValue("code", "ROUTINE_TASK_NOT_FOUND");
     }
 
+    // IDOR 회귀 테스트 — 다른 유저 소유 routineTaskId로 요청하면 그 태스크가 실존해도
+    // 404(ROUTINE_TASK_NOT_FOUND)만 나와야 한다. 존재 여부를 흘려서도 안 된다(403이 아니라 404).
+    @Test
+    void 다른_유저의_routineTask에는_조정이_거부된다() {
+        UUID owner = createUser();
+        UUID attacker = createUser();
+        String ladderKey = randomLadderKey();
+        Action easy = createAction(ladderKey, 1);
+        Action hard = createAction(ladderKey, 2);
+        RoutineTask task = createRoutineTask(owner, easy.getId());
+
+        assertThatThrownBy(() -> adjustmentService.createAdjustment(
+                        attacker, new CreateAdjustmentRequest(task.getId(), easy.getId(), hard.getId(), "IDOR 테스트")))
+                .isInstanceOf(ApiException.class)
+                .hasFieldOrPropertyWithValue("code", "ROUTINE_TASK_NOT_FOUND");
+    }
+
+    @Test
+    void beforeActionId와_afterActionId가_같으면_거부한다() {
+        UUID userId = createUser();
+        Action action = createAction(randomLadderKey(), 1);
+        RoutineTask task = createRoutineTask(userId, action.getId());
+
+        assertThatThrownBy(() -> adjustmentService.createAdjustment(
+                        userId, new CreateAdjustmentRequest(task.getId(), action.getId(), action.getId(), "동일 action 테스트")))
+                .isInstanceOf(ApiException.class)
+                .hasFieldOrPropertyWithValue("code", "SAME_ACTION");
+    }
+
     private UUID createUser() {
         String suffix = UUID.randomUUID().toString();
         return userRepository.save(User.builder()
