@@ -2,6 +2,7 @@ package com.hq.backend.checkin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.hq.backend.checkin.dto.CheckinRequest;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
 class CheckinServiceTest {
@@ -61,5 +63,20 @@ class CheckinServiceTest {
         assertThat(response.focusArea()).isEqualTo(FocusArea.SLEEP);
         // 지금 규칙은 NORMAL 고정 스텁이라, TIRED로 정정하면 accepted=false가 되어야 한다.
         assertThat(response.conditionAccepted()).isFalse();
+    }
+
+    // existsByUserIdAndLogDate 확인과 save() 사이의 레이스 컨디션 — unique(user_id, log_date)를
+    // 뚫고 들어온 동시 요청은 DataIntegrityViolationException으로 온다(RestClientException이 아님).
+    @Test
+    void 사전_확인과_save_사이에_레이스가_나도_깔끔한_409를_던진다() {
+        UUID userId = UUID.randomUUID();
+        LocalDate logDate = LocalDate.now();
+        when(checkinRepository.existsByUserIdAndLogDate(userId, logDate)).thenReturn(false);
+        when(checkinRepository.save(any(Checkin.class))).thenThrow(new DataIntegrityViolationException("unique violation"));
+        var request = new CheckinRequest(logDate, 30, Condition.NORMAL, null);
+
+        assertThatThrownBy(() -> service().record(userId, request))
+                .isInstanceOf(ApiException.class)
+                .hasFieldOrPropertyWithValue("code", "DUPLICATE");
     }
 }

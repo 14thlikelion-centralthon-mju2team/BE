@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,17 +30,24 @@ public class CheckinService {
         // ponytail: feat/condition-rules에서 ConditionRuleEngine으로 교체 예정. 지금은 NORMAL 고정.
         Condition inferred = Condition.NORMAL;
 
-        Checkin saved = checkinRepository.save(Checkin.builder()
-                .userId(userId)
-                .logDate(request.logDate())
-                .availableMinutes(request.availableMinutes())
-                .conditionInferred(inferred.name().toLowerCase())
-                .conditionFinal(request.conditionFinal().name().toLowerCase())
-                .conditionAccepted(inferred == request.conditionFinal())
-                .focusArea(request.focusArea() == null ? null : request.focusArea().name().toLowerCase())
-                .isRestDay(false)
-                .createdAt(Instant.now())
-                .build());
+        Checkin saved;
+        try {
+            saved = checkinRepository.save(Checkin.builder()
+                    .userId(userId)
+                    .logDate(request.logDate())
+                    .availableMinutes(request.availableMinutes())
+                    .conditionInferred(inferred.name().toLowerCase())
+                    .conditionFinal(request.conditionFinal().name().toLowerCase())
+                    .conditionAccepted(inferred == request.conditionFinal())
+                    .focusArea(request.focusArea() == null ? null : request.focusArea().name().toLowerCase())
+                    .isRestDay(false)
+                    .createdAt(Instant.now())
+                    .build());
+        } catch (DataIntegrityViolationException e) {
+            // existsByUserIdAndLogDate 확인과 save() 사이에 동시 요청이 끼어들어 unique(user_id,
+            // log_date)를 뚫은 경우 — AuthService.createGoogleUser와 동일한 패턴으로 처리.
+            throw new ApiException(HttpStatus.CONFLICT, "DUPLICATE", "같은 날짜에 이미 입력했습니다.");
+        }
 
         return toResponse(saved);
     }
