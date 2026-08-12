@@ -29,12 +29,16 @@ public class JwtService {
         this.refreshTokenExpirationMs = refreshTokenExpirationMs;
     }
 
+    private static final String CLAIM_TYPE = "typ";
+    private static final String TYPE_ACCESS = "access";
+    private static final String TYPE_REFRESH = "refresh";
+
     public String generateAccessToken(UUID userId) {
-        return buildToken(userId, accessTokenExpirationMs);
+        return buildToken(userId, accessTokenExpirationMs, TYPE_ACCESS);
     }
 
     public String generateRefreshToken(UUID userId) {
-        return buildToken(userId, refreshTokenExpirationMs);
+        return buildToken(userId, refreshTokenExpirationMs, TYPE_REFRESH);
     }
 
     public long getAccessTokenExpirationSeconds() {
@@ -45,24 +49,29 @@ public class JwtService {
     // "이 요청을 누가 보냈는지" 알아낼 방법이 없었다. routines가 user_id 소유권 검증을
     // 요구해서(§7 공통 계약) 최소한의 파싱만 추가한다. 역할/권한 체계는 setting/security
     // (Phase 6, 백A 담당) 범위라 여기서는 손대지 않는다.
+    // #15에서 추가: typ 클레임을 확인해서 refresh token이 일반 API 인증(access token 전용)을
+    // 우회하지 못하게 막는다.
     public UUID getUserId(String token) {
         try {
-            String subject = Jwts.parser()
+            var claims = Jwts.parser()
                     .verifyWith(key)
                     .build()
                     .parseSignedClaims(token)
-                    .getPayload()
-                    .getSubject();
-            return UUID.fromString(subject);
+                    .getPayload();
+            if (!TYPE_ACCESS.equals(claims.get(CLAIM_TYPE, String.class))) {
+                throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "유효하지 않은 토큰입니다.");
+            }
+            return UUID.fromString(claims.getSubject());
         } catch (JwtException | IllegalArgumentException e) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "유효하지 않은 토큰입니다.");
         }
     }
 
-    private String buildToken(UUID userId, long expirationMs) {
+    private String buildToken(UUID userId, long expirationMs, String type) {
         Instant now = Instant.now();
         return Jwts.builder()
                 .subject(userId.toString())
+                .claim(CLAIM_TYPE, type)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusMillis(expirationMs)))
                 .signWith(key)
