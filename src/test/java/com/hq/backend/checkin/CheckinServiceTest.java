@@ -23,7 +23,7 @@ class CheckinServiceTest {
     @Mock private CheckinRepository checkinRepository;
 
     private CheckinService service() {
-        return new CheckinService(checkinRepository);
+        return new CheckinService(checkinRepository, new ConditionRuleEngine());
     }
 
     @Test
@@ -61,7 +61,8 @@ class CheckinServiceTest {
 
         assertThat(response.conditionFinal()).isEqualTo(Condition.TIRED);
         assertThat(response.focusArea()).isEqualTo(FocusArea.SLEEP);
-        // 지금 규칙은 NORMAL 고정 스텁이라, TIRED로 정정하면 accepted=false가 되어야 한다.
+        // available_minutes=30은 규칙상 NORMAL 추론인데 사용자가 TIRED로 정정 → accepted=false
+        assertThat(response.conditionInferred()).isEqualTo(Condition.NORMAL);
         assertThat(response.conditionAccepted()).isFalse();
     }
 

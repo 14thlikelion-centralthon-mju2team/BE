@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class CheckinService {
 
     private final CheckinRepository checkinRepository;
+    private final ConditionRuleEngine conditionRuleEngine;
 
     @Transactional
     public CheckinResponse record(UUID userId, CheckinRequest request) {
@@ -27,8 +28,7 @@ public class CheckinService {
             throw new ApiException(HttpStatus.CONFLICT, "DUPLICATE", "같은 날짜에 이미 입력했습니다.");
         }
 
-        // ponytail: feat/condition-rules에서 ConditionRuleEngine으로 교체 예정. 지금은 NORMAL 고정.
-        Condition inferred = Condition.NORMAL;
+        Condition inferred = conditionRuleEngine.infer(request.availableMinutes());
 
         Checkin saved;
         try {
