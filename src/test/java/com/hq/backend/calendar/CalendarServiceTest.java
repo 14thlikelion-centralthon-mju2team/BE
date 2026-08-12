@@ -7,7 +7,6 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.hq.backend.calendar.dto.BusyBlockResponse;
 import com.hq.backend.calendar.dto.CalendarConnectionResponse;
 import com.hq.backend.calendar.dto.ConnectCalendarRequest;
 import com.hq.backend.calendar.dto.GoogleCalendarEvent;
@@ -175,10 +174,11 @@ class CalendarServiceTest {
         when(userEventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
                 .thenReturn(List.of(event));
 
-        List<BusyBlockResponse> result = calendarService.getDensity(userId, date);
+        var result = calendarService.getDensity(userId, date);
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).source()).isEqualTo("user_event");
+        assertThat(result.calendarSynced()).isTrue(); // 연동 자체가 없는 건 실패가 아니다
+        assertThat(result.blocks()).hasSize(1);
+        assertThat(result.blocks().get(0).source()).isEqualTo("user_event");
     }
 
     @Test
@@ -197,9 +197,10 @@ class CalendarServiceTest {
         when(userEventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
                 .thenReturn(List.of());
 
-        List<BusyBlockResponse> result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
+        var result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
 
-        assertThat(result).isEmpty();
+        assertThat(result.calendarSynced()).isTrue(); // 해제된 연동은 실패가 아니라 "할 게 없음"
+        assertThat(result.blocks()).isEmpty();
         verify(calendarTokenEncryptor, org.mockito.Mockito.never()).decrypt(any());
     }
 
@@ -220,9 +221,10 @@ class CalendarServiceTest {
         when(userEventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
                 .thenReturn(List.of());
 
-        List<BusyBlockResponse> result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
+        var result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
 
-        assertThat(result).isEmpty();
+        assertThat(result.calendarSynced()).isFalse(); // 연동은 있는데 이번엔 실패 — 구분돼야 함
+        assertThat(result.blocks()).isEmpty();
     }
 
     // BytesEncryptor.decrypt()는 복호화 실패 시 IllegalStateException을 던진다(RestClientException이
@@ -244,9 +246,10 @@ class CalendarServiceTest {
         when(userEventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
                 .thenReturn(List.of());
 
-        List<BusyBlockResponse> result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
+        var result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
 
-        assertThat(result).isEmpty();
+        assertThat(result.calendarSynced()).isFalse();
+        assertThat(result.blocks()).isEmpty();
     }
 
     @Test
@@ -282,10 +285,11 @@ class CalendarServiceTest {
         when(userEventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
                 .thenReturn(List.of(userEvent));
 
-        List<BusyBlockResponse> result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
+        var result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
 
-        assertThat(result).hasSize(2); // 종일 일정은 제외되고 2건만
-        assertThat(result.get(0).source()).isEqualTo("user_event"); // 05시가 09시보다 먼저
-        assertThat(result.get(1).source()).isEqualTo("google");
+        assertThat(result.calendarSynced()).isTrue();
+        assertThat(result.blocks()).hasSize(2); // 종일 일정은 제외되고 2건만
+        assertThat(result.blocks().get(0).source()).isEqualTo("user_event"); // 05시가 09시보다 먼저
+        assertThat(result.blocks().get(1).source()).isEqualTo("google");
     }
 }
