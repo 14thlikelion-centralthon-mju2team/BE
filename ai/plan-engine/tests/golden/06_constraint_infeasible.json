@@ -1,0 +1,31 @@
+{
+  "input": {
+    "now": "2026-08-20T13:30:00+09:00",
+    "event": {"startsAt": "2026-08-20T14:00:00+09:00", "anchorMode": "arrive_by"},
+    "prepEstimate": {"estimatedMinutes": 30, "source": "initial_seed", "sampleCount": 0},
+    "arrivalBufferMinutes": 10,
+    "trafficBufferMinutes": 5,
+    "selectedRoute": {"routeId": "route-1", "totalMinutes": 40, "walkMinutes": 15, "source": "odsay", "isStale": false},
+    "environment": null,
+    "prepItems": [],
+    "config": {"seedFallbackMinutes": 30, "rainThresholdPercent": 60, "rainExtraPrepMinutes": 5, "arrivalBufferDefaultMinutes": 10, "trafficBufferDefaultMinutes": 5}
+  },
+  "expected": {
+    "prepStartAt": "2026-08-20T12:35:00+09:00",
+    "recommendedDepartAt": "2026-08-20T13:05:00+09:00",
+    "targetArriveAt": "2026-08-20T13:50:00+09:00",
+    "feasible": false,
+    "breakdown": {
+      "estimatedPrepMinutes": 30,
+      "extraPrepMinutes": 0,
+      "personalRoutineMinutes": 0,
+      "travelMinutes": 40,
+      "trafficBufferMinutes": 5,
+      "arrivalBufferMinutes": 10
+    },
+    "checklist": [],
+    "predictionConfidence": "mid",
+    "degraded": ["env_unavailable"],
+    "reasonContains": "현재 시각이 계산된 권장 출발 시각을 지났습니다."
+  }
+}

@@ -38,3 +38,21 @@ out/
 
 ### macOS ###
 .DS_Store
+
+### Project-local documents ###
+/doc/
+
+### Python virtual environments ###
+**/.venv/
+**/.venv*/
+**/venv/
+**/env/
+
+### Python artifacts ###
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/

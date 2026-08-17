@@ -1,0 +1,33 @@
+{
+  "input": {
+    "now": "2026-08-20T12:00:00+09:00",
+    "event": {"startsAt": "2026-08-20T14:00:00+09:00", "anchorMode": "arrive_by"},
+    "prepEstimate": {"estimatedMinutes": 30, "source": "initial_seed", "sampleCount": 0},
+    "arrivalBufferMinutes": 10,
+    "trafficBufferMinutes": 5,
+    "selectedRoute": {"routeId": "route-1", "totalMinutes": 40, "walkMinutes": 15, "source": "odsay", "isStale": false},
+    "environment": null,
+    "prepItems": [
+      {"itemId": "battery", "itemName": "보조배터리", "actionType": "carry", "sourceType": "rule", "appliedMinutes": 20},
+      {"itemId": "supplement", "itemName": "영양제", "actionType": "consume", "sourceType": "rule", "appliedMinutes": 10}
+    ],
+    "config": {"seedFallbackMinutes": 30, "rainThresholdPercent": 60, "rainExtraPrepMinutes": 5, "arrivalBufferDefaultMinutes": 10, "trafficBufferDefaultMinutes": 5}
+  },
+  "expected": {
+    "prepStartAt": "2026-08-20T12:35:00+09:00",
+    "recommendedDepartAt": "2026-08-20T13:05:00+09:00",
+    "targetArriveAt": "2026-08-20T13:50:00+09:00",
+    "feasible": true,
+    "breakdown": {
+      "estimatedPrepMinutes": 30,
+      "extraPrepMinutes": 0,
+      "personalRoutineMinutes": 0,
+      "travelMinutes": 40,
+      "trafficBufferMinutes": 5,
+      "arrivalBufferMinutes": 10
+    },
+    "checklist": ["보조배터리", "영양제"],
+    "predictionConfidence": "mid",
+    "degraded": ["env_unavailable"]
+  }
+}
