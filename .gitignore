@@ -56,3 +56,11 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .hypothesis/
+
+### Claude Code (local, per-user — not shared with team) ###
+.claude/settings.local.json
+.claude/discord_config.json
+.claude/.headroom_wrap_marker.json
+.claude/discord_dispatch_state
+.claude/discord_dispatch_session_id
+.claude/logs/
