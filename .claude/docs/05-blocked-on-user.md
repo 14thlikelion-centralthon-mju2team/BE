@@ -17,3 +17,27 @@
 - **현재 동작**: `Dockerfile`과 `docker-compose.yml`의 `api`/`scheduler`/`proxy` 서비스 정의까지만 코드로 준비. `postgres` 포트 퍼블리시(`5432:5432`)와 DB 자격증명 하드코딩도 #56 리뷰에서 지적됨 — AWS라면 보안 그룹으로 막으면 되지만 가비아는 방화벽/iptables 직접 설정이 필요해 네트워크 격리 방식이 다름. 실 배포(서버 접속, 도메인 연결, 인증서 발급, 네트워크 격리)는 보류.
 - **필요 조치**: 가비아 서버 접속정보/도메인 확정 후 실제 프로비저닝 및 네트워크 격리 설정 진행.
 
+## 공공데이터포털 인증키 (`feat/be-provider-adapters`)
+
+- **무엇**: 기상청 단기예보(`KmaEnvironmentProvider`)가 쓸 `DATA_GO_KR_SERVICE_KEY`가 비어있음.
+  같은 키로 에어코리아(PM10)·자외선지수 API도 쓸 예정.
+- **왜 막혔는지**: 공공데이터포털(data.go.kr)에서 각 API별로 활용신청 후 발급되는 인증키인데
+  아직 신청 전. 박찬 본인 계정으로 신청해야 함.
+- **현재 동작**: `KmaEnvironmentProvider`는 TMP(기온)·POP(강수확률) 파싱까지 작성했지만
+  아직 `@Component`가 아니라서 `StubEnvironmentProvider`가 계속 쓰인다. 실 키로 응답을
+  검증하기 전까지는 교체하지 않는다.
+- **필요 조치**: 인증키 발급 후 `DATA_GO_KR_SERVICE_KEY` 환경변수로 주입, 실제 응답으로
+  파싱 검증 후 `@Component`로 전환.
+- **별도 미구현**: PM10(에어코리아)은 좌표→측정소 매핑이 더 필요하고, 자외선지수는 응답
+  필드 구조를 검증 못 해 파싱 로직 자체가 아직 없음(-1로 채워둠).
+
+## ODsay API 키 (`feat/be-provider-adapters`)
+
+- **무엇**: 경로 탐색(`OdsayRouteProvider`)이 쓸 API 키가 없음.
+- **왜 막혔는지**: ODsay 개발자센터에서 앱 등록 후 발급받는 키인데 아직 신청 전. 응답
+  스키마(`path[].subPath[]` 필드 구성)도 실제 응답으로 검증 못 해서 파싱 로직 자체를
+  아직 작성하지 않았다 (`UnsupportedOperationException`만 던짐).
+- **현재 동작**: 클래스만 만들어두고 `@Component`로 등록하지 않아 `StubRouteProvider`가
+  계속 쓰인다.
+- **필요 조치**: ODsay API 키 발급 후 실제 응답을 같이 보면서 파싱 로직 작성.
+
