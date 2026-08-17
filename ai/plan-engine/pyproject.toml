@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools==75.8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ensom-plan-engine"
+version = "0.1.0"
+description = "Deterministic M1 plan engine for Ensom"
+requires-python = ">=3.13,<3.15"
+dependencies = [
+    "fastapi==0.116.1",
+    "pydantic==2.11.7",
+    "uvicorn[standard]==0.35.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "hypothesis==6.135.26",
+    "httpx==0.28.1",
+    "mypy==1.17.1",
+    "pytest==8.4.1",
+    "ruff==0.12.7",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+mypy_path = "."
