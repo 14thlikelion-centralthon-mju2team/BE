@@ -25,6 +25,9 @@ oauth:
     client-secret: ${OAUTH_GOOGLE_CLIENT_SECRET:}
     calendar-events-url: https://www.googleapis.com/calendar/v3/calendars/primary/events
 
+plan-engine:
+  base-url: ${PLAN_ENGINE_BASE_URL:http://localhost:8000}
+
 provider:
   kma:
     # ponytail: 공공데이터포털 인증키 미발급 — 발급 전까지 KmaEnvironmentProvider는 호출 시 실패한다.
