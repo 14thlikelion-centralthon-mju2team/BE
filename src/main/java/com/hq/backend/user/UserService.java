@@ -2,7 +2,6 @@ package com.hq.backend.user;
 
 import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.user.dto.AccountDeletionResponse;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -29,11 +28,11 @@ public class UserService {
 
     @Transactional
     public AccountDeletionResponse withdraw(UUID userId) {
+        // accountStatus/withdrawnAt를 세팅하지 않는다 — 같은 트랜잭션에서 바로 delete()하므로
+        // users 행 자체가 사라져 그 값은 커밋 후 어디에도 남지 않는다(parkc31 리뷰, PR #82).
+        // 하드 삭제·익명화 배치 없음이 명시된 설계(D10)라 별도 감사 기록도 필요 없다.
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "사용자를 찾을 수 없습니다."));
-
-        user.setAccountStatus("withdrawn");
-        user.setWithdrawnAt(Instant.now());
         userRepository.delete(user);
 
         return new AccountDeletionResponse(DELETED_RESOURCES, RETAINED_RESOURCES, RETENTION_REASON);
