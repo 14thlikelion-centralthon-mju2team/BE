@@ -83,11 +83,4 @@ public class Event {
 
     @Column(nullable = false)
     private Instant createdAt;
-
-    @Setter
-    @Column(nullable = false)
-    private Instant updatedAt;
-
-    @Setter
-    private Instant deletedAt;
 }
