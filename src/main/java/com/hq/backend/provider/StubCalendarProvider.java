@@ -14,11 +14,13 @@ public class StubCalendarProvider implements CalendarProvider {
         CalendarEvent event = new CalendarEvent(
                 UUID.randomUUID().toString(),
                 UUID.randomUUID().toString(),
+                "stub meeting",
                 since.plusSeconds(3600),
                 since.plusSeconds(7200),
                 "stub destination",
                 37.5665,
                 126.9780,
+                null,
                 "confirmed",
                 "stub"
         );
