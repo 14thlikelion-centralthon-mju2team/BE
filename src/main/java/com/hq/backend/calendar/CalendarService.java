@@ -35,8 +35,8 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 // ERD v3 전환에 맞춘 최소 수정 — calendar_connections.scope 컬럼이 없어지고
 // external_account_id(NOT NULL)가 새로 필요해졌다. id_token(구글이 openid 스코프일 때
-// 같이 주는 JWT)의 email 클레임을 서명 검증 없이 꺼내 계정 식별자로 쓴다 — 로그인 인증이
-// 아니라 "어느 구글 계정과 연결됐는지" 표시용이라 서명 검증까지는 필요 없다고 판단했다.
+// 같이 주는 JWT)의 sub 클레임을 꺼내 계정 식별자로 쓴다 — 이메일보다 안정적인 계정
+// 식별자이기 때문이다. 로그인 인증이 아니라 "어느 구글 계정과 연결됐는지" 표시용이다.
 // TODO(박찬): CALENDAR_SOURCE(개별 캘린더 목록) 분리, 실제 계정 검증 강화는 아직 반영 안 됨.
 @Service
 @RequiredArgsConstructor
@@ -46,8 +46,8 @@ public class CalendarService {
     private static final String SOURCE_GOOGLE = "google";
     private static final String SOURCE_USER_EVENT = "user_event";
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Seoul");
-    private static final java.util.regex.Pattern EMAIL_CLAIM =
-            java.util.regex.Pattern.compile("\"email\"\\s*:\\s*\"([^\"]+)\"");
+    private static final java.util.regex.Pattern SUB_CLAIM =
+            java.util.regex.Pattern.compile("\"sub\"\\s*:\\s*\"([^\"]+)\"");
 
     private final CalendarConnectionRepository calendarConnectionRepository;
     private final EventRepository eventRepository;
@@ -79,13 +79,13 @@ public class CalendarService {
             CalendarConnection connection = existing.orElseThrow(() -> new ApiException(
                     HttpStatus.BAD_REQUEST, "REFRESH_TOKEN_MISSING",
                     "구글이 refresh_token을 반환하지 않았고 기존 연결도 없습니다. 동의 화면을 다시 띄워주세요."));
-            extractEmail(tokenResponse.idToken()).ifPresent(connection::setExternalAccountId);
+            extractExternalAccountId(tokenResponse.idToken()).ifPresent(connection::setExternalAccountId);
             connection.setConnectedAt(now);
             connection.setRevokedAt(null);
             return toResponse(connection);
         }
 
-        String externalAccountId = extractEmail(tokenResponse.idToken())
+        String externalAccountId = extractExternalAccountId(tokenResponse.idToken())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "GOOGLE_ACCOUNT_ID_MISSING",
                         "구글 계정 식별자를 확인할 수 없습니다. openid 동의가 필요합니다."));
 
@@ -109,12 +109,12 @@ public class CalendarService {
         return toResponse(connection);
     }
 
-    // id_token(JWT)의 payload(2번째 세그먼트)를 base64url 디코드해 email 클레임만 꺼낸다.
+    // id_token(JWT)의 payload(2번째 세그먼트)를 base64url 디코드해 sub 클레임만 꺼낸다.
     // 서명 검증은 하지 않는다 — 이 토큰은 방금 구글 토큰 엔드포인트와의 TLS 통신으로 직접
     // 받은 것이라(탈취 경로가 없음) 계정 표시용으로만 쓰는 이 맥락에서는 충분하다.
-    // ponytail: email 값 하나만 필요해서 정규식으로 뽑는다 — 전체 JSON 파싱용 라이브러리를
+    // ponytail: sub 값 하나만 필요해서 정규식으로 뽑는다 — 전체 JSON 파싱용 라이브러리를
     // 새로 추가할 정도는 아니다.
-    private Optional<String> extractEmail(String idToken) {
+    private Optional<String> extractExternalAccountId(String idToken) {
         if (idToken == null) {
             return Optional.empty();
         }
@@ -124,7 +124,7 @@ public class CalendarService {
                 return Optional.empty();
             }
             String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
-            var matcher = EMAIL_CLAIM.matcher(payload);
+            var matcher = SUB_CLAIM.matcher(payload);
             return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
         } catch (Exception e) {
             return Optional.empty();

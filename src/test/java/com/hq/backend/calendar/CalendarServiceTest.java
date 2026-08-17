@@ -78,9 +78,9 @@ class CalendarServiceTest {
     }
 
     // 서명 검증 없이 payload만 읽으므로 header·signature는 아무 값이나 둬도 된다.
-    private static String fakeIdToken(String email) {
+    private static String fakeIdToken(String externalAccountId) {
         String payload = Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(("{\"email\":\"" + email + "\"}").getBytes(StandardCharsets.UTF_8));
+                .encodeToString(("{\"sub\":\"" + externalAccountId + "\"}").getBytes(StandardCharsets.UTF_8));
         return "header." + payload + ".signature";
     }
 
@@ -88,7 +88,7 @@ class CalendarServiceTest {
     void refresh_token을_받으면_암호화해서_신규_연결을_생성한다() {
         UUID userId = UUID.randomUUID();
         when(responseSpec.body(GoogleTokenResponse.class))
-                .thenReturn(new GoogleTokenResponse("access", "refresh-token-value", fakeIdToken("someone@gmail.com"), 3600L));
+                .thenReturn(new GoogleTokenResponse("access", "refresh-token-value", fakeIdToken("google-sub-1"), 3600L));
         when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.empty());
         when(calendarTokenEncryptor.encrypt("refresh-token-value".getBytes(StandardCharsets.UTF_8)))
                 .thenReturn(new byte[] {1, 2, 3});
@@ -96,7 +96,7 @@ class CalendarServiceTest {
         CalendarConnectionResponse response = calendarService.connect(userId, new ConnectCalendarRequest("auth-code"));
 
         assertThat(response.provider()).isEqualTo("google");
-        assertThat(response.externalAccountId()).isEqualTo("someone@gmail.com");
+        assertThat(response.externalAccountId()).isEqualTo("google-sub-1");
         verify(calendarConnectionRepository).save(any(CalendarConnection.class));
     }
 
@@ -104,7 +104,7 @@ class CalendarServiceTest {
     void refresh_token이_없고_기존_연결도_없으면_거부한다() {
         UUID userId = UUID.randomUUID();
         when(responseSpec.body(GoogleTokenResponse.class))
-                .thenReturn(new GoogleTokenResponse("access", null, fakeIdToken("someone@gmail.com"), 3600L));
+                .thenReturn(new GoogleTokenResponse("access", null, fakeIdToken("google-sub-1"), 3600L));
         when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> calendarService.connect(userId, new ConnectCalendarRequest("auth-code")))
@@ -119,13 +119,13 @@ class CalendarServiceTest {
                 .calendarConnectionId(UUID.randomUUID())
                 .userId(userId)
                 .provider("google")
-                .externalAccountId("someone@gmail.com")
+                .externalAccountId("google-sub-1")
                 .refreshTokenEnc(new byte[] {9, 9, 9})
                 .connectedAt(Instant.now().minusSeconds(86400))
                 .revokedAt(Instant.now().minusSeconds(3600)) // 재연결 시나리오
                 .build();
         when(responseSpec.body(GoogleTokenResponse.class))
-                .thenReturn(new GoogleTokenResponse("access", null, fakeIdToken("someone@gmail.com"), 3600L));
+                .thenReturn(new GoogleTokenResponse("access", null, fakeIdToken("google-sub-1"), 3600L));
         when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.of(existing));
 
         calendarService.connect(userId, new ConnectCalendarRequest("auth-code"));
@@ -151,7 +151,7 @@ class CalendarServiceTest {
                 .calendarConnectionId(UUID.randomUUID())
                 .userId(userId)
                 .provider("google")
-                .externalAccountId("someone@gmail.com")
+                .externalAccountId("google-sub-1")
                 .refreshTokenEnc(new byte[] {1})
                 .connectedAt(Instant.now())
                 .build();
@@ -194,7 +194,7 @@ class CalendarServiceTest {
                 .calendarConnectionId(UUID.randomUUID())
                 .userId(userId)
                 .provider("google")
-                .externalAccountId("someone@gmail.com")
+                .externalAccountId("google-sub-1")
                 .refreshTokenEnc(new byte[] {1})
                 .connectedAt(Instant.now())
                 .revokedAt(Instant.now())
@@ -217,7 +217,7 @@ class CalendarServiceTest {
                 .calendarConnectionId(UUID.randomUUID())
                 .userId(userId)
                 .provider("google")
-                .externalAccountId("someone@gmail.com")
+                .externalAccountId("google-sub-1")
                 .refreshTokenEnc(new byte[] {1, 2, 3})
                 .connectedAt(Instant.now())
                 .build();
@@ -240,7 +240,7 @@ class CalendarServiceTest {
                 .calendarConnectionId(UUID.randomUUID())
                 .userId(userId)
                 .provider("google")
-                .externalAccountId("someone@gmail.com")
+                .externalAccountId("google-sub-1")
                 .refreshTokenEnc(new byte[] {1, 2, 3})
                 .connectedAt(Instant.now())
                 .build();
@@ -263,7 +263,7 @@ class CalendarServiceTest {
                 .calendarConnectionId(UUID.randomUUID())
                 .userId(userId)
                 .provider("google")
-                .externalAccountId("someone@gmail.com")
+                .externalAccountId("google-sub-1")
                 .refreshTokenEnc(new byte[] {1, 2, 3})
                 .connectedAt(Instant.now())
                 .build();

@@ -90,7 +90,7 @@ class IdempotencyFilterTest {
     }
 
     @Test
-    void Idempotency_Key_헤더가_없으면_기존과_동일하게_매번_새로_처리된다() throws Exception {
+    void Idempotency_Key_헤더가_없으면_400이다() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
                 {"consent_type":"LOCATION","agreed":true,"policy_version":"1.0.0"}
@@ -100,8 +100,8 @@ class IdempotencyFilterTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.consent_type").value("LOCATION"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
     }
 
     private String signupAndLogin() throws Exception {
