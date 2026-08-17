@@ -15,9 +15,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // ERD v3.1 `event`. 외부 캘린더 제목 원문은 저장하지 않는다(절대 원칙 8) — title 컬럼 자체가 없다.
-// 표시명은 사용자가 입력·승인한 displayLabel만 (TRD D17). UserEvent(구 Vium user_events)를
-// 대체하는 새 엔티티이며, UserEvent는 calendar 패키지의 기존 테스트가 아직 참조하고 있어
-// 함께 남겨두고 있다 — calendar 재설계가 끝나면 정리 대상.
+// 표시명은 사용자가 입력·승인한 displayLabel만 (TRD D17). 구 Vium user_events(UserEvent)를
+// 대체한다 — CalendarService의 캘린더 밀도 계산도 이제 이 엔티티를 쓴다.
 @Entity
 @Table(name = "event")
 @Getter

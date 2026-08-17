@@ -8,11 +8,13 @@ import com.hq.backend.auth.dto.SignupResponse;
 import com.hq.backend.auth.dto.TokenResponse;
 import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.user.User;
+import com.hq.backend.user.UserCredential;
+import com.hq.backend.user.UserCredentialRepository;
+import com.hq.backend.user.UserIdentity;
+import com.hq.backend.user.UserIdentityRepository;
 import com.hq.backend.user.UserRepository;
 import java.net.URI;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.Period;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -24,13 +26,19 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
+// ERD v3 전환(chore/be-schema-core, #61)에 맞춰 provider/providerUid/passwordHash가
+// USER_IDENTITY/USER_CREDENTIAL로 옮겨간 것을 반영한 최소 수정. 로직(구글 토큰 검증,
+// JWT 발급, 이메일 인증)은 기존 그대로이고 데이터 접근 경로만 새 테이블로 바꿨다.
+// 만 14세 확인(age_confirmed_at)은 Ensom 범위에 없어 뺐다 — TODO(박찬): 이메일 인증
+// 토큰 발급(AUTH_TOKEN), USER_IDENTITY 기반 계정 연결 정책 등 실제 Ensom 인증 플로우는
+// 아직 반영 안 됨.
 @Service
 @RequiredArgsConstructor
 public class AuthService {
 
-    private static final int MIN_AGE = 14;
-
     private final UserRepository userRepository;
+    private final UserIdentityRepository userIdentityRepository;
+    private final UserCredentialRepository userCredentialRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final RestClient restClient;
@@ -46,22 +54,32 @@ public class AuthService {
         if (userRepository.existsByEmail(request.email())) {
             throw new ApiException(HttpStatus.CONFLICT, "EMAIL_EXISTS", "이미 가입된 이메일입니다.");
         }
-        if (Period.between(request.birthDate(), LocalDate.now()).getYears() < MIN_AGE) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "UNDER_AGE", "만 14세 이상만 가입할 수 있습니다.");
-        }
 
+        Instant now = Instant.now();
         User user = userRepository.save(User.builder()
-                .provider("email")
-                .providerUid(request.email())
                 .email(request.email())
-                .passwordHash(passwordEncoder.encode(request.password()))
                 .nickname(defaultNickname(request.email()))
                 .timezone("Asia/Seoul")
-                .ageConfirmedAt(Instant.now())
-                .createdAt(Instant.now())
+                .createdAt(now)
+                .accountStatus("active")
                 .build());
 
-        return new SignupResponse(user.getId(), user.getEmail(), user.getProvider(), true);
+        userIdentityRepository.save(UserIdentity.builder()
+                .userId(user.getUserId())
+                .provider("email")
+                .providerUid(request.email())
+                .linkedAt(now)
+                .build());
+
+        userCredentialRepository.save(UserCredential.builder()
+                .userId(user.getUserId())
+                .passwordHash(passwordEncoder.encode(request.password()))
+                .passwordAlgo("argon2id")
+                .passwordUpdatedAt(now)
+                .failedAttempts((short) 0)
+                .build());
+
+        return new SignupResponse(user.getUserId(), user.getEmail(), "email");
     }
 
     // users.nickname은 not null이지만 가입 요청에 닉네임 입력을 받지 않으므로 임시값을 채운다.
@@ -72,7 +90,10 @@ public class AuthService {
 
     public TokenResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.email())
-                .filter(u -> u.getPasswordHash() != null && passwordEncoder.matches(request.password(), u.getPasswordHash()))
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다."));
+
+        UserCredential credential = userCredentialRepository.findById(user.getUserId())
+                .filter(c -> passwordEncoder.matches(request.password(), c.getPasswordHash()))
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다."));
 
         return issueTokens(user);
@@ -102,7 +123,9 @@ public class AuthService {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_GOOGLE_TOKEN", "유효하지 않은 구글 토큰입니다.");
         }
 
-        User user = userRepository.findByProviderAndProviderUid("google", info.sub())
+        User user = userIdentityRepository.findByProviderAndProviderUid("google", info.sub())
+                .map(identity -> userRepository.findById(identity.getUserId())
+                        .orElseThrow(() -> new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "USER_NOT_FOUND", "계정을 찾을 수 없습니다.")))
                 .orElseGet(() -> createGoogleUser(info));
 
         return issueTokens(user);
@@ -110,14 +133,23 @@ public class AuthService {
 
     private User createGoogleUser(GoogleUserInfoResponse info) {
         try {
-            return userRepository.save(User.builder()
-                    .provider("google")
-                    .providerUid(info.sub())
+            Instant now = Instant.now();
+            User user = userRepository.save(User.builder()
                     .email(info.email())
                     .nickname(defaultNickname(info.email()))
                     .timezone("Asia/Seoul")
-                    .createdAt(Instant.now())
+                    .createdAt(now)
+                    .accountStatus("active")
                     .build());
+
+            userIdentityRepository.save(UserIdentity.builder()
+                    .userId(user.getUserId())
+                    .provider("google")
+                    .providerUid(info.sub())
+                    .linkedAt(now)
+                    .build());
+
+            return user;
         } catch (DataIntegrityViolationException e) {
             throw new ApiException(HttpStatus.CONFLICT, "EMAIL_EXISTS", "이미 다른 방식으로 가입된 이메일입니다.");
         }
@@ -125,8 +157,8 @@ public class AuthService {
 
     private TokenResponse issueTokens(User user) {
         return new TokenResponse(
-                jwtService.generateAccessToken(user.getId()),
-                jwtService.generateRefreshToken(user.getId()),
+                jwtService.generateAccessToken(user.getUserId()),
+                jwtService.generateRefreshToken(user.getUserId()),
                 jwtService.getAccessTokenExpirationSeconds());
     }
 }

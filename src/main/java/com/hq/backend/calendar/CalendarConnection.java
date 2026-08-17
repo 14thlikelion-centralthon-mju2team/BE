@@ -14,10 +14,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// user_id·provider가 유니크라(테이블당 1인당 1행) 재연결은 새 행이 아니라 기존 행을
-// 업데이트한다 — CalendarService 참고.
+// ERD v3 CALENDAR_CONNECTION — 옛 calendar_connections에 있던 scope 컬럼이 없어졌고
+// (API 응답도 scope를 안 준다), 대신 externalAccountId(구글 계정 식별자)가 필수다.
+// (user_id, provider, external_account_id) 유니크 — CalendarService 참고.
 @Entity
-@Table(name = "calendar_connections")
+@Table(name = "calendar_connection")
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
@@ -26,7 +27,7 @@ public class CalendarConnection {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    private UUID calendarConnectionId;
 
     @Column(nullable = false)
     private UUID userId;
@@ -34,14 +35,14 @@ public class CalendarConnection {
     @Column(nullable = false)
     private String provider;
 
-    // BytesEncryptor로 암호화된 refresh_token — 평문은 절대 저장하지 않는다.
     @Setter
     @Column(nullable = false)
-    private byte[] refreshTokenEnc;
+    private String externalAccountId;
 
+    // BytesEncryptor로 암호화된 refresh_token — 평문은 절대 저장하지 않는다. 스키마상
+    // nullable(재교환 시 구글이 refresh_token을 안 줄 수 있는 경우가 있어서).
     @Setter
-    @Column(nullable = false)
-    private String scope;
+    private byte[] refreshTokenEnc;
 
     @Setter
     @Column(nullable = false)

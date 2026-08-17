@@ -24,6 +24,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.flywaydb:flyway-database-postgresql'
 	implementation 'org.springframework.security:spring-security-crypto'
+	// Argon2PasswordEncoder(TRD §3 — 비밀번호 해시 Argon2id)의 런타임 구현체.
+	runtimeOnly 'org.bouncycastle:bcprov-jdk18on:1.79'
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'

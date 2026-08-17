@@ -24,7 +24,7 @@ class ConsentControllerTest {
     void 동의를_기록하면_201과_기록내용을_반환한다() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
-                {"consent_type":"HEALTH_DATA","agreed":true,"policy_version":"1.0.0"}
+                {"consent_type":"LOCATION","agreed":true,"policy_version":"1.0.0"}
                 """;
 
         mockMvc.perform(post("/consents")
@@ -32,7 +32,7 @@ class ConsentControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.consent_type").value("HEALTH_DATA"))
+                .andExpect(jsonPath("$.consent_type").value("LOCATION"))
                 .andExpect(jsonPath("$.agreed").value(true))
                 .andExpect(jsonPath("$.recorded_at").exists());
     }
@@ -55,7 +55,7 @@ class ConsentControllerTest {
     @Test
     void 인증_없이_요청하면_401() throws Exception {
         String body = """
-                {"consent_type":"HEALTH_DATA","agreed":true,"policy_version":"1.0.0"}
+                {"consent_type":"LOCATION","agreed":true,"policy_version":"1.0.0"}
                 """;
 
         mockMvc.perform(post("/consents").contentType(MediaType.APPLICATION_JSON).content(body))
@@ -66,7 +66,7 @@ class ConsentControllerTest {
     private String signupAndLogin() throws Exception {
         String email = "test-" + UUID.randomUUID() + "@example.com";
         String signupBody = """
-                {"email":"%s","password":"securePassword123","birth_date":"1995-05-15"}
+                {"email":"%s","password":"securePassword123"}
                 """.formatted(email);
         mockMvc.perform(post("/auth/email/signup").contentType(MediaType.APPLICATION_JSON).content(signupBody))
                 .andExpect(status().isCreated());

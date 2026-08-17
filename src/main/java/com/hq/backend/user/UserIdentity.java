@@ -1,4 +1,4 @@
-package com.hq.backend.event;
+package com.hq.backend.user;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -14,37 +14,33 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// user_events에는 archived_at이 없다 — 삭제는 소프트가 아니라 하드 삭제(DELETE).
+// ERD v3 USER_IDENTITY — 로그인 제공자별 식별자. 한 계정이 email+google 두 identity를
+// 가질 수 있다(TRD §10.1 계정 연결 규칙). uq_identity_provider(provider, provider_uid)가
+// DB에서 중복을 막는다.
 @Entity
-@Table(name = "user_events")
+@Table(name = "user_identity")
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class UserEvent {
+public class UserIdentity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    private UUID identityId;
 
     @Column(nullable = false)
     private UUID userId;
 
-    // title 저장 여부는 TRD Q-004 미결이지만 스키마는 이미 nullable로 확정돼 있다.
-    @Setter
-    private String title;
-
-    @Setter
     @Column(nullable = false)
-    private Instant startsAt;
-
-    @Setter
-    @Column(nullable = false)
-    private Instant endsAt;
-
-    @Setter
-    private String placeText;
+    private String provider; // email | google | apple
 
     @Column(nullable = false)
-    private Instant createdAt;
+    private String providerUid;
+
+    @Column(nullable = false)
+    private Instant linkedAt;
+
+    @Setter
+    private Instant revokedAt;
 }
