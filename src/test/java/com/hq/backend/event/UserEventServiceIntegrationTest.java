@@ -8,6 +8,7 @@ import com.hq.backend.event.dto.UpdateEventRequest;
 import com.hq.backend.user.User;
 import com.hq.backend.user.UserRepository;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,7 +38,7 @@ class UserEventServiceIntegrationTest {
                         .createdAt(Instant.now())
                         .build())
                 .getId();
-        Instant startsAt = Instant.now();
+        Instant startsAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
         Instant endsAt = startsAt.plusSeconds(3600);
         UserEvent event = userEventRepository.save(UserEvent.builder()
                 .userId(userId)
