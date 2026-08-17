@@ -23,6 +23,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,6 +40,7 @@ class AuthServiceTest {
     @Mock private UserCredentialRepository userCredentialRepository;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private JwtService jwtService;
+    @Mock private TransactionTemplate transactionTemplate;
 
     private AuthService authService;
 
@@ -45,7 +48,8 @@ class AuthServiceTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         authService = new AuthService(
-                userRepository, userIdentityRepository, userCredentialRepository, passwordEncoder, jwtService, restClient);
+                userRepository, userIdentityRepository, userCredentialRepository, passwordEncoder, jwtService,
+                restClient, transactionTemplate);
         ReflectionTestUtils.setField(authService, "googleTokenInfoUrl", "https://oauth2.googleapis.com/tokeninfo");
         ReflectionTestUtils.setField(authService, "googleClientId", "ensom-client-id");
 
@@ -55,10 +59,15 @@ class AuthServiceTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void 신규_구글_유저는_로그인시_가입되고_토큰을_발급받는다() {
         GoogleUserInfoResponse info = new GoogleUserInfoResponse("google-sub-1", "new@example.com", "ensom-client-id");
         when(responseSpec.body(GoogleUserInfoResponse.class)).thenReturn(info);
         when(userIdentityRepository.findByProviderAndProviderUid("google", "google-sub-1")).thenReturn(Optional.empty());
+        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<User> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
         UUID userId = UUID.randomUUID();
         when(userRepository.save(any(User.class)))
                 .thenAnswer(invocation -> {

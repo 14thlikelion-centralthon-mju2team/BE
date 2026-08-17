@@ -53,4 +53,29 @@ class AuthControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("EMAIL_EXISTS"));
     }
+
+    @Test
+    void 연속_5회_로그인_실패하면_계정이_잠긴다() throws Exception {
+        String email = "test-" + UUID.randomUUID() + "@example.com";
+        String signupBody = """
+                {"email":"%s","password":"securePassword123"}
+                """.formatted(email);
+        mockMvc.perform(post("/auth/email/signup").contentType(MediaType.APPLICATION_JSON).content(signupBody))
+                .andExpect(status().isCreated());
+
+        String wrongLoginBody = """
+                {"email":"%s","password":"wrongPassword123"}
+                """.formatted(email);
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(post("/auth/email/login").contentType(MediaType.APPLICATION_JSON).content(wrongLoginBody))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        String correctLoginBody = """
+                {"email":"%s","password":"securePassword123"}
+                """.formatted(email);
+        mockMvc.perform(post("/auth/email/login").contentType(MediaType.APPLICATION_JSON).content(correctLoginBody))
+                .andExpect(status().isLocked())
+                .andExpect(jsonPath("$.error").value("ACCOUNT_LOCKED"));
+    }
 }

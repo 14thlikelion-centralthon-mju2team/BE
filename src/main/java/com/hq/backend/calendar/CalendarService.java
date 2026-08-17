@@ -26,6 +26,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.crypto.encrypt.BytesEncryptor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
@@ -53,6 +54,7 @@ public class CalendarService {
     private final EventRepository eventRepository;
     private final BytesEncryptor calendarTokenEncryptor;
     private final RestClient restClient;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${oauth.google.token-url}")
     private String googleTokenUrl;
@@ -66,9 +68,14 @@ public class CalendarService {
     @Value("${oauth.google.calendar-events-url}")
     private String googleCalendarEventsUrl;
 
-    @Transactional
+    // 구글과의 토큰 교환(외부 호출)을 트랜잭션 밖에서 먼저 끝내고, DB 쓰기만
+    // TransactionTemplate으로 짧게 감싼다 — 네트워크 호출 동안 DB 커넥션을 붙잡지 않기 위해서.
     public CalendarConnectionResponse connect(UUID userId, ConnectCalendarRequest request) {
         GoogleTokenResponse tokenResponse = exchangeAuthCode(request.authCode());
+        return transactionTemplate.execute(status -> persistConnection(userId, tokenResponse));
+    }
+
+    private CalendarConnectionResponse persistConnection(UUID userId, GoogleTokenResponse tokenResponse) {
         Optional<CalendarConnection> existing =
                 calendarConnectionRepository.findByUserIdAndProvider(userId, PROVIDER_GOOGLE);
         Instant now = Instant.now();

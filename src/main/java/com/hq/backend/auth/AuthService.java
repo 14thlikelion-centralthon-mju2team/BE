@@ -14,7 +14,9 @@ import com.hq.backend.user.UserIdentity;
 import com.hq.backend.user.UserIdentityRepository;
 import com.hq.backend.user.UserRepository;
 import java.net.URI;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -22,6 +24,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -36,12 +39,16 @@ import org.springframework.web.util.UriComponentsBuilder;
 @RequiredArgsConstructor
 public class AuthService {
 
+    private static final short LOGIN_FAIL_LOCK_THRESHOLD = 5;
+    private static final long LOGIN_LOCK_MINUTES = 15;
+
     private final UserRepository userRepository;
     private final UserIdentityRepository userIdentityRepository;
     private final UserCredentialRepository userCredentialRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final RestClient restClient;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${oauth.google.token-info-url}")
     private String googleTokenInfoUrl;
@@ -88,18 +95,46 @@ public class AuthService {
         return email.substring(0, email.indexOf('@'));
     }
 
+    // TRD §10.2·부록A: 연속 5회 실패 시 15분 잠금. IP 단위 제한은 아직 없다(계정 단위만).
+    // noRollbackFor: 실패 응답(ApiException)을 던지더라도 failedAttempts/lockedUntil 증가는
+    // 커밋돼야 한다 — 기본 롤백 규칙대로면 실패를 보고하는 예외가 그 실패 카운트 자체를 지운다.
+    @Transactional(noRollbackFor = ApiException.class)
     public TokenResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.email())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다."));
 
         UserCredential credential = userCredentialRepository.findById(user.getUserId())
-                .filter(c -> passwordEncoder.matches(request.password(), c.getPasswordHash()))
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다."));
+
+        if (credential.getLockedUntil() != null && credential.getLockedUntil().isAfter(Instant.now())) {
+            long retryAfterSec = Duration.between(Instant.now(), credential.getLockedUntil()).getSeconds();
+            throw new ApiException(HttpStatus.LOCKED, "ACCOUNT_LOCKED",
+                    "연속 로그인 실패로 계정이 잠겼습니다. " + retryAfterSec + "초 후 다시 시도해주세요.");
+        }
+
+        if (!passwordEncoder.matches(request.password(), credential.getPasswordHash())) {
+            registerFailedAttempt(credential);
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다.");
+        }
+
+        if (credential.getFailedAttempts() > 0) {
+            credential.setFailedAttempts((short) 0);
+        }
 
         return issueTokens(user);
     }
 
-    @Transactional
+    private void registerFailedAttempt(UserCredential credential) {
+        short attempts = (short) (credential.getFailedAttempts() + 1);
+        credential.setFailedAttempts(attempts);
+        if (attempts >= LOGIN_FAIL_LOCK_THRESHOLD) {
+            credential.setLockedUntil(Instant.now().plus(LOGIN_LOCK_MINUTES, ChronoUnit.MINUTES));
+        }
+    }
+
+    // 구글 토큰 검증(외부 호출)을 트랜잭션 밖에서 먼저 끝내고, DB 쓰기가 필요한 신규 유저
+    // 생성만 createGoogleUser() 안에서 TransactionTemplate으로 짧게 감싼다 — 네트워크
+    // 호출 동안 DB 커넥션을 붙잡지 않기 위해서(FCM 전송을 트랜잭션 밖에 두는 것과 같은 원칙).
     public TokenResponse loginWithGoogle(GoogleLoginRequest request) {
         // id_token을 문자열로 이어붙이면 {}가 든 값이 URI 템플릿 변수로 해석돼 500이 난다.
         // encode()로 쿼리 파라미터를 인코딩한 URI를 넘겨 템플릿 확장을 우회한다.
@@ -133,23 +168,25 @@ public class AuthService {
 
     private User createGoogleUser(GoogleUserInfoResponse info) {
         try {
-            Instant now = Instant.now();
-            User user = userRepository.save(User.builder()
-                    .email(info.email())
-                    .nickname(defaultNickname(info.email()))
-                    .timezone("Asia/Seoul")
-                    .createdAt(now)
-                    .accountStatus("active")
-                    .build());
+            return transactionTemplate.execute(status -> {
+                Instant now = Instant.now();
+                User user = userRepository.save(User.builder()
+                        .email(info.email())
+                        .nickname(defaultNickname(info.email()))
+                        .timezone("Asia/Seoul")
+                        .createdAt(now)
+                        .accountStatus("active")
+                        .build());
 
-            userIdentityRepository.save(UserIdentity.builder()
-                    .userId(user.getUserId())
-                    .provider("google")
-                    .providerUid(info.sub())
-                    .linkedAt(now)
-                    .build());
+                userIdentityRepository.save(UserIdentity.builder()
+                        .userId(user.getUserId())
+                        .provider("google")
+                        .providerUid(info.sub())
+                        .linkedAt(now)
+                        .build());
 
-            return user;
+                return user;
+            });
         } catch (DataIntegrityViolationException e) {
             throw new ApiException(HttpStatus.CONFLICT, "EMAIL_EXISTS", "이미 다른 방식으로 가입된 이메일입니다.");
         }

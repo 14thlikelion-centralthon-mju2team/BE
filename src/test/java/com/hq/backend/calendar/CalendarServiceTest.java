@@ -31,6 +31,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.encrypt.BytesEncryptor;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -47,14 +49,19 @@ class CalendarServiceTest {
     @Mock private CalendarConnectionRepository calendarConnectionRepository;
     @Mock private EventRepository eventRepository;
     @Mock private BytesEncryptor calendarTokenEncryptor;
+    @Mock private TransactionTemplate transactionTemplate;
 
     private CalendarService calendarService;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        calendarService =
-                new CalendarService(calendarConnectionRepository, eventRepository, calendarTokenEncryptor, restClient);
+        calendarService = new CalendarService(
+                calendarConnectionRepository, eventRepository, calendarTokenEncryptor, restClient, transactionTemplate);
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<Object> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
         ReflectionTestUtils.setField(calendarService, "googleTokenUrl", "https://oauth2.googleapis.com/token");
         ReflectionTestUtils.setField(calendarService, "googleClientId", "ensom-client-id");
         ReflectionTestUtils.setField(calendarService, "googleClientSecret", "ensom-client-secret");
