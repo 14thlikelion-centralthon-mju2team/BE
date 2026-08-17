@@ -14,7 +14,7 @@
 
 create table user_identity (
     identity_id          uuid primary key default gen_random_uuid(),
-    user_id              uuid not null references users(id) on delete cascade,
+    user_id              uuid not null references users(user_id) on delete cascade,
     provider             text not null,
     provider_uid         text not null,
     linked_at            timestamptz not null default now(),
@@ -27,7 +27,7 @@ create table user_identity (
 create index ix_user_identity_user on user_identity (user_id);
 
 create table user_credential (
-    user_id              uuid primary key references users(id) on delete cascade,
+    user_id              uuid primary key references users(user_id) on delete cascade,
     password_hash        text not null,
     password_algo        text not null default 'argon2id',
     password_updated_at  timestamptz not null default now(),
@@ -39,7 +39,7 @@ create table user_credential (
 
 create table auth_token (
     token_id             uuid primary key default gen_random_uuid(),
-    user_id              uuid not null references users(id) on delete cascade,
+    user_id              uuid not null references users(user_id) on delete cascade,
     purpose              text not null,
     token_hash           text not null,
     expires_at           timestamptz not null,
@@ -59,7 +59,7 @@ create index ix_auth_token_live
 -- refresh 토큰은 이메일/비밀번호 1회용 토큰과 별개. 기기별·사용자별 개별 폐기가 가능해야 한다.
 create table refresh_token (
     refresh_token_id    uuid primary key default gen_random_uuid(),
-    user_id             uuid not null references users(id) on delete cascade,
+    user_id             uuid not null references users(user_id) on delete cascade,
     push_device_id      uuid,
     token_hash          text not null,
     issued_at           timestamptz not null default now(),
@@ -74,7 +74,7 @@ create index ix_refresh_token_live
     where revoked_at is null;
 
 create table user_setting (
-    user_id                    uuid primary key references users(id) on delete cascade,
+    user_id                    uuid primary key references users(user_id) on delete cascade,
     initial_prep_minutes       integer,
     arrival_buffer_minutes     integer not null default 10,
     notification_sensitivity   text not null default 'normal',
@@ -90,7 +90,7 @@ create table user_setting (
 );
 
 create table user_permission (
-    user_id              uuid not null references users(id) on delete cascade,
+    user_id              uuid not null references users(user_id) on delete cascade,
     permission_type      text not null,
     status               text not null,
     updated_at           timestamptz not null default now(),
@@ -105,7 +105,7 @@ create table user_consent (
     consent_event_id     uuid primary key default gen_random_uuid(),
     -- user_id는 의도적으로 nullable. 탈퇴해도 동의 이력은 법정 보존 기간 동안 남아야 하므로
     -- 사용자 삭제 시 이력 자체는 지우지 않고 신원만 분리한다(ON DELETE SET NULL).
-    user_id              uuid references users(id) on delete set null,
+    user_id              uuid references users(user_id) on delete set null,
     consent_type         text not null,
     policy_version       text not null,
     action               text not null,
@@ -124,7 +124,7 @@ create index ix_user_consent_user_time
 
 create table push_device (
     push_device_id       uuid primary key default gen_random_uuid(),
-    user_id              uuid not null references users(id) on delete cascade,
+    user_id              uuid not null references users(user_id) on delete cascade,
     installation_id      uuid not null,
     current_token        text not null,
     token_status         text not null default 'active',
@@ -150,14 +150,13 @@ alter table refresh_token
 
 create table user_place (
     place_id             uuid primary key default gen_random_uuid(),
-    user_id              uuid not null references users(id) on delete cascade,
+    user_id              uuid not null references users(user_id) on delete cascade,
     place_type           text not null,
     place_name           text not null,
     address              text not null,
     lat                  double precision not null,
     lng                  double precision not null,
     is_primary           boolean not null default false,
-    created_at           timestamptz not null default now(),
     deleted_at           timestamptz,
     constraint ck_user_place_lat check (lat between -90 and 90),
     constraint ck_user_place_lng check (lng between -180 and 180),
@@ -174,7 +173,7 @@ create index ix_user_place_user_active
     where deleted_at is null;
 
 create table user_wellness_pref (
-    user_id                    uuid not null references users(id) on delete cascade,
+    user_id                    uuid not null references users(user_id) on delete cascade,
     wellness_topic             text not null,
     is_enabled                 boolean not null default false,
     remind_interval_minutes    integer,
@@ -191,7 +190,7 @@ create table user_wellness_pref (
 
 create table user_prep_rule (
     prep_rule_id          uuid primary key default gen_random_uuid(),
-    user_id               uuid not null references users(id) on delete cascade,
+    user_id               uuid not null references users(user_id) on delete cascade,
     rule_name             text not null,
     rule_category         text not null,
     action_type           text not null,
@@ -232,7 +231,7 @@ create index ix_prep_rule_user_active
 
 create table calendar_connection (
     calendar_connection_id uuid primary key default gen_random_uuid(),
-    user_id               uuid not null references users(id) on delete cascade,
+    user_id               uuid not null references users(user_id) on delete cascade,
     provider              text not null,
     external_account_id   text not null,
     refresh_token_enc     bytea,
@@ -264,7 +263,7 @@ create index ix_calendar_source_sync
 
 create table event (
     event_id               uuid primary key default gen_random_uuid(),
-    user_id                uuid not null references users(id) on delete cascade,
+    user_id                uuid not null references users(user_id) on delete cascade,
     calendar_source_id     uuid references calendar_source(calendar_source_id) on delete set null,
     external_event_id      text,
     source_type            text not null,
@@ -281,8 +280,6 @@ create table event (
     auto_manage_excluded   boolean not null default false,
     status                 text not null default 'planned',
     created_at             timestamptz not null default now(),
-    updated_at             timestamptz not null default now(),
-    deleted_at             timestamptz,
     constraint ck_event_source_type
         check (source_type in ('internal', 'external', 'map_search')),
     constraint ck_event_location_state
@@ -304,13 +301,12 @@ create unique index uq_event_external
     on event (calendar_source_id, external_event_id)
     where calendar_source_id is not null and external_event_id is not null;
 
+-- ERD의 event에는 deleted_at이 없다 — 삭제·취소는 status('cancelled'/'skipped')로만 표현한다.
 create index ix_event_user_time
-    on event (user_id, starts_at)
-    where deleted_at is null;
+    on event (user_id, starts_at);
 
 create index ix_event_active_status
-    on event (status, starts_at)
-    where deleted_at is null;
+    on event (status, starts_at);
 
 create table event_classification_review (
     review_id                    uuid primary key default gen_random_uuid(),
@@ -687,7 +683,7 @@ create table event_feedback (
 
 create table daily_wellness_summary (
     summary_id                uuid primary key default gen_random_uuid(),
-    user_id                   uuid not null references users(id) on delete cascade,
+    user_id                   uuid not null references users(user_id) on delete cascade,
     summary_date              date not null,
     event_count               integer not null,
     total_outdoor_minutes     integer not null,
@@ -721,7 +717,7 @@ create index ix_daily_summary_user_date
 
 create table user_prep_estimate (
     estimate_id          uuid primary key default gen_random_uuid(),
-    user_id              uuid not null references users(id) on delete cascade,
+    user_id              uuid not null references users(user_id) on delete cascade,
     scope_type            text not null,
     scope_value           text,
     estimated_minutes     integer not null,
@@ -757,7 +753,7 @@ create table engine_config (
 -- 제품 지표는 append-only. 좌표·제목·민감 준비 항목명은 애플리케이션이 payload에 넣지 않는다.
 create table product_event (
     product_event_id    uuid primary key default gen_random_uuid(),
-    user_id             uuid references users(id) on delete cascade,
+    user_id             uuid references users(user_id) on delete cascade,
     event_name          text not null,
     occurred_at         timestamptz not null,
     received_at         timestamptz not null default now(),
