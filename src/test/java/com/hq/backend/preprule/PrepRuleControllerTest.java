@@ -127,6 +127,61 @@ class PrepRuleControllerTest {
                 .andExpect(jsonPath("$.length()").value(0));
     }
 
+    @Test
+    void medication_항목의_isSensitive를_PATCH로_끌_수_없다() throws Exception {
+        String accessToken = signupAndLogin();
+        String createBody = """
+                {"rule_name":"수면제","rule_category":"MEDICATION","action_type":"CONSUME",
+                 "rule_timing":"PRE_DEPARTURE","is_required":false,"is_sensitive":false,"from_chip":false}
+                """;
+        String createResponse = mockMvc.perform(post("/prep-items")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.is_sensitive").value(true))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String prepRuleId = JsonPath.read(createResponse, "$.prep_rule_id");
+
+        mockMvc.perform(patch("/prep-items/" + prepRuleId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"is_sensitive":false}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.is_sensitive").value(true));
+    }
+
+    @Test
+    void fromChip_항목을_PATCH로_민감하게_바꾸면_422() throws Exception {
+        String accessToken = signupAndLogin();
+        String createBody = """
+                {"rule_name":"선크림","rule_category":"GENERAL_ITEM","action_type":"CARRY",
+                 "rule_timing":"PRE_DEPARTURE","is_required":false,"is_sensitive":false,"from_chip":true}
+                """;
+        String createResponse = mockMvc.perform(post("/prep-items")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String prepRuleId = JsonPath.read(createResponse, "$.prep_rule_id");
+
+        mockMvc.perform(patch("/prep-items/" + prepRuleId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"is_sensitive":true}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("SENSITIVE_CHIP_REJECTED"));
+    }
+
     private String signupAndLogin() throws Exception {
         String email = "test-" + UUID.randomUUID() + "@example.com";
         String signupBody = """

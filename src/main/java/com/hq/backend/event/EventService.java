@@ -21,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class EventService {
 
     private static final String QUESTION_TYPE_IS_ONLINE = "is_online";
+    private static final List<String> EXCLUDED_FROM_NEXT =
+            List.of(EventStatus.CANCELLED.name().toLowerCase(), EventStatus.SKIPPED.name().toLowerCase());
 
     private final EventRepository eventRepository;
     private final EventClassificationReviewRepository classificationReviewRepository;
@@ -37,7 +39,9 @@ public class EventService {
     @Transactional(readOnly = true)
     public EventResponse next(UUID userId) {
         String timezone = timezoneOf(userId);
-        Event event = eventRepository.findFirstByUserIdAndStartsAtAfterOrderByStartsAtAsc(userId, Instant.now())
+        Event event = eventRepository
+                .findFirstByUserIdAndStartsAtAfterAndStatusNotInOrderByStartsAtAsc(
+                        userId, Instant.now(), EXCLUDED_FROM_NEXT)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NEXT_EVENT_NOT_FOUND", "다음 일정이 없습니다."));
         return EventResponse.from(event, timezone);
     }
@@ -49,6 +53,9 @@ public class EventService {
 
     @Transactional
     public EventResponse create(UUID userId, EventCreateRequest request) {
+        validateDestinationPair(request.destinationLat(), request.destinationLng());
+        validateTimeOrder(request.startsAt(), request.endsAt());
+
         Event saved = eventRepository.save(Event.builder()
                 .userId(userId)
                 .sourceType(request.sourceType().name().toLowerCase())
@@ -96,10 +103,8 @@ public class EventService {
         if (request.destinationLng() != null) {
             event.setDestinationLng(request.destinationLng());
         }
-        if ((event.getDestinationLat() == null) != (event.getDestinationLng() == null)) {
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR",
-                    "destinationLat과 destinationLng는 함께 지정하거나 함께 비워야 합니다.");
-        }
+        validateDestinationPair(event.getDestinationLat(), event.getDestinationLng());
+        validateTimeOrder(event.getStartsAt(), event.getEndsAt());
         if (request.meetingUrl() != null) {
             event.setMeetingUrl(request.meetingUrl());
         }
@@ -135,9 +140,15 @@ public class EventService {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR",
                     "지원하지 않는 questionType입니다.");
         }
-        LocationState resolved = "offline".equals(request.userAnswer())
-                ? LocationState.REQUIRED_MISSING
-                : LocationState.NOT_REQUIRED;
+        LocationState resolved;
+        if ("offline".equals(request.userAnswer())) {
+            resolved = LocationState.REQUIRED_MISSING;
+        } else if ("online".equals(request.userAnswer())) {
+            resolved = LocationState.NOT_REQUIRED;
+        } else {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR",
+                    "questionType이 is_online일 때 userAnswer는 online 또는 offline이어야 합니다.");
+        }
 
         Instant now = Instant.now();
         // ck_title_purged: answered_at을 채우려면 title_snapshot이 이미 NULL이어야 한다 —
@@ -155,6 +166,21 @@ public class EventService {
     private Event findOwned(UUID userId, UUID eventId) {
         return eventRepository.findByEventIdAndUserId(eventId, userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "EVENT_NOT_FOUND", "일정을 찾을 수 없습니다."));
+    }
+
+    // ck_event_destination_pair — 미리 걸러내지 않으면 DB 제약 위반으로 422가 아니라 500이 난다.
+    private void validateDestinationPair(Double lat, Double lng) {
+        if ((lat == null) != (lng == null)) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR",
+                    "destinationLat과 destinationLng는 함께 지정하거나 함께 비워야 합니다.");
+        }
+    }
+
+    // ck_event_time_order — 위와 같은 이유로 미리 검증한다.
+    private void validateTimeOrder(Instant startsAt, Instant endsAt) {
+        if (endsAt != null && endsAt.isBefore(startsAt)) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", "endsAt은 startsAt보다 빠를 수 없습니다.");
+        }
     }
 
     private String timezoneOf(UUID userId) {

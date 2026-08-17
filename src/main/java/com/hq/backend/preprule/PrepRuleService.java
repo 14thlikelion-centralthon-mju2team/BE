@@ -76,6 +76,18 @@ public class PrepRuleService {
             rule.setSensitive(request.isSensitive());
         }
 
+        // create()와 동일한 서버 검증 규칙 ②③을 PATCH에도 재적용 — isSensitive만 따로
+        // 갱신할 수 있다 보니 이 재검증이 없으면 medication 항목의 잠금화면 마스킹을
+        // 끄거나(③), fromChip 항목을 사후에 민감으로 바꿔 금지 조합(②)을 만들 수 있었다.
+        RuleCategory ruleCategory = RuleCategory.valueOf(rule.getRuleCategory().toUpperCase());
+        if (ruleCategory == RuleCategory.MEDICATION) {
+            rule.setSensitive(true);
+        }
+        if (rule.isFromChip() && rule.isSensitive()) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "SENSITIVE_CHIP_REJECTED",
+                    "민감·규제 품목은 추천 칩으로 등록할 수 없습니다.");
+        }
+
         return PrepRuleResponse.from(rule);
     }
 

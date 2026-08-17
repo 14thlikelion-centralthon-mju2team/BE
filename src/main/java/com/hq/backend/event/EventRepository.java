@@ -17,5 +17,7 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
 
     List<Event> findByUserIdAndStartsAtBetweenOrderByStartsAtAsc(UUID userId, Instant from, Instant to);
 
-    Optional<Event> findFirstByUserIdAndStartsAtAfterOrderByStartsAtAsc(UUID userId, Instant after);
+    // /events/next — 취소·건너뛴 일정은 "다음 일정"이 아니다.
+    Optional<Event> findFirstByUserIdAndStartsAtAfterAndStatusNotInOrderByStartsAtAsc(
+            UUID userId, Instant after, List<String> excludedStatuses);
 }

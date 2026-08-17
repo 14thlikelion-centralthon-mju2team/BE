@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +24,9 @@ class EventControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private EventClassificationReviewRepository eventClassificationReviewRepository;
 
     @Test
     void 일정을_생성하면_201과_displayLabel을_표시명으로_반환한다() throws Exception {
@@ -106,6 +110,72 @@ class EventControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"destination_lat":37.498}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void 생성시_destinationLat만_지정하고_Lng를_비우면_422() throws Exception {
+        String accessToken = signupAndLogin();
+        String body = """
+                {"starts_at":"2026-08-24T10:00:00+09:00","location_state":"NOT_REQUIRED",
+                 "source_type":"INTERNAL","destination_lat":37.498}
+                """;
+
+        mockMvc.perform(post("/events")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void endsAt이_startsAt보다_빠르면_422() throws Exception {
+        String accessToken = signupAndLogin();
+        String body = """
+                {"starts_at":"2026-08-24T14:00:00+09:00","ends_at":"2026-08-24T13:00:00+09:00",
+                 "location_state":"NOT_REQUIRED","source_type":"INTERNAL"}
+                """;
+
+        mockMvc.perform(post("/events")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void 취소된_일정은_다음_일정으로_뜨지_않는다() throws Exception {
+        String accessToken = signupAndLogin();
+        String eventId = createEvent(accessToken, "2099-01-01T10:00:00+09:00");
+
+        mockMvc.perform(delete("/events/" + eventId).header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/events/next").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("NEXT_EVENT_NOT_FOUND"));
+    }
+
+    @Test
+    void 분류_확인_응답에_online_offline이_아닌_값을_보내면_422() throws Exception {
+        String accessToken = signupAndLogin();
+        String eventId = createEvent(accessToken, "2026-08-25T10:00:00+09:00");
+        eventClassificationReviewRepository.save(EventClassificationReview.builder()
+                .eventId(UUID.fromString(eventId))
+                .questionType("is_online")
+                .titleSnapshot("점심 약속")
+                .askedAt(Instant.now())
+                .build());
+
+        mockMvc.perform(post("/events/" + eventId + "/review")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"question_type":"is_online","user_answer":"글쎄요"}
                                 """))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
