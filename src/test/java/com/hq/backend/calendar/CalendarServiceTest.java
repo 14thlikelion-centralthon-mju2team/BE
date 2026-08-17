@@ -14,12 +14,13 @@ import com.hq.backend.calendar.dto.GoogleCalendarEventsResponse;
 import com.hq.backend.calendar.dto.GoogleEventDateTime;
 import com.hq.backend.calendar.dto.GoogleTokenResponse;
 import com.hq.backend.common.exception.ApiException;
-import com.hq.backend.event.UserEvent;
-import com.hq.backend.event.UserEventRepository;
+import com.hq.backend.event.Event;
+import com.hq.backend.event.EventRepository;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,6 +31,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.encrypt.BytesEncryptor;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -44,33 +47,33 @@ class CalendarServiceTest {
     @Mock private RestClient.ResponseSpec responseSpec;
 
     @Mock private CalendarConnectionRepository calendarConnectionRepository;
-    @Mock private UserEventRepository userEventRepository;
+    @Mock private EventRepository eventRepository;
     @Mock private BytesEncryptor calendarTokenEncryptor;
+    @Mock private TransactionTemplate transactionTemplate;
 
     private CalendarService calendarService;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        calendarService =
-                new CalendarService(calendarConnectionRepository, userEventRepository, calendarTokenEncryptor, restClient);
+        calendarService = new CalendarService(
+                calendarConnectionRepository, eventRepository, calendarTokenEncryptor, restClient, transactionTemplate);
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<Object> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
         ReflectionTestUtils.setField(calendarService, "googleTokenUrl", "https://oauth2.googleapis.com/token");
-        ReflectionTestUtils.setField(calendarService, "googleClientId", "vium-client-id");
-        ReflectionTestUtils.setField(calendarService, "googleClientSecret", "vium-client-secret");
+        ReflectionTestUtils.setField(calendarService, "googleClientId", "ensom-client-id");
+        ReflectionTestUtils.setField(calendarService, "googleClientSecret", "ensom-client-secret");
         ReflectionTestUtils.setField(
                 calendarService, "googleCalendarEventsUrl", "https://www.googleapis.com/calendar/v3/calendars/primary/events");
 
-        // disconnect() 테스트는 이 체인을 안 써서, 안 쓰는 테스트 입장에선 "unnecessary stubbing"이
-        // 된다 — lenient()로 그 경고를 끈다.
-        // body(Object)/body(StreamingHttpOutputMessage.Body) 두 오버로드가 있어서 타입 힌트 없는
-        // any()를 쓰면 더 구체적인 쪽으로 스텁이 걸려버린다 — any(Object.class)로 오버로드 고정.
         lenient().when(restClient.post()).thenReturn(requestBodyUriSpec);
         lenient().when(requestBodyUriSpec.uri(anyStringSafe())).thenReturn(requestBodySpec);
         lenient().when(requestBodySpec.contentType(any())).thenReturn(requestBodySpec);
         lenient().when(requestBodySpec.body(any(Object.class))).thenReturn(requestBodySpec);
         lenient().when(requestBodySpec.retrieve()).thenReturn(responseSpec);
 
-        // GET 체인 (getDensity가 구글 캘린더 이벤트를 조회할 때 사용) — 위와 같은 이유로 lenient.
         lenient().when(restClient.get()).thenReturn(requestHeadersUriSpec);
         lenient().when(requestHeadersUriSpec.uri(any(URI.class))).thenReturn(requestHeadersSpec);
         lenient().when(requestHeadersSpec.header(any(), any())).thenReturn(requestHeadersSpec);
@@ -81,11 +84,18 @@ class CalendarServiceTest {
         return org.mockito.ArgumentMatchers.anyString();
     }
 
+    // 서명 검증 없이 payload만 읽으므로 header·signature는 아무 값이나 둬도 된다.
+    private static String fakeIdToken(String externalAccountId) {
+        String payload = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(("{\"sub\":\"" + externalAccountId + "\"}").getBytes(StandardCharsets.UTF_8));
+        return "header." + payload + ".signature";
+    }
+
     @Test
     void refresh_token을_받으면_암호화해서_신규_연결을_생성한다() {
         UUID userId = UUID.randomUUID();
         when(responseSpec.body(GoogleTokenResponse.class))
-                .thenReturn(new GoogleTokenResponse("access", "refresh-token-value", "calendar.readonly", 3600L));
+                .thenReturn(new GoogleTokenResponse("access", "refresh-token-value", fakeIdToken("google-sub-1"), 3600L));
         when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.empty());
         when(calendarTokenEncryptor.encrypt("refresh-token-value".getBytes(StandardCharsets.UTF_8)))
                 .thenReturn(new byte[] {1, 2, 3});
@@ -93,7 +103,7 @@ class CalendarServiceTest {
         CalendarConnectionResponse response = calendarService.connect(userId, new ConnectCalendarRequest("auth-code"));
 
         assertThat(response.provider()).isEqualTo("google");
-        assertThat(response.scope()).isEqualTo("calendar.readonly");
+        assertThat(response.externalAccountId()).isEqualTo("google-sub-1");
         verify(calendarConnectionRepository).save(any(CalendarConnection.class));
     }
 
@@ -101,7 +111,7 @@ class CalendarServiceTest {
     void refresh_token이_없고_기존_연결도_없으면_거부한다() {
         UUID userId = UUID.randomUUID();
         when(responseSpec.body(GoogleTokenResponse.class))
-                .thenReturn(new GoogleTokenResponse("access", null, "calendar.readonly", 3600L));
+                .thenReturn(new GoogleTokenResponse("access", null, fakeIdToken("google-sub-1"), 3600L));
         when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> calendarService.connect(userId, new ConnectCalendarRequest("auth-code")))
@@ -113,16 +123,16 @@ class CalendarServiceTest {
     void refresh_token이_없어도_기존_연결이_있으면_기존_토큰을_유지한채_갱신한다() {
         UUID userId = UUID.randomUUID();
         CalendarConnection existing = CalendarConnection.builder()
-                .id(UUID.randomUUID())
+                .calendarConnectionId(UUID.randomUUID())
                 .userId(userId)
                 .provider("google")
+                .externalAccountId("google-sub-1")
                 .refreshTokenEnc(new byte[] {9, 9, 9})
-                .scope("calendar.readonly")
                 .connectedAt(Instant.now().minusSeconds(86400))
                 .revokedAt(Instant.now().minusSeconds(3600)) // 재연결 시나리오
                 .build();
         when(responseSpec.body(GoogleTokenResponse.class))
-                .thenReturn(new GoogleTokenResponse("access", null, "calendar.readonly", 3600L));
+                .thenReturn(new GoogleTokenResponse("access", null, fakeIdToken("google-sub-1"), 3600L));
         when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.of(existing));
 
         calendarService.connect(userId, new ConnectCalendarRequest("auth-code"));
@@ -145,11 +155,11 @@ class CalendarServiceTest {
     void 해제하면_revokedAt이_기록된다() {
         UUID userId = UUID.randomUUID();
         CalendarConnection existing = CalendarConnection.builder()
-                .id(UUID.randomUUID())
+                .calendarConnectionId(UUID.randomUUID())
                 .userId(userId)
                 .provider("google")
+                .externalAccountId("google-sub-1")
                 .refreshTokenEnc(new byte[] {1})
-                .scope("calendar.readonly")
                 .connectedAt(Instant.now())
                 .build();
         when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.of(existing));
@@ -164,14 +174,17 @@ class CalendarServiceTest {
         UUID userId = UUID.randomUUID();
         LocalDate date = LocalDate.of(2026, 8, 14);
         when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.empty());
-        UserEvent event = UserEvent.builder()
-                .id(UUID.randomUUID())
+        Event event = Event.builder()
+                .eventId(UUID.randomUUID())
                 .userId(userId)
+                .sourceType("internal")
+                .locationState("not_required")
+                .status("planned")
                 .startsAt(Instant.parse("2026-08-14T05:00:00Z"))
                 .endsAt(Instant.parse("2026-08-14T06:00:00Z"))
                 .createdAt(Instant.now())
                 .build();
-        when(userEventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
+        when(eventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
                 .thenReturn(List.of(event));
 
         var result = calendarService.getDensity(userId, date);
@@ -185,16 +198,16 @@ class CalendarServiceTest {
     void 연결이_해제된_상태면_구글_호출을_안_하고_user_events만_반환한다() {
         UUID userId = UUID.randomUUID();
         CalendarConnection revoked = CalendarConnection.builder()
-                .id(UUID.randomUUID())
+                .calendarConnectionId(UUID.randomUUID())
                 .userId(userId)
                 .provider("google")
+                .externalAccountId("google-sub-1")
                 .refreshTokenEnc(new byte[] {1})
-                .scope("calendar.readonly")
                 .connectedAt(Instant.now())
                 .revokedAt(Instant.now())
                 .build();
         when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.of(revoked));
-        when(userEventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
+        when(eventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
                 .thenReturn(List.of());
 
         var result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
@@ -208,17 +221,17 @@ class CalendarServiceTest {
     void 구글_토큰_갱신이_실패해도_전체_요청은_안_죽고_user_events만_반환한다() {
         UUID userId = UUID.randomUUID();
         CalendarConnection connection = CalendarConnection.builder()
-                .id(UUID.randomUUID())
+                .calendarConnectionId(UUID.randomUUID())
                 .userId(userId)
                 .provider("google")
+                .externalAccountId("google-sub-1")
                 .refreshTokenEnc(new byte[] {1, 2, 3})
-                .scope("calendar.readonly")
                 .connectedAt(Instant.now())
                 .build();
         when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.of(connection));
         when(calendarTokenEncryptor.decrypt(any())).thenReturn("refresh-token".getBytes(StandardCharsets.UTF_8));
         when(responseSpec.body(GoogleTokenResponse.class)).thenThrow(new RestClientException("boom"));
-        when(userEventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
+        when(eventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
                 .thenReturn(List.of());
 
         var result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
@@ -227,23 +240,21 @@ class CalendarServiceTest {
         assertThat(result.blocks()).isEmpty();
     }
 
-    // BytesEncryptor.decrypt()는 복호화 실패 시 IllegalStateException을 던진다(RestClientException이
-    // 아님) — 암호화 키 로테이션이나 저장된 값 손상 시 실제로 발생할 수 있는 케이스.
     @Test
     void refresh_token_복호화가_실패해도_전체_요청은_안_죽고_user_events만_반환한다() {
         UUID userId = UUID.randomUUID();
         CalendarConnection connection = CalendarConnection.builder()
-                .id(UUID.randomUUID())
+                .calendarConnectionId(UUID.randomUUID())
                 .userId(userId)
                 .provider("google")
+                .externalAccountId("google-sub-1")
                 .refreshTokenEnc(new byte[] {1, 2, 3})
-                .scope("calendar.readonly")
                 .connectedAt(Instant.now())
                 .build();
         when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.of(connection));
         when(calendarTokenEncryptor.decrypt(any()))
                 .thenThrow(new IllegalStateException("Unable to invoke Cipher due to bad padding"));
-        when(userEventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
+        when(eventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
                 .thenReturn(List.of());
 
         var result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
@@ -256,17 +267,17 @@ class CalendarServiceTest {
     void 구글_이벤트와_user_events를_합쳐서_시간순으로_반환하고_종일일정은_건너뛴다() {
         UUID userId = UUID.randomUUID();
         CalendarConnection connection = CalendarConnection.builder()
-                .id(UUID.randomUUID())
+                .calendarConnectionId(UUID.randomUUID())
                 .userId(userId)
                 .provider("google")
+                .externalAccountId("google-sub-1")
                 .refreshTokenEnc(new byte[] {1, 2, 3})
-                .scope("calendar.readonly")
                 .connectedAt(Instant.now())
                 .build();
         when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.of(connection));
         when(calendarTokenEncryptor.decrypt(any())).thenReturn("refresh-token".getBytes(StandardCharsets.UTF_8));
         when(responseSpec.body(GoogleTokenResponse.class))
-                .thenReturn(new GoogleTokenResponse("access-token", null, "calendar.readonly", 3600L));
+                .thenReturn(new GoogleTokenResponse("access-token", null, null, 3600L));
 
         GoogleCalendarEvent timedEvent = new GoogleCalendarEvent(
                 new GoogleEventDateTime(Instant.parse("2026-08-14T09:00:00Z")),
@@ -275,14 +286,17 @@ class CalendarServiceTest {
         when(responseSpec.body(GoogleCalendarEventsResponse.class))
                 .thenReturn(new GoogleCalendarEventsResponse(List.of(timedEvent, allDayEvent)));
 
-        UserEvent userEvent = UserEvent.builder()
-                .id(UUID.randomUUID())
+        Event userEvent = Event.builder()
+                .eventId(UUID.randomUUID())
                 .userId(userId)
+                .sourceType("internal")
+                .locationState("not_required")
+                .status("planned")
                 .startsAt(Instant.parse("2026-08-14T05:00:00Z"))
                 .endsAt(Instant.parse("2026-08-14T06:00:00Z"))
                 .createdAt(Instant.now())
                 .build();
-        when(userEventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
+        when(eventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
                 .thenReturn(List.of(userEvent));
 
         var result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));

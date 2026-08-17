@@ -1,12 +1,11 @@
 package com.hq.backend.consent;
 
-// V1__init.sql user_consents.consent_type check 제약과 1:1 대응 (거기는 소문자).
-// API는 대문자 상수명 그대로 주고받고, DB 왕복 변환은 ConsentService에서 처리한다.
+// user_consent.consent_type check 제약과 1:1 대응(거기는 소문자). Ensom ERD v3의
+// consentType 값은 terms/privacy/location/marketing 4종뿐 — Vium 시절 CALENDAR·
+// HEALTH_DATA는 새 스키마에 없다(ck_consent_type).
 public enum ConsentType {
     TERMS,
     PRIVACY,
     LOCATION,
-    CALENDAR,
-    HEALTH_DATA,
     MARKETING
 }

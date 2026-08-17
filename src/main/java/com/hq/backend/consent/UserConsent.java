@@ -13,11 +13,11 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-// V1__init.sql: user_consents는 append-only (trg_user_consents_append_only 트리거가
-// UPDATE/DELETE를 막는다). 철회도 agreed=false인 새 행을 INSERT하는 것으로 표현하고
-// 기존 행은 절대 건드리지 않는다 — 그래서 이 엔티티에도 update용 setter가 없다.
+// ERD v3 USER_CONSENT — 테이블명이 user_consents(복수)에서 user_consent(단수)로 바뀌었고
+// agreed(bool) 대신 action('agreed'|'revoked') 문자열, idempotency_key(UNIQUE, 필수)가
+// 추가됐다. userId는 nullable — 탈퇴해도 동의 이력은 법정 보존 기간 유지(ON DELETE SET NULL).
 @Entity
-@Table(name = "user_consents")
+@Table(name = "user_consent")
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
@@ -25,14 +25,13 @@ import lombok.NoArgsConstructor;
 public class UserConsent {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID consentEventId;
 
-    @Column(nullable = false)
     private UUID userId;
 
-    // DB check 제약은 소문자('health_data' 등), API는 대문자('HEALTH_DATA')를 쓴다 —
-    // 변환은 ConsentService에서 처리하고 엔티티는 DB 값 그대로 문자열로 들고 있는다.
+    // DB check 제약은 소문자('terms' 등), API는 대문자('TERMS')를 쓴다 — 변환은
+    // ConsentService에서 처리하고 엔티티는 DB 값 그대로 문자열로 들고 있는다.
     @Column(nullable = false)
     private String consentType;
 
@@ -40,7 +39,13 @@ public class UserConsent {
     private String policyVersion;
 
     @Column(nullable = false)
-    private Boolean agreed;
+    private String action; // agreed | revoked
+
+    @Column(nullable = false)
+    private boolean isRequired;
+
+    @Column(nullable = false)
+    private UUID idempotencyKey;
 
     @Column(nullable = false)
     private Instant recordedAt;

@@ -9,6 +9,9 @@ import com.hq.backend.auth.dto.GoogleLoginRequest;
 import com.hq.backend.auth.dto.GoogleUserInfoResponse;
 import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.user.User;
+import com.hq.backend.user.UserCredentialRepository;
+import com.hq.backend.user.UserIdentity;
+import com.hq.backend.user.UserIdentityRepository;
 import com.hq.backend.user.UserRepository;
 import java.net.URI;
 import java.util.Optional;
@@ -20,6 +23,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,17 +36,22 @@ class AuthServiceTest {
     @Mock private RestClient.ResponseSpec responseSpec;
 
     @Mock private UserRepository userRepository;
+    @Mock private UserIdentityRepository userIdentityRepository;
+    @Mock private UserCredentialRepository userCredentialRepository;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private JwtService jwtService;
+    @Mock private TransactionTemplate transactionTemplate;
 
     private AuthService authService;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        authService = new AuthService(userRepository, passwordEncoder, jwtService, restClient);
+        authService = new AuthService(
+                userRepository, userIdentityRepository, userCredentialRepository, passwordEncoder, jwtService,
+                restClient, transactionTemplate);
         ReflectionTestUtils.setField(authService, "googleTokenInfoUrl", "https://oauth2.googleapis.com/tokeninfo");
-        ReflectionTestUtils.setField(authService, "googleClientId", "vium-client-id");
+        ReflectionTestUtils.setField(authService, "googleClientId", "ensom-client-id");
 
         when(restClient.get()).thenReturn(requestHeadersUriSpec);
         when(requestHeadersUriSpec.uri(any(URI.class))).thenReturn(requestHeadersSpec);
@@ -49,17 +59,24 @@ class AuthServiceTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void 신규_구글_유저는_로그인시_가입되고_토큰을_발급받는다() {
-        GoogleUserInfoResponse info = new GoogleUserInfoResponse("google-sub-1", "new@example.com", "vium-client-id");
+        GoogleUserInfoResponse info = new GoogleUserInfoResponse("google-sub-1", "new@example.com", "ensom-client-id");
         when(responseSpec.body(GoogleUserInfoResponse.class)).thenReturn(info);
-        when(userRepository.findByProviderAndProviderUid("google", "google-sub-1")).thenReturn(Optional.empty());
+        when(userIdentityRepository.findByProviderAndProviderUid("google", "google-sub-1")).thenReturn(Optional.empty());
+        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<User> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
         UUID userId = UUID.randomUUID();
-        when(userRepository.save(org.mockito.ArgumentMatchers.any(User.class)))
+        when(userRepository.save(any(User.class)))
                 .thenAnswer(invocation -> {
                     User user = invocation.getArgument(0);
-                    ReflectionTestUtils.setField(user, "id", userId);
+                    ReflectionTestUtils.setField(user, "userId", userId);
                     return user;
                 });
+        when(userIdentityRepository.save(any(UserIdentity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
         when(jwtService.generateAccessToken(userId)).thenReturn("access-token");
         when(jwtService.generateRefreshToken(userId)).thenReturn("refresh-token");
         when(jwtService.getAccessTokenExpirationSeconds()).thenReturn(3600L);

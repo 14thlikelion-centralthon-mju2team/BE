@@ -4,7 +4,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,13 +23,12 @@ class AuthControllerTest {
     void signupThenLoginIssuesToken() throws Exception {
         String email = "test-" + UUID.randomUUID() + "@example.com";
         String signupBody = """
-                {"email":"%s","password":"securePassword123","birth_date":"1995-05-15"}
+                {"email":"%s","password":"securePassword123"}
                 """.formatted(email);
 
         mockMvc.perform(post("/auth/email/signup").contentType(MediaType.APPLICATION_JSON).content(signupBody))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.email").value(email))
-                .andExpect(jsonPath("$.age_confirmed").value(true));
+                .andExpect(jsonPath("$.email").value(email));
 
         String loginBody = """
                 {"email":"%s","password":"securePassword123"}
@@ -43,23 +41,10 @@ class AuthControllerTest {
     }
 
     @Test
-    void signupUnderAgeIsRejected() throws Exception {
-        String email = "test-" + UUID.randomUUID() + "@example.com";
-        LocalDate underAgeBirth = LocalDate.now().minusYears(10);
-        String body = """
-                {"email":"%s","password":"securePassword123","birth_date":"%s"}
-                """.formatted(email, underAgeBirth);
-
-        mockMvc.perform(post("/auth/email/signup").contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error").value("UNDER_AGE"));
-    }
-
-    @Test
     void signupDuplicateEmailIsRejected() throws Exception {
         String email = "test-" + UUID.randomUUID() + "@example.com";
         String body = """
-                {"email":"%s","password":"securePassword123","birth_date":"1995-05-15"}
+                {"email":"%s","password":"securePassword123"}
                 """.formatted(email);
 
         mockMvc.perform(post("/auth/email/signup").contentType(MediaType.APPLICATION_JSON).content(body))
@@ -67,5 +52,30 @@ class AuthControllerTest {
         mockMvc.perform(post("/auth/email/signup").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("EMAIL_EXISTS"));
+    }
+
+    @Test
+    void 연속_5회_로그인_실패하면_계정이_잠긴다() throws Exception {
+        String email = "test-" + UUID.randomUUID() + "@example.com";
+        String signupBody = """
+                {"email":"%s","password":"securePassword123"}
+                """.formatted(email);
+        mockMvc.perform(post("/auth/email/signup").contentType(MediaType.APPLICATION_JSON).content(signupBody))
+                .andExpect(status().isCreated());
+
+        String wrongLoginBody = """
+                {"email":"%s","password":"wrongPassword123"}
+                """.formatted(email);
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(post("/auth/email/login").contentType(MediaType.APPLICATION_JSON).content(wrongLoginBody))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        String correctLoginBody = """
+                {"email":"%s","password":"securePassword123"}
+                """.formatted(email);
+        mockMvc.perform(post("/auth/email/login").contentType(MediaType.APPLICATION_JSON).content(correctLoginBody))
+                .andExpect(status().isLocked())
+                .andExpect(jsonPath("$.error").value("ACCOUNT_LOCKED"));
     }
 }

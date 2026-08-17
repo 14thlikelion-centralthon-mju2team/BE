@@ -7,13 +7,14 @@ import com.hq.backend.calendar.dto.DensityResponse;
 import com.hq.backend.calendar.dto.GoogleCalendarEventsResponse;
 import com.hq.backend.calendar.dto.GoogleTokenResponse;
 import com.hq.backend.common.exception.ApiException;
-import com.hq.backend.event.UserEventRepository;
+import com.hq.backend.event.EventRepository;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -25,6 +26,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.crypto.encrypt.BytesEncryptor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
@@ -32,6 +34,11 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
+// ERD v3 전환에 맞춘 최소 수정 — calendar_connections.scope 컬럼이 없어지고
+// external_account_id(NOT NULL)가 새로 필요해졌다. id_token(구글이 openid 스코프일 때
+// 같이 주는 JWT)의 sub 클레임을 꺼내 계정 식별자로 쓴다 — 이메일보다 안정적인 계정
+// 식별자이기 때문이다. 로그인 인증이 아니라 "어느 구글 계정과 연결됐는지" 표시용이다.
+// TODO(박찬): CALENDAR_SOURCE(개별 캘린더 목록) 분리, 실제 계정 검증 강화는 아직 반영 안 됨.
 @Service
 @RequiredArgsConstructor
 public class CalendarService {
@@ -39,14 +46,15 @@ public class CalendarService {
     private static final String PROVIDER_GOOGLE = "google";
     private static final String SOURCE_GOOGLE = "google";
     private static final String SOURCE_USER_EVENT = "user_event";
-    // TRD 6장 — 팀 전체가 아직 사용자별 타임존을 다루지 않는다(User.timezone은 저장만 하고 안 씀).
-    // 날짜 경계 계산도 같은 수준으로 단순화: Asia/Seoul 고정.
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Seoul");
+    private static final java.util.regex.Pattern SUB_CLAIM =
+            java.util.regex.Pattern.compile("\"sub\"\\s*:\\s*\"([^\"]+)\"");
 
     private final CalendarConnectionRepository calendarConnectionRepository;
-    private final UserEventRepository userEventRepository;
+    private final EventRepository eventRepository;
     private final BytesEncryptor calendarTokenEncryptor;
     private final RestClient restClient;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${oauth.google.token-url}")
     private String googleTokenUrl;
@@ -60,24 +68,33 @@ public class CalendarService {
     @Value("${oauth.google.calendar-events-url}")
     private String googleCalendarEventsUrl;
 
-    @Transactional
+    // 구글과의 토큰 교환(외부 호출)을 트랜잭션 밖에서 먼저 끝내고, DB 쓰기만
+    // TransactionTemplate으로 짧게 감싼다 — 네트워크 호출 동안 DB 커넥션을 붙잡지 않기 위해서.
     public CalendarConnectionResponse connect(UUID userId, ConnectCalendarRequest request) {
         GoogleTokenResponse tokenResponse = exchangeAuthCode(request.authCode());
+        return transactionTemplate.execute(status -> persistConnection(userId, tokenResponse));
+    }
+
+    private CalendarConnectionResponse persistConnection(UUID userId, GoogleTokenResponse tokenResponse) {
         Optional<CalendarConnection> existing =
                 calendarConnectionRepository.findByUserIdAndProvider(userId, PROVIDER_GOOGLE);
         Instant now = Instant.now();
 
         // 이미 동의한 앱에 대한 재교환이면 구글이 refresh_token을 안 줄 수 있다 — 기존 연결이
-        // 있으면 그 토큰을 그대로 쓰고 scope·connectedAt만 갱신, 없으면 재동의를 요구한다.
+        // 있으면 그 토큰을 그대로 쓰고 connectedAt만 갱신, 없으면 재동의를 요구한다.
         if (tokenResponse.refreshToken() == null) {
             CalendarConnection connection = existing.orElseThrow(() -> new ApiException(
                     HttpStatus.BAD_REQUEST, "REFRESH_TOKEN_MISSING",
                     "구글이 refresh_token을 반환하지 않았고 기존 연결도 없습니다. 동의 화면을 다시 띄워주세요."));
-            connection.setScope(tokenResponse.scope());
+            extractExternalAccountId(tokenResponse.idToken()).ifPresent(connection::setExternalAccountId);
             connection.setConnectedAt(now);
             connection.setRevokedAt(null);
             return toResponse(connection);
         }
+
+        String externalAccountId = extractExternalAccountId(tokenResponse.idToken())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "GOOGLE_ACCOUNT_ID_MISSING",
+                        "구글 계정 식별자를 확인할 수 없습니다. openid 동의가 필요합니다."));
 
         byte[] encrypted =
                 calendarTokenEncryptor.encrypt(tokenResponse.refreshToken().getBytes(StandardCharsets.UTF_8));
@@ -85,9 +102,10 @@ public class CalendarService {
         CalendarConnection connection = existing.orElseGet(() -> CalendarConnection.builder()
                 .userId(userId)
                 .provider(PROVIDER_GOOGLE)
+                .externalAccountId(externalAccountId)
                 .build());
+        connection.setExternalAccountId(externalAccountId);
         connection.setRefreshTokenEnc(encrypted);
-        connection.setScope(tokenResponse.scope());
         connection.setConnectedAt(now);
         connection.setRevokedAt(null);
 
@@ -96,6 +114,28 @@ public class CalendarService {
         }
 
         return toResponse(connection);
+    }
+
+    // id_token(JWT)의 payload(2번째 세그먼트)를 base64url 디코드해 sub 클레임만 꺼낸다.
+    // 서명 검증은 하지 않는다 — 이 토큰은 방금 구글 토큰 엔드포인트와의 TLS 통신으로 직접
+    // 받은 것이라(탈취 경로가 없음) 계정 표시용으로만 쓰는 이 맥락에서는 충분하다.
+    // ponytail: sub 값 하나만 필요해서 정규식으로 뽑는다 — 전체 JSON 파싱용 라이브러리를
+    // 새로 추가할 정도는 아니다.
+    private Optional<String> extractExternalAccountId(String idToken) {
+        if (idToken == null) {
+            return Optional.empty();
+        }
+        try {
+            String[] parts = idToken.split("\\.");
+            if (parts.length < 2) {
+                return Optional.empty();
+            }
+            String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+            var matcher = SUB_CLAIM.matcher(payload);
+            return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
+        } catch (Exception e) {
+            return Optional.empty();
+        }
     }
 
     @Transactional
@@ -122,23 +162,13 @@ public class CalendarService {
     }
 
     private List<BusyBlockResponse> fetchUserEventBusyBlocks(UUID userId, Instant rangeStart, Instant rangeEnd) {
-        return userEventRepository
+        return eventRepository
                 .findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(userId, rangeEnd, rangeStart)
                 .stream()
                 .map(e -> new BusyBlockResponse(e.getStartsAt(), e.getEndsAt(), SOURCE_USER_EVENT))
                 .toList();
     }
 
-    // 연결이 없거나·해제됐거나·구글 API 호출이 실패해도 전체 요청은 안 죽는다 — 빈 목록으로
-    // 넘어간다. TRD 4장 "권한 상태 3단계 전부 안 끊긴다" 원칙과 같은 이유: 캘린더 연동은
-    // user_events 기반 밀도 계산에 곁들이는 부가 신호일 뿐, 이게 실패했다고 API 전체가
-    // 500을 낼 이유는 없다.
-    //
-    // 다만 "앱이 안 죽는다"와 "결과가 항상 맞다"는 다른 얘기다(#29) — 연동 자체가 없는
-    // 사용자(할 게 없었을 뿐)와 연동은 돼있는데 이번 호출에서 실패한 사용자를 구분해야
-    // 클라이언트가 "오늘 일정이 없다"와 "동기화가 끊겼다"를 구분해서 보여줄 수 있다.
-    // 그래서 synced 플래그를 별도로 리턴한다 — 연결 없음은 synced=true(실패가 아님),
-    // 연결은 있는데 토큰 갱신·API 호출이 실패한 경우만 synced=false.
     private GoogleFetchResult fetchGoogleBusyBlocks(UUID userId, Instant rangeStart, Instant rangeEnd) {
         Optional<CalendarConnection> connection =
                 calendarConnectionRepository.findByUserIdAndProvider(userId, PROVIDER_GOOGLE);
@@ -172,7 +202,6 @@ public class CalendarService {
                 return new GoogleFetchResult(false, List.of());
             }
 
-            // ponytail: 종일 일정(date만 있고 dateTime 없음)은 건너뛴다 — GoogleEventDateTime 참고.
             List<BusyBlockResponse> blocks = response.items().stream()
                     .filter(item -> item.start() != null && item.start().dateTime() != null
                             && item.end() != null && item.end().dateTime() != null)
@@ -180,8 +209,6 @@ public class CalendarService {
                     .toList();
             return new GoogleFetchResult(true, blocks);
         } catch (RestClientException | IllegalStateException e) {
-            // IllegalStateException은 BytesEncryptor.decrypt() 실패(암호화 키 로테이션, 저장된
-            // 값 손상 등)일 때 던져진다 — RestClientException과 별개 원인이라 같이 잡아야 한다.
             return new GoogleFetchResult(false, List.of());
         }
     }
@@ -235,6 +262,7 @@ public class CalendarService {
     }
 
     private CalendarConnectionResponse toResponse(CalendarConnection connection) {
-        return new CalendarConnectionResponse(connection.getProvider(), connection.getScope(), connection.getConnectedAt());
+        return new CalendarConnectionResponse(
+                connection.getProvider(), connection.getExternalAccountId(), connection.getConnectedAt());
     }
 }

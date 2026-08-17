@@ -12,7 +12,10 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
+// ERD v3(신 ERD, USERS.user_id PK). provider/providerUid/passwordHash는 USER_IDENTITY/
+// USER_CREDENTIAL로 이관됐다(chore/be-schema-core, #61) — 이 엔티티엔 남기지 않는다.
 @Entity
 @Table(name = "users")
 @Getter
@@ -23,27 +26,31 @@ public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @Column(name = "user_id")
+    private UUID userId;
 
-    @Column(nullable = false)
-    private String provider;
-
-    @Column(nullable = false)
-    private String providerUid;
-
-    @Column(unique = true, nullable = false)
+    @Column(nullable = false, unique = true)
     private String email;
-
-    private String passwordHash;
 
     @Column(nullable = false)
     private String nickname;
 
     @Column(nullable = false)
     private String timezone;
-    private Instant ageConfirmedAt;
-    private Instant archivedAt;
 
     @Column(nullable = false)
     private Instant createdAt;
+
+    @Setter
+    @Column(nullable = false)
+    private String accountStatus; // active | withdrawn
+
+    @Setter
+    private Instant emailVerifiedAt;
+
+    @Setter
+    private Instant withdrawnAt;
+
+    @Setter
+    private Instant deletedAt;
 }
