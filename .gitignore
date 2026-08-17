@@ -39,6 +39,10 @@ out/
 ### macOS ###
 .DS_Store
 
+### Env secrets (local, per-machine — not shared with team) ###
+.env
+!.env.example
+
 ### Project-local documents ###
 /doc/
 
