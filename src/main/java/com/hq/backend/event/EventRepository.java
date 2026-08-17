@@ -2,6 +2,7 @@ package com.hq.backend.event;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -11,4 +12,10 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
     // CalendarService의 캘린더 밀도 계산이 사용한다(구 UserEventRepository 대체).
     List<Event> findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(
             UUID userId, Instant rangeEnd, Instant rangeStart);
+
+    Optional<Event> findByEventIdAndUserId(UUID eventId, UUID userId);
+
+    List<Event> findByUserIdAndStartsAtBetweenOrderByStartsAtAsc(UUID userId, Instant from, Instant to);
+
+    Optional<Event> findFirstByUserIdAndStartsAtAfterOrderByStartsAtAsc(UUID userId, Instant after);
 }

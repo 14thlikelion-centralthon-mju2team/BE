@@ -1,0 +1,165 @@
+package com.hq.backend.event;
+
+import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.jayway.jsonpath.JsonPath;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+class EventControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Test
+    void 일정을_생성하면_201과_displayLabel을_표시명으로_반환한다() throws Exception {
+        String accessToken = signupAndLogin();
+        String body = """
+                {"starts_at":"2026-08-20T14:00:00+09:00","ends_at":"2026-08-20T15:00:00+09:00",
+                 "location_state":"NOT_REQUIRED","source_type":"INTERNAL","display_label":"강남역 미팅"}
+                """;
+
+        mockMvc.perform(post("/events")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.display_name").value("강남역 미팅"))
+                .andExpect(jsonPath("$.location_state").value("NOT_REQUIRED"))
+                .andExpect(jsonPath("$.status").value("PLANNED"))
+                .andExpect(jsonPath("$.plan").value(nullValue()));
+    }
+
+    @Test
+    void displayLabel이_없으면_destinationName으로_표시명을_대체한다() throws Exception {
+        String accessToken = signupAndLogin();
+        String body = """
+                {"starts_at":"2026-08-20T14:00:00+09:00","location_state":"REQUIRED_RESOLVED",
+                 "source_type":"MAP_SEARCH","destination_name":"강남역"}
+                """;
+
+        mockMvc.perform(post("/events")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.display_name").value("강남역"));
+    }
+
+    @Test
+    void 조회_수정_삭제가_소유자_기준으로_동작한다() throws Exception {
+        String accessToken = signupAndLogin();
+        String eventId = createEvent(accessToken, "2026-08-21T10:00:00+09:00");
+
+        mockMvc.perform(get("/events/" + eventId).header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.event_id").value(eventId));
+
+        mockMvc.perform(patch("/events/" + eventId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"location_state":"REQUIRED_MISSING"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.location_state").value("REQUIRED_MISSING"));
+
+        mockMvc.perform(delete("/events/" + eventId).header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/events/" + eventId).header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
+    @Test
+    void 다른_사용자의_일정에_접근하면_404() throws Exception {
+        String ownerToken = signupAndLogin();
+        String eventId = createEvent(ownerToken, "2026-08-22T10:00:00+09:00");
+        String otherToken = signupAndLogin();
+
+        mockMvc.perform(get("/events/" + eventId).header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("EVENT_NOT_FOUND"));
+    }
+
+    @Test
+    void destinationLat만_지정하고_Lng를_비우면_422() throws Exception {
+        String accessToken = signupAndLogin();
+        String eventId = createEvent(accessToken, "2026-08-23T10:00:00+09:00");
+
+        mockMvc.perform(patch("/events/" + eventId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"destination_lat":37.498}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void 기간_조회는_범위_안의_일정만_반환한다() throws Exception {
+        String accessToken = signupAndLogin();
+        String insideId = createEvent(accessToken, "2026-09-01T10:00:00+09:00");
+        createEvent(accessToken, "2026-10-01T10:00:00+09:00");
+
+        mockMvc.perform(get("/events")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("from", "2026-08-31T00:00:00+09:00")
+                        .param("to", "2026-09-02T00:00:00+09:00"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].event_id").value(insideId));
+    }
+
+    private String createEvent(String accessToken, String startsAt) throws Exception {
+        String body = """
+                {"starts_at":"%s","location_state":"NOT_REQUIRED","source_type":"INTERNAL"}
+                """.formatted(startsAt);
+        String response = mockMvc.perform(post("/events")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return JsonPath.read(response, "$.event_id");
+    }
+
+    private String signupAndLogin() throws Exception {
+        String email = "test-" + UUID.randomUUID() + "@example.com";
+        String signupBody = """
+                {"email":"%s","password":"securePassword123"}
+                """.formatted(email);
+        mockMvc.perform(post("/auth/email/signup").contentType(MediaType.APPLICATION_JSON).content(signupBody))
+                .andExpect(status().isCreated());
+
+        String loginBody = """
+                {"email":"%s","password":"securePassword123"}
+                """.formatted(email);
+        String response = mockMvc.perform(post("/auth/email/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginBody))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        return JsonPath.read(response, "$.access_token");
+    }
+}
