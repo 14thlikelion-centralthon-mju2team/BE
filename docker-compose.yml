@@ -11,5 +11,24 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  api:
+    build: .
+    container_name: backend-api
+    depends_on:
+      - postgres
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: backend
+      DB_USER: backend
+      DB_PASSWORD: backend
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET before deploying}
+      ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:?set ENCRYPTION_SECRET before deploying}
+      ENCRYPTION_SALT: ${ENCRYPTION_SALT:?set ENCRYPTION_SALT before deploying}
+      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:-}
+      OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
+    ports:
+      - "8080:8080"
+
 volumes:
   pgdata:
