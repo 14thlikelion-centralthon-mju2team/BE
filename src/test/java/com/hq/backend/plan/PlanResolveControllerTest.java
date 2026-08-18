@@ -114,7 +114,7 @@ class PlanResolveControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"completionStatus\":\"COMPLETED\"}"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("PLAN_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("PLAN_NOT_FOUND"));
     }
 
     @Test
@@ -158,7 +158,7 @@ class PlanResolveControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"completionStatus\":\"COMPLETED\"}"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("PLAN_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("PLAN_NOT_FOUND"));
     }
 
     private record Created(String accessToken, UUID eventId, UUID planId) {

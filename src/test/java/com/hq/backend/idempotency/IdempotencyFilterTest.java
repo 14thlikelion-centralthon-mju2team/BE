@@ -101,7 +101,7 @@ class IdempotencyFilterTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
     }
 
     private String signupAndLogin() throws Exception {

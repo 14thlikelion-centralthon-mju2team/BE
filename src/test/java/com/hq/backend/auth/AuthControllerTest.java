@@ -59,7 +59,7 @@ class AuthControllerTest {
                 .andExpect(status().isCreated());
         mockMvc.perform(post("/auth/email/signup").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("EMAIL_EXISTS"));
+                .andExpect(jsonPath("$.error.code").value("EMAIL_EXISTS"));
     }
 
     @Test
@@ -84,7 +84,7 @@ class AuthControllerTest {
                 """.formatted(email);
         mockMvc.perform(post("/auth/email/login").contentType(MediaType.APPLICATION_JSON).content(correctLoginBody))
                 .andExpect(status().isLocked())
-                .andExpect(jsonPath("$.error").value("ACCOUNT_LOCKED"));
+                .andExpect(jsonPath("$.error.code").value("ACCOUNT_LOCKED"));
     }
 
     @Test

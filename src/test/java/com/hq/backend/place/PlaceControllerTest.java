@@ -92,7 +92,7 @@ class PlaceControllerTest {
                                  "lat":200,"lng":127.0,"isPrimary":false}
                                 """))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test
@@ -144,7 +144,7 @@ class PlaceControllerTest {
         String otherToken = signupAndLogin();
         mockMvc.perform(delete("/places/" + placeId).header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("PLACE_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("PLACE_NOT_FOUND"));
     }
 
     private String signupAndLogin() throws Exception {
