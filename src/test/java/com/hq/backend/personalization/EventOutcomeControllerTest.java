@@ -64,8 +64,8 @@ class EventOutcomeControllerTest {
 
         mockMvc.perform(get("/events/" + eventIdString + "/execution").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.arrival_result").value("LATE"))
-                .andExpect(jsonPath("$.delay_reasons[0].reason_code").value("prep_late"));
+                .andExpect(jsonPath("$.arrivalResult").value("LATE"))
+                .andExpect(jsonPath("$.delayReasons[0].reasonCode").value("prep_late"));
     }
 
     @Test
@@ -77,25 +77,25 @@ class EventOutcomeControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"prep_timing_assessment":"TOO_EARLY","arrival_result":"ON_TIME","rush_assessment":"NOT_RUSHED"}
+                                {"prepTimingAssessment":"TOO_EARLY","arrivalResult":"ON_TIME","rushAssessment":"NOT_RUSHED"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.prep_timing_assessment").value("TOO_EARLY"));
+                .andExpect(jsonPath("$.prepTimingAssessment").value("TOO_EARLY"));
 
         mockMvc.perform(post("/events/" + eventId + "/feedback")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"prep_timing_assessment":"APPROPRIATE"}
+                                {"prepTimingAssessment":"APPROPRIATE"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.prep_timing_assessment").value("APPROPRIATE"))
-                .andExpect(jsonPath("$.arrival_result").value(nullValue()));
+                .andExpect(jsonPath("$.prepTimingAssessment").value("APPROPRIATE"))
+                .andExpect(jsonPath("$.arrivalResult").value(nullValue()));
     }
 
     private String createEvent(String accessToken) throws Exception {
         String body = """
-                {"starts_at":"2026-08-20T14:00:00+09:00","location_state":"NOT_REQUIRED","source_type":"INTERNAL"}
+                {"startsAt":"2026-08-20T14:00:00+09:00","locationState":"NOT_REQUIRED","sourceType":"INTERNAL"}
                 """;
         String response = mockMvc.perform(post("/events")
                         .header("Authorization", "Bearer " + accessToken)

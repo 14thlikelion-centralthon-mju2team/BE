@@ -94,10 +94,10 @@ class PlanResolveControllerTest {
         mockMvc.perform(post("/plans/" + created.planId() + "/prep-items/" + planPrepItemId + "/resolve")
                         .header("Authorization", "Bearer " + created.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"completion_status\":\"COMPLETED\",\"client_event_id\":\"" + UUID.randomUUID() + "\"}"))
+                        .content("{\"completionStatus\":\"COMPLETED\",\"clientEventId\":\"" + UUID.randomUUID() + "\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.completion_status").value("completed"))
-                .andExpect(jsonPath("$.completed_at").exists());
+                .andExpect(jsonPath("$.completionStatus").value("completed"))
+                .andExpect(jsonPath("$.completedAt").exists());
     }
 
     @Test
@@ -112,7 +112,7 @@ class PlanResolveControllerTest {
         mockMvc.perform(post("/plans/" + created.planId() + "/prep-items/" + planPrepItemId + "/resolve")
                         .header("Authorization", "Bearer " + otherToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"completion_status\":\"COMPLETED\"}"))
+                        .content("{\"completionStatus\":\"COMPLETED\"}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("PLAN_NOT_FOUND"));
     }
@@ -133,10 +133,10 @@ class PlanResolveControllerTest {
         mockMvc.perform(post("/plans/" + created.planId() + "/wellness-actions/" + action.getWellnessActionId() + "/resolve")
                         .header("Authorization", "Bearer " + created.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"completion_status\":\"DISMISSED\",\"client_event_id\":\"" + UUID.randomUUID() + "\"}"))
+                        .content("{\"completionStatus\":\"DISMISSED\",\"clientEventId\":\"" + UUID.randomUUID() + "\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.completion_status").value("dismissed"))
-                .andExpect(jsonPath("$.responded_at").exists());
+                .andExpect(jsonPath("$.completionStatus").value("dismissed"))
+                .andExpect(jsonPath("$.respondedAt").exists());
     }
 
     @Test
@@ -156,7 +156,7 @@ class PlanResolveControllerTest {
         mockMvc.perform(post("/plans/" + created.planId() + "/wellness-actions/" + action.getWellnessActionId() + "/resolve")
                         .header("Authorization", "Bearer " + otherToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"completion_status\":\"COMPLETED\"}"))
+                        .content("{\"completionStatus\":\"COMPLETED\"}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("PLAN_NOT_FOUND"));
     }
@@ -179,10 +179,10 @@ class PlanResolveControllerTest {
                 .build());
 
         String body = """
-                {"starts_at":"2026-08-20T14:00:00+09:00","location_state":"REQUIRED_RESOLVED",
-                 "source_type":"MAP_SEARCH","destination_name":"강남역",
-                 "destination_lat":37.498,"destination_lng":127.027,
-                 "origin_place_id":"%s"}
+                {"startsAt":"2026-08-20T14:00:00+09:00","locationState":"REQUIRED_RESOLVED",
+                 "sourceType":"MAP_SEARCH","destinationName":"강남역",
+                 "destinationLat":37.498,"destinationLng":127.027,
+                 "originPlaceId":"%s"}
                 """.formatted(origin.getPlaceId());
 
         String response = mockMvc.perform(post("/events")

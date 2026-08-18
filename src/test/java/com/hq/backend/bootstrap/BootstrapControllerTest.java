@@ -27,13 +27,13 @@ class BootstrapControllerTest {
 
         mockMvc.perform(get("/me/bootstrap").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.settings.arrival_buffer_minutes").value(10))
-                .andExpect(jsonPath("$.settings.notification_sensitivity").value("normal"))
+                .andExpect(jsonPath("$.settings.arrivalBufferMinutes").value(10))
+                .andExpect(jsonPath("$.settings.notificationSensitivity").value("normal"))
                 .andExpect(jsonPath("$.permissions").isEmpty())
                 .andExpect(jsonPath("$.places").isEmpty())
-                .andExpect(jsonPath("$.prep_items").isEmpty())
-                .andExpect(jsonPath("$.today_plan").doesNotExist())
-                .andExpect(jsonPath("$.engine_config.engine_ver").value("2.1.0"));
+                .andExpect(jsonPath("$.prepItems").isEmpty())
+                .andExpect(jsonPath("$.todayPlan").doesNotExist())
+                .andExpect(jsonPath("$.engineConfig.engineVer").value("2.1.0"));
     }
 
     @Test

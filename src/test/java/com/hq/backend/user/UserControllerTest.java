@@ -69,7 +69,7 @@ class UserControllerTest {
                         .header("Idempotency-Key", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"consent_type":"TERMS","agreed":true,"policy_version":"1.0.0"}
+                                {"consentType":"TERMS","agreed":true,"policyVersion":"1.0.0"}
                                 """))
                 .andExpect(status().isCreated());
 

@@ -146,8 +146,8 @@ class AiEngineIntegrationTest {
                 .build());
 
         String body = """
-                {"actions":[{"action_type":"ARRIVED","action_source":"GEO",
-                  "device_ts":"2026-08-20T13:50:00+09:00","client_event_id":"%s","confidence":0.9}]}
+                {"actions":[{"actionType":"ARRIVED","actionSource":"GEO",
+                  "deviceTs":"2026-08-20T13:50:00+09:00","clientEventId":"%s","confidence":0.9}]}
                 """.formatted(UUID.randomUUID());
 
         mockMvc.perform(post("/plans/" + created.planId() + "/actions")
@@ -190,10 +190,10 @@ class AiEngineIntegrationTest {
                 .build());
 
         String body = """
-                {"starts_at":"2026-08-20T14:00:00+09:00","location_state":"REQUIRED_RESOLVED",
-                 "source_type":"MAP_SEARCH","destination_name":"강남역",
-                 "destination_lat":37.498,"destination_lng":127.027,
-                 "origin_place_id":"%s"}
+                {"startsAt":"2026-08-20T14:00:00+09:00","locationState":"REQUIRED_RESOLVED",
+                 "sourceType":"MAP_SEARCH","destinationName":"강남역",
+                 "destinationLat":37.498,"destinationLng":127.027,
+                 "originPlaceId":"%s"}
                 """.formatted(origin.getPlaceId());
 
         String response = mockMvc.perform(post("/events")

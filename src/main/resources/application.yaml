@@ -12,7 +12,7 @@ spring:
   flyway:
     enabled: true
   jackson:
-    property-naming-strategy: SNAKE_CASE
+    # FE와 합의: camelCase (Jackson 기본값) 사용. SNAKE_CASE 설정 제거됨.
 
 oauth:
   google:

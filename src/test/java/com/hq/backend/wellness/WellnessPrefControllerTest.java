@@ -42,8 +42,8 @@ class WellnessPrefControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"prefs":[
-                                  {"wellness_topic":"UV","is_enabled":true,"remind_interval_minutes":120,"daily_event_cap":1},
-                                  {"wellness_topic":"HYDRATION","is_enabled":false,"remind_interval_minutes":null,"daily_event_cap":1}
+                                  {"wellnessTopic":"UV","isEnabled":true,"remindIntervalMinutes":120,"dailyEventCap":1},
+                                  {"wellnessTopic":"HYDRATION","isEnabled":false,"remindIntervalMinutes":null,"dailyEventCap":1}
                                 ]}
                                 """))
                 .andExpect(status().isOk())

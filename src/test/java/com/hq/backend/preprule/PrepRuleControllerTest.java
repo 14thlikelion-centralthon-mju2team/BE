@@ -32,8 +32,8 @@ class PrepRuleControllerTest {
     void 준비_규칙을_생성하면_201과_저장된_내용을_반환한다() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
-                {"rule_name":"영양제","rule_category":"SUPPLEMENT","action_type":"CONSUME",
-                 "rule_timing":"PRE_DEPARTURE","is_required":false,"is_sensitive":false,"from_chip":true}
+                {"ruleName":"영양제","ruleCategory":"SUPPLEMENT","actionType":"CONSUME",
+                 "ruleTiming":"PRE_DEPARTURE","isRequired":false,"isSensitive":false,"fromChip":true}
                 """;
 
         mockMvc.perform(post("/prep-items")
@@ -41,9 +41,9 @@ class PrepRuleControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.rule_name").value("영양제"))
-                .andExpect(jsonPath("$.rule_category").value("SUPPLEMENT"))
-                .andExpect(jsonPath("$.from_chip").value(true));
+                .andExpect(jsonPath("$.ruleName").value("영양제"))
+                .andExpect(jsonPath("$.ruleCategory").value("SUPPLEMENT"))
+                .andExpect(jsonPath("$.fromChip").value(true));
 
         boolean logged = productEventRepository.findAll().stream()
                 .anyMatch(e -> "prep_rule_created".equals(e.getEventName()));
@@ -54,8 +54,8 @@ class PrepRuleControllerTest {
     void timed_routine인데_defaultMinutes가_없으면_422() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
-                {"rule_name":"스트레칭","rule_category":"ROUTINE","action_type":"TIMED_ROUTINE",
-                 "rule_timing":"PRE_DEPARTURE","is_required":false,"is_sensitive":false,"from_chip":false}
+                {"ruleName":"스트레칭","ruleCategory":"ROUTINE","actionType":"TIMED_ROUTINE",
+                 "ruleTiming":"PRE_DEPARTURE","isRequired":false,"isSensitive":false,"fromChip":false}
                 """;
 
         mockMvc.perform(post("/prep-items")
@@ -70,8 +70,8 @@ class PrepRuleControllerTest {
     void 민감_항목을_추천칩으로_등록하면_422() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
-                {"rule_name":"수면제","rule_category":"MEDICATION","action_type":"CONSUME",
-                 "rule_timing":"PRE_DEPARTURE","is_required":false,"is_sensitive":true,"from_chip":true}
+                {"ruleName":"수면제","ruleCategory":"MEDICATION","actionType":"CONSUME",
+                 "ruleTiming":"PRE_DEPARTURE","isRequired":false,"isSensitive":true,"fromChip":true}
                 """;
 
         mockMvc.perform(post("/prep-items")
@@ -86,8 +86,8 @@ class PrepRuleControllerTest {
     void medication_카테고리는_isSensitive가_false여도_서버가_true로_강제한다() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
-                {"rule_name":"영양제 아님 약","rule_category":"MEDICATION","action_type":"CONSUME",
-                 "rule_timing":"PRE_DEPARTURE","is_required":false,"is_sensitive":false,"from_chip":false}
+                {"ruleName":"영양제 아님 약","ruleCategory":"MEDICATION","actionType":"CONSUME",
+                 "ruleTiming":"PRE_DEPARTURE","isRequired":false,"isSensitive":false,"fromChip":false}
                 """;
 
         mockMvc.perform(post("/prep-items")
@@ -95,15 +95,15 @@ class PrepRuleControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.is_sensitive").value(true));
+                .andExpect(jsonPath("$.isSensitive").value(true));
     }
 
     @Test
     void 목록_조회는_생성한_규칙을_반환하고_삭제하면_더이상_보이지_않는다() throws Exception {
         String accessToken = signupAndLogin();
         String createBody = """
-                {"rule_name":"우산","rule_category":"GENERAL_ITEM","action_type":"CARRY",
-                 "rule_timing":"PRE_DEPARTURE","is_required":true,"is_sensitive":false,"from_chip":false}
+                {"ruleName":"우산","ruleCategory":"GENERAL_ITEM","actionType":"CARRY",
+                 "ruleTiming":"PRE_DEPARTURE","isRequired":true,"isSensitive":false,"fromChip":false}
                 """;
         String createResponse = mockMvc.perform(post("/prep-items")
                         .header("Authorization", "Bearer " + accessToken)
@@ -123,10 +123,10 @@ class PrepRuleControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"rule_name":"장우산"}
+                                {"ruleName":"장우산"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.rule_name").value("장우산"));
+                .andExpect(jsonPath("$.ruleName").value("장우산"));
 
         mockMvc.perform(delete("/prep-items/" + prepRuleId).header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isNoContent());
@@ -140,15 +140,15 @@ class PrepRuleControllerTest {
     void medication_항목의_isSensitive를_PATCH로_끌_수_없다() throws Exception {
         String accessToken = signupAndLogin();
         String createBody = """
-                {"rule_name":"수면제","rule_category":"MEDICATION","action_type":"CONSUME",
-                 "rule_timing":"PRE_DEPARTURE","is_required":false,"is_sensitive":false,"from_chip":false}
+                {"ruleName":"수면제","ruleCategory":"MEDICATION","actionType":"CONSUME",
+                 "ruleTiming":"PRE_DEPARTURE","isRequired":false,"isSensitive":false,"fromChip":false}
                 """;
         String createResponse = mockMvc.perform(post("/prep-items")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createBody))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.is_sensitive").value(true))
+                .andExpect(jsonPath("$.isSensitive").value(true))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -158,18 +158,18 @@ class PrepRuleControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"is_sensitive":false}
+                                {"isSensitive":false}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.is_sensitive").value(true));
+                .andExpect(jsonPath("$.isSensitive").value(true));
     }
 
     @Test
     void fromChip_항목을_PATCH로_민감하게_바꾸면_422() throws Exception {
         String accessToken = signupAndLogin();
         String createBody = """
-                {"rule_name":"선크림","rule_category":"GENERAL_ITEM","action_type":"CARRY",
-                 "rule_timing":"PRE_DEPARTURE","is_required":false,"is_sensitive":false,"from_chip":true}
+                {"ruleName":"선크림","ruleCategory":"GENERAL_ITEM","actionType":"CARRY",
+                 "ruleTiming":"PRE_DEPARTURE","isRequired":false,"isSensitive":false,"fromChip":true}
                 """;
         String createResponse = mockMvc.perform(post("/prep-items")
                         .header("Authorization", "Bearer " + accessToken)
@@ -185,7 +185,7 @@ class PrepRuleControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"is_sensitive":true}
+                                {"isSensitive":true}
                                 """))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error").value("SENSITIVE_CHIP_REJECTED"));
@@ -195,8 +195,8 @@ class PrepRuleControllerTest {
     void 다른_사용자의_준비_규칙을_수정하거나_삭제하면_404() throws Exception {
         String ownerToken = signupAndLogin();
         String createBody = """
-                {"rule_name":"우산","rule_category":"GENERAL_ITEM","action_type":"CARRY",
-                 "rule_timing":"PRE_DEPARTURE","is_required":true,"is_sensitive":false,"from_chip":false}
+                {"ruleName":"우산","ruleCategory":"GENERAL_ITEM","actionType":"CARRY",
+                 "ruleTiming":"PRE_DEPARTURE","isRequired":true,"isSensitive":false,"fromChip":false}
                 """;
         String createResponse = mockMvc.perform(post("/prep-items")
                         .header("Authorization", "Bearer " + ownerToken)
@@ -213,7 +213,7 @@ class PrepRuleControllerTest {
                         .header("Authorization", "Bearer " + otherToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"rule_name":"장우산"}
+                                {"ruleName":"장우산"}
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("PREP_RULE_NOT_FOUND"));
