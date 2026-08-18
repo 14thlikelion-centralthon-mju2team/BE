@@ -3,6 +3,7 @@ package com.hq.backend.event.dto;
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventStatus;
 import com.hq.backend.event.LocationState;
+import com.hq.backend.plan.dto.PlanResponse;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -25,10 +26,14 @@ public record EventResponse(
         String eventKind,
         EventStatus status,
         boolean autoManageExcluded,
-        Object plan
+        PlanResponse plan
 ) {
 
     public static EventResponse from(Event event, String timezone) {
+        return from(event, timezone, null);
+    }
+
+    public static EventResponse from(Event event, String timezone, PlanResponse plan) {
         return new EventResponse(
                 event.getEventId(),
                 resolveDisplayName(event, timezone),
@@ -43,7 +48,7 @@ public record EventResponse(
                 event.getEventKind(),
                 EventStatus.valueOf(event.getStatus().toUpperCase()),
                 event.isAutoManageExcluded(),
-                null);
+                plan);
     }
 
     private static String resolveDisplayName(Event event, String timezone) {

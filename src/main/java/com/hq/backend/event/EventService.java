@@ -6,10 +6,14 @@ import com.hq.backend.event.dto.EventResponse;
 import com.hq.backend.event.dto.EventReviewRequest;
 import com.hq.backend.event.dto.EventReviewResponse;
 import com.hq.backend.event.dto.EventUpdateRequest;
+import com.hq.backend.plan.PlanCreationService;
+import com.hq.backend.plan.PlanRevision;
+import com.hq.backend.plan.dto.PlanResponse;
 import com.hq.backend.user.User;
 import com.hq.backend.user.UserRepository;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -27,6 +31,7 @@ public class EventService {
     private final EventRepository eventRepository;
     private final EventClassificationReviewRepository classificationReviewRepository;
     private final UserRepository userRepository;
+    private final PlanCreationService planCreationService;
 
     @Transactional(readOnly = true)
     public List<EventResponse> list(UUID userId, Instant from, Instant to) {
@@ -74,10 +79,17 @@ public class EventService {
                 .createdAt(Instant.now())
                 .build());
 
-        // TODO(계획 엔진 연결 전): locationState=required_resolved면 저장과 동시에 계획을
-        // 생성해 응답에 동봉해야 한다(§8.2). PlanEngine.compute()가 아직 병합되지 않아 지금은
-        // 항상 plan:null을 반환한다 — 이지호의 계산 모듈이 들어오면 여기서 호출한다.
-        return EventResponse.from(saved, timezoneOf(userId));
+        // §8.2 — required_resolved면 저장과 동시에 계획을 생성해 응답에 동봉한다. 원점 장소·
+        // 경로·엔진 응답 중 하나라도 없으면 PlanCreationService가 조용히 empty를 반환한다 —
+        // 계획 생성 실패가 일정 생성 자체를 막지 않는다.
+        PlanResponse plan = null;
+        if (request.locationState() == LocationState.REQUIRED_RESOLVED) {
+            Optional<PlanRevision> revision =
+                    planCreationService.createInitialPlan(userId, saved, request.originPlaceId());
+            plan = revision.map(PlanResponse::from).orElse(null);
+        }
+
+        return EventResponse.from(saved, timezoneOf(userId), plan);
     }
 
     @Transactional
