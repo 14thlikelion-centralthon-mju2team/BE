@@ -68,3 +68,6 @@ __pycache__/
 .claude/discord_dispatch_state
 .claude/discord_dispatch_session_id
 .claude/logs/
+
+# Firebase service account key (절대 커밋 금지)
+firebase-service-account.json

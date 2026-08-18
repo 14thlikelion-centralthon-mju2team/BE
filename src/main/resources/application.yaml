@@ -46,3 +46,7 @@ app:
     # salt는 BytesEncryptor가 요구하는 hex 문자열 형식.
     secret: ${ENCRYPTION_SECRET:dev-only-local-encryption-secret-change-before-deploy}
     salt: ${ENCRYPTION_SALT:deadbeefdeadbeefdeadbeefdeadbeef}
+
+firebase:
+  # 서비스 계정 키 경로. 설정하지 않으면 StubFcmSender가 사용됨.
+  service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:}
