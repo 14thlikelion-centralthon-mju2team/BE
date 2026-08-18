@@ -1,5 +1,6 @@
 package com.hq.backend.wellness;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -7,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
+import com.hq.backend.metrics.ProductEventRepository;
 import com.hq.backend.personalization.EventExecution;
 import com.hq.backend.personalization.EventExecutionRepository;
 import com.hq.backend.plan.PlanRevision;
@@ -44,6 +46,9 @@ class DailySummaryControllerTest {
 
     @Autowired
     private EventExecutionRepository eventExecutionRepository;
+
+    @Autowired
+    private ProductEventRepository productEventRepository;
 
     @Test
     void 관리한_일정이_있으면_요약_카드가_생성되고_이후_조회는_캐시된값을_반환한다() throws Exception {
@@ -101,6 +106,39 @@ class DailySummaryControllerTest {
                         .param("date", "2026-08-16"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.is_viewed").value(true));
+
+        assertThat(productEventRepository.findAll())
+                .anyMatch(pe -> pe.getUserId().equals(userId) && "card_viewed".equals(pe.getEventName()));
+    }
+
+    @Test
+    void 야외_이동_데이터가_전혀_없으면_observed라고_주장하지_않는다() throws Exception {
+        String accessToken = signupAndLogin();
+        UUID userId = extractUserId(accessToken);
+        LocalDate date = LocalDate.of(2026, 8, 17);
+        Instant startsAt = date.atTime(14, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+
+        Event event = eventRepository.save(Event.builder()
+                .userId(userId).sourceType("internal").startsAt(startsAt)
+                .isAllDay(false).locationState("not_required").autoManageExcluded(false)
+                .status("closed").createdAt(startsAt)
+                .build());
+        planRevisionRepository.save(PlanRevision.builder()
+                .eventId(event.getEventId()).revisionNo(1)
+                .prepStartAt(startsAt).recommendedDepartAt(startsAt).targetArriveAt(startsAt)
+                .estimatedPrepMinutes(0).extraPrepMinutes(0).personalRoutineMinutes(0)
+                .travelMinutes(0).trafficBufferMinutes(0).arrivalBufferMinutes(0)
+                .feasible(true).reasons("[]").degraded("[]")
+                .predictionConfidence("high").planStatus("active").calcVersion("test")
+                .createdAt(startsAt)
+                .build());
+
+        mockMvc.perform(get("/summary/daily")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("date", "2026-08-17"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total_outdoor_minutes").value(0))
+                .andExpect(jsonPath("$.outdoor_source").value("estimated"));
     }
 
     @Test

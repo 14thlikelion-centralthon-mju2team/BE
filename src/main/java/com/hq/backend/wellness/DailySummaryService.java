@@ -4,6 +4,8 @@ import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
 import com.hq.backend.event.EventStatus;
+import com.hq.backend.metrics.ProductEvent;
+import com.hq.backend.metrics.ProductEventRepository;
 import com.hq.backend.personalization.EventExecution;
 import com.hq.backend.personalization.EventExecutionRepository;
 import com.hq.backend.plan.PlanContext;
@@ -50,6 +52,10 @@ public class DailySummaryService {
     private final PlanWellnessScoreRepository planWellnessScoreRepository;
     private final PlanContextRepository planContextRepository;
     private final DailyWellnessSummaryRepository dailyWellnessSummaryRepository;
+    private final ProductEventRepository productEventRepository;
+
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
     @Transactional
     public DailySummaryResponse getOrGenerate(UUID userId, LocalDate date) {
@@ -58,12 +64,32 @@ public class DailySummaryService {
                 .orElseGet(() -> DailySummaryResponse.from(generate(userId, date)));
     }
 
+    // API 명세 §12.4 — "조회 기록 (지표)". PRODUCT_EVENT는 좌표·제목·민감 항목명을
+    // payload에 절대 넣지 않는다(절대 원칙 8) — summaryId/summaryDate만 담는다.
     @Transactional
     public DailySummaryResponse markViewed(UUID userId, UUID summaryId) {
         DailyWellnessSummary summary = dailyWellnessSummaryRepository.findBySummaryIdAndUserId(summaryId, userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "SUMMARY_NOT_FOUND", "일일 요약을 찾을 수 없습니다."));
         summary.setViewed(true);
+
+        Instant now = Instant.now();
+        productEventRepository.save(ProductEvent.builder()
+                .userId(userId)
+                .eventName("card_viewed")
+                .occurredAt(now)
+                .receivedAt(now)
+                .payload(toJson(Map.of("summaryId", summaryId.toString(), "summaryDate", summary.getSummaryDate().toString())))
+                .build());
+
         return DailySummaryResponse.from(summary);
+    }
+
+    private String toJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            return "{}";
+        }
     }
 
     private DailyWellnessSummary generate(UUID userId, LocalDate date) {
@@ -99,7 +125,7 @@ public class DailySummaryService {
                 .summaryDate(date)
                 .eventCount(managedEvents.size())
                 .totalOutdoorMinutes(agg.totalOutdoorMinutes)
-                .outdoorSource(agg.anyEstimated ? "estimated" : "observed")
+                .outdoorSource(agg.allObserved() ? "observed" : "estimated")
                 .avgWisWeighted(agg.avgWisWeighted)
                 .avgRls(agg.avgRls)
                 .dwlScore(agg.dwlScore)
@@ -111,7 +137,7 @@ public class DailySummaryService {
     }
 
     private record Aggregate(
-            int totalOutdoorMinutes, boolean anyEstimated,
+            int totalOutdoorMinutes, boolean allObserved,
             java.math.BigDecimal avgWisWeighted, java.math.BigDecimal avgRls, short dwlScore) {
     }
 
@@ -119,6 +145,7 @@ public class DailySummaryService {
             List<Event> events, Map<UUID, EventExecution> executionByEvent,
             Map<UUID, PlanWellnessScore> scoreByPlan, Map<UUID, PlanContext> contextByPlan) {
         int totalOutdoor = 0;
+        boolean hasOutdoorDataPoint = false;
         boolean anyEstimated = false;
         double wisWeightedSum = 0;
         int wisWeightTotal = 0;
@@ -145,6 +172,7 @@ public class DailySummaryService {
                 }
             }
             if (outdoorMinutes != null) {
+                hasOutdoorDataPoint = true;
                 totalOutdoor += outdoorMinutes;
                 PlanWellnessScore score = scoreByPlan.get(planId);
                 if (score != null && outdoorMinutes > 0) {
@@ -167,7 +195,10 @@ public class DailySummaryService {
         double rlsComponent = avgRls != null ? avgRls.doubleValue() : 0;
         short dwl = (short) Math.round(0.6 * wisComponent + 0.4 * rlsComponent);
 
-        return new Aggregate(totalOutdoor, anyEstimated, avgWis, avgRls, dwl);
+        // 데이터가 전혀 없으면(hasOutdoorDataPoint=false) "observed"라고 주장하지 않는다 —
+        // 추정치를 관측치처럼 보여주지 않는다는 원칙(API 명세 §12.4)의 연장.
+        boolean allObserved = hasOutdoorDataPoint && !anyEstimated;
+        return new Aggregate(totalOutdoor, allObserved, avgWis, avgRls, dwl);
     }
 
     private String pickScenario(List<Event> events, Map<UUID, EventExecution> executionByEvent, Aggregate agg) {
