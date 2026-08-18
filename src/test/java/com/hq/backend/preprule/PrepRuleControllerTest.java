@@ -182,6 +182,38 @@ class PrepRuleControllerTest {
                 .andExpect(jsonPath("$.error").value("SENSITIVE_CHIP_REJECTED"));
     }
 
+    @Test
+    void 다른_사용자의_준비_규칙을_수정하거나_삭제하면_404() throws Exception {
+        String ownerToken = signupAndLogin();
+        String createBody = """
+                {"rule_name":"우산","rule_category":"GENERAL_ITEM","action_type":"CARRY",
+                 "rule_timing":"PRE_DEPARTURE","is_required":true,"is_sensitive":false,"from_chip":false}
+                """;
+        String createResponse = mockMvc.perform(post("/prep-items")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String prepRuleId = JsonPath.read(createResponse, "$.prep_rule_id");
+        String otherToken = signupAndLogin();
+
+        mockMvc.perform(patch("/prep-items/" + prepRuleId)
+                        .header("Authorization", "Bearer " + otherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"rule_name":"장우산"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("PREP_RULE_NOT_FOUND"));
+
+        mockMvc.perform(delete("/prep-items/" + prepRuleId).header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("PREP_RULE_NOT_FOUND"));
+    }
+
     private String signupAndLogin() throws Exception {
         String email = "test-" + UUID.randomUUID() + "@example.com";
         String signupBody = """
