@@ -5,3 +5,15 @@ bin
 .claude
 .serena
 *.md
+
+# Runtime secrets and TLS material must never enter the Docker build context.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+nginx/certs/
+**/*service-account*.json
+**/*firebase*.json
