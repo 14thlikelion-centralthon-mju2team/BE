@@ -139,6 +139,28 @@ class PlanResolveControllerTest {
                 .andExpect(jsonPath("$.responded_at").exists());
     }
 
+    @Test
+    void 다른_사용자의_웰니스_행동은_404() throws Exception {
+        Created created = createEventWithPlan();
+        PlanWellnessAction action = planWellnessActionRepository.save(PlanWellnessAction.builder()
+                .planId(created.planId())
+                .wellnessTopic("uv")
+                .actionCode("sunscreen")
+                .actionLabel("출발 전 선크림 확인")
+                .displayRank((short) 1)
+                .reasonSnapshot("자외선 높음")
+                .completionStatus("proposed")
+                .build());
+        String otherToken = signupAndLogin();
+
+        mockMvc.perform(post("/plans/" + created.planId() + "/wellness-actions/" + action.getWellnessActionId() + "/resolve")
+                        .header("Authorization", "Bearer " + otherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"completion_status\":\"COMPLETED\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("PLAN_NOT_FOUND"));
+    }
+
     private record Created(String accessToken, UUID eventId, UUID planId) {
     }
 
