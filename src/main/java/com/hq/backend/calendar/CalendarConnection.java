@@ -51,7 +51,9 @@ public class CalendarConnection {
     @Setter
     private Instant revokedAt;
 
-    /** Google Calendar API syncToken — 증분 동기화에 사용. 초기값 null = full sync */
+    /** Google Calendar API syncToken — 증분 동기화에 사용. 초기값 null = full sync.
+     *  DDL(sync_token 컬럼) 추가 전까지 @Transient로 JPA 검증 우회. 추가 후 제거할 것. */
     @Setter
+    @jakarta.persistence.Transient
     private String syncToken;
 }

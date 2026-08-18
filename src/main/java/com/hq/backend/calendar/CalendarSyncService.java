@@ -190,6 +190,11 @@ public class CalendarSyncService {
             if (activePlanOpt.isEmpty()) return;
 
             var activePlan = activePlanOpt.get();
+
+            // uq_active_plan_per_event 제약: 새 리비전 INSERT 전에 기존을 superseded로 전환 + flush
+            activePlan.setPlanStatus("superseded");
+            planRevisionRepository.saveAndFlush(activePlan);
+
             planCreationService.recompute(
                     userId, event, activePlan.getOriginPlaceId(),
                     activePlan.getRevisionNo() + 1,
