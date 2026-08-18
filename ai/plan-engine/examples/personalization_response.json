@@ -1,0 +1,10 @@
+{
+  "cause": "prep_overrun",
+  "adjustedKnob": "prep_estimate",
+  "previousValue": 30.0,
+  "newValue": 34.5,
+  "adjustmentReason": "EMA 보정: 실제 준비 시간 47분, 기존 추정 30분 → 34.5분으로 상향",
+  "excludedFromLearning": false,
+  "modelVersion": "ema-v1",
+  "contractVersion": "m0-v1"
+}

@@ -1,0 +1,39 @@
+{
+  "eventId": "evt-a1b2c3d4",
+  "planned": {
+    "prepStartAt": "2026-08-18T12:00:00+09:00",
+    "recommendedDepartAt": "2026-08-18T12:40:00+09:00",
+    "targetArriveAt": "2026-08-18T13:30:00+09:00",
+    "estimatedPrepMinutes": 30,
+    "travelMinutes": 40,
+    "trafficBufferMinutes": 5
+  },
+  "actual": {
+    "actualPrepStartedAt": "2026-08-18T12:08:00+09:00",
+    "actualDepartedAt": "2026-08-18T12:55:00+09:00",
+    "actualArrivedAt": "2026-08-18T13:38:00+09:00",
+    "resultSource": "geofence",
+    "clockSkewSeconds": null
+  },
+  "outcome": {
+    "arrivalResult": "late",
+    "rushAssessment": "rushed",
+    "autoManageExcluded": false
+  },
+  "currentEstimate": {
+    "estimatedMinutes": 30.0,
+    "sampleCount": 8,
+    "confidence": 0.75,
+    "modelVersion": "ema-v1"
+  },
+  "config": {
+    "prepEmaAlpha": 0.30,
+    "lateWeight": 1.50,
+    "earlyWeight": 0.70,
+    "maxStepMinutes": 15,
+    "coldStepMinutes": 20,
+    "prepFloorMinutes": 10,
+    "prepCeilingRatio": 2.0,
+    "modelVersion": "ema-v1"
+  }
+}

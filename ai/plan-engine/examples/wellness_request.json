@@ -1,0 +1,49 @@
+{
+  "environment": {
+    "precipitationProbability": 10,
+    "feelsLikeCelsius": 33.5,
+    "observedAt": "2026-08-18T11:50:00+09:00"
+  },
+  "estimatedOutdoorMinutes": 55,
+  "userPreferences": [
+    {
+      "wellnessTopic": "uv",
+      "isEnabled": true,
+      "remindIntervalMinutes": 120,
+      "dailyEventCap": 1
+    },
+    {
+      "wellnessTopic": "pm",
+      "isEnabled": true,
+      "remindIntervalMinutes": null,
+      "dailyEventCap": 1
+    },
+    {
+      "wellnessTopic": "hydration",
+      "isEnabled": true,
+      "remindIntervalMinutes": 60,
+      "dailyEventCap": 2
+    }
+  ],
+  "existingPrepItems": [
+    {
+      "itemId": "pi-sunscreen",
+      "itemName": "선크림",
+      "actionType": "carry",
+      "sourceType": "rule",
+      "appliedMinutes": 0,
+      "isSensitive": false
+    }
+  ],
+  "config": {
+    "wisWeightUv": 0.35,
+    "wisWeightPm": 0.25,
+    "wisWeightTemp": 0.20,
+    "wisWeightOutdoor": 0.20,
+    "interestBoostMax": 1.25,
+    "outdoorCapMinutes": 120,
+    "wisBandCard": 40,
+    "wisBandEvent": 70,
+    "weightVersion": "w1"
+  }
+}

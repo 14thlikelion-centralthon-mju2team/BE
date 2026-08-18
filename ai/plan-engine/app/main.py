@@ -3,6 +3,8 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.api.internal.personalization import router as personalization_router
+from app.api.internal.wellness import router as wellness_router
 from app.api.routes.plan import REQUEST_ID_HEADER
 from app.api.routes.plan import router as plan_router
 from app.domain.plan_engine.engine import PlanInputError
@@ -11,11 +13,13 @@ from app.domain.plan_engine.version import CALC_VERSION
 logger = logging.getLogger("plan_engine")
 
 app = FastAPI(
-    title="Ensom M1 Plan Engine",
+    title="Ensom AI Engine",
     version=CALC_VERSION,
-    description="Deterministic internal plan calculation service.",
+    description="Internal AI engine service — Plan (M1), Personalization (M2), Wellness (M3).",
 )
 app.include_router(plan_router)
+app.include_router(personalization_router)
+app.include_router(wellness_router)
 
 
 @app.get("/health")

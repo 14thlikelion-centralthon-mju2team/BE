@@ -1,0 +1,49 @@
+{
+  "caseId": "00_contract_smoke_wellness",
+  "description": "Wellness Engine 계약 검증용 smoke fixture — M0에서 형식만 검증",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "stub",
+  "configVersion": "m0",
+  "input": {
+    "environment": {
+      "precipitationProbability": 20,
+      "feelsLikeCelsius": 32.0,
+      "observedAt": "2026-08-18T11:50:00+09:00"
+    },
+    "estimatedOutdoorMinutes": 60,
+    "userPreferences": [
+      {
+        "wellnessTopic": "uv",
+        "isEnabled": true,
+        "remindIntervalMinutes": 120,
+        "dailyEventCap": 1
+      },
+      {
+        "wellnessTopic": "pm",
+        "isEnabled": true,
+        "remindIntervalMinutes": null,
+        "dailyEventCap": 1
+      }
+    ],
+    "existingPrepItems": [
+      {
+        "itemId": "pi-001",
+        "itemName": "선크림",
+        "actionType": "carry",
+        "sourceType": "rule",
+        "appliedMinutes": 0,
+        "isSensitive": false
+      }
+    ],
+    "config": {
+      "weightVersion": "w1"
+    }
+  },
+  "expected": {
+    "eventArmed": false,
+    "contractVersion": "m0-v1",
+    "degraded": []
+  },
+  "tags": ["contract", "smoke", "wellness"]
+}
