@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.hq.backend.event.Event;
 import com.hq.backend.personalization.UserPrepEstimateRepository;
+import com.hq.backend.place.PlaceCoordinateCodec;
 import com.hq.backend.place.UserPlace;
 import com.hq.backend.place.UserPlaceRepository;
 import com.hq.backend.plan.dto.PlanEngineRequest;
@@ -47,6 +48,7 @@ public class PlanCreationService {
     private final UserPrepRuleRepository userPrepRuleRepository;
     private final UserPrepEstimateRepository userPrepEstimateRepository;
     private final UserPlaceRepository userPlaceRepository;
+    private final PlaceCoordinateCodec placeCoordinateCodec;
     private final RouteProvider routeProvider;
     private final EnvironmentProvider environmentProvider;
 
@@ -65,7 +67,9 @@ public class PlanCreationService {
             return Optional.empty();
         }
 
-        GeoPoint originPoint = new GeoPoint(origin.getLat(), origin.getLng());
+        double originLat = placeCoordinateCodec.decode(origin.getLatEnc());
+        double originLng = placeCoordinateCodec.decode(origin.getLngEnc());
+        GeoPoint originPoint = new GeoPoint(originLat, originLng);
         GeoPoint destPoint = new GeoPoint(event.getDestinationLat(), event.getDestinationLng());
         Instant now = Instant.now();
 
@@ -90,8 +94,8 @@ public class PlanCreationService {
                 .revisionNo(1)
                 .originPlaceId(originPlaceId)
                 .originSnapshotName(origin.getPlaceName())
-                .originSnapshotLat(origin.getLat())
-                .originSnapshotLng(origin.getLng())
+                .originSnapshotLat(originLat)
+                .originSnapshotLng(originLng)
                 .prepStartAt(output.prepStartAt())
                 .recommendedDepartAt(output.recommendedDepartAt())
                 .targetArriveAt(output.targetArriveAt())

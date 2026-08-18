@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.hq.backend.place.PlaceCoordinateCodec;
 import com.hq.backend.place.UserPlace;
 import com.hq.backend.place.UserPlaceRepository;
 import com.jayway.jsonpath.JsonPath;
@@ -41,6 +42,9 @@ class PlanCreationIntegrationTest {
 
     @Autowired
     private UserPlaceRepository userPlaceRepository;
+
+    @Autowired
+    private PlaceCoordinateCodec placeCoordinateCodec;
 
     @Autowired
     private PlanRevisionRepository planRevisionRepository;
@@ -98,8 +102,8 @@ class PlanCreationIntegrationTest {
                 .placeType("home")
                 .placeName("집")
                 .address("서울시 어딘가")
-                .lat(37.5)
-                .lng(127.0)
+                .latEnc(placeCoordinateCodec.encode(37.5))
+                .lngEnc(placeCoordinateCodec.encode(127.0))
                 .isPrimary(true)
                 .build());
 
