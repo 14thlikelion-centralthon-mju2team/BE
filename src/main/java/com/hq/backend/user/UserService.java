@@ -1,8 +1,10 @@
 package com.hq.backend.user;
 
 import com.hq.backend.common.exception.ApiException;
+import com.hq.backend.metrics.ProductEventService;
 import com.hq.backend.user.dto.AccountDeletionResponse;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -25,6 +27,7 @@ public class UserService {
     private static final String RETENTION_REASON = "법정 보존 의무";
 
     private final UserRepository userRepository;
+    private final ProductEventService productEventService;
 
     @Transactional
     public AccountDeletionResponse withdraw(UUID userId) {
@@ -33,6 +36,11 @@ public class UserService {
         // 하드 삭제·익명화 배치 없음이 명시된 설계(D10)라 별도 감사 기록도 필요 없다.
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "사용자를 찾을 수 없습니다."));
+
+        // product_event.user_id는 users(user_id) ON DELETE CASCADE라 실제 userId로 남기면
+        // 바로 아래 delete()에 이 로그까지 같이 삭제된다 — userId=null로 익명 기록한다.
+        productEventService.record(null, "user_withdrawn", Map.of());
+
         userRepository.delete(user);
 
         return new AccountDeletionResponse(DELETED_RESOURCES, RETAINED_RESOURCES, RETENTION_REASON);

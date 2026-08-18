@@ -2,11 +2,13 @@ package com.hq.backend.wellness;
 
 import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.event.EventRepository;
+import com.hq.backend.metrics.ProductEventService;
 import com.hq.backend.plan.PlanRevision;
 import com.hq.backend.plan.PlanRevisionRepository;
 import com.hq.backend.wellness.dto.WellnessActionResolveRequest;
 import com.hq.backend.wellness.dto.WellnessActionResolveResponse;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -22,6 +24,7 @@ public class WellnessActionResolveService {
     private final PlanRevisionRepository planRevisionRepository;
     private final EventRepository eventRepository;
     private final PlanWellnessActionRepository planWellnessActionRepository;
+    private final ProductEventService productEventService;
 
     @Transactional
     public WellnessActionResolveResponse resolve(
@@ -35,8 +38,14 @@ public class WellnessActionResolveService {
                 .orElseThrow(() -> new ApiException(
                         HttpStatus.NOT_FOUND, "WELLNESS_ACTION_NOT_FOUND", "웰니스 행동을 찾을 수 없습니다."));
 
-        action.setCompletionStatus(request.completionStatus().name().toLowerCase());
+        String status = request.completionStatus().name().toLowerCase();
+        action.setCompletionStatus(status);
         action.setRespondedAt(Instant.now());
+
+        if ("completed".equals(status) || "dismissed".equals(status)) {
+            productEventService.record(userId, "wellness_" + status, Map.of(
+                    "planId", planId.toString(), "actionCode", action.getActionCode()));
+        }
 
         return WellnessActionResolveResponse.from(action);
     }

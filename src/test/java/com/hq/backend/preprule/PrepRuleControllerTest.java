@@ -1,5 +1,6 @@
 package com.hq.backend.preprule;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -7,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.hq.backend.metrics.ProductEventRepository;
 import com.jayway.jsonpath.JsonPath;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -22,6 +24,9 @@ class PrepRuleControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private ProductEventRepository productEventRepository;
 
     @Test
     void 준비_규칙을_생성하면_201과_저장된_내용을_반환한다() throws Exception {
@@ -39,6 +44,10 @@ class PrepRuleControllerTest {
                 .andExpect(jsonPath("$.rule_name").value("영양제"))
                 .andExpect(jsonPath("$.rule_category").value("SUPPLEMENT"))
                 .andExpect(jsonPath("$.from_chip").value(true));
+
+        boolean logged = productEventRepository.findAll().stream()
+                .anyMatch(e -> "prep_rule_created".equals(e.getEventName()));
+        assertThat(logged).isTrue();
     }
 
     @Test

@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
+import com.hq.backend.metrics.ProductEventRepository;
 import com.jayway.jsonpath.JsonPath;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -32,6 +33,9 @@ class PersonalizationControllerTest {
 
     @Autowired
     private EventRepository eventRepository;
+
+    @Autowired
+    private ProductEventRepository productEventRepository;
 
     @Test
     void 개인화_추정값을_조회한다() throws Exception {
@@ -76,6 +80,10 @@ class PersonalizationControllerTest {
         mockMvc.perform(get("/me/personalization").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.estimates.length()").value(0));
+
+        boolean logged = productEventRepository.findAll().stream()
+                .anyMatch(e -> "personalization_reset".equals(e.getEventName()) && userId.equals(e.getUserId()));
+        assertThat(logged).isTrue();
     }
 
     @Test
@@ -109,6 +117,10 @@ class PersonalizationControllerTest {
                 .andExpect(jsonPath("$.estimates[0].estimated_minutes").value(30));
 
         assertThat(eventRepository.findById(event.getEventId()).orElseThrow().isExcludedFromLearning()).isTrue();
+
+        boolean logged = productEventRepository.findAll().stream()
+                .anyMatch(e -> "personalization_reverted".equals(e.getEventName()) && userId.equals(e.getUserId()));
+        assertThat(logged).isTrue();
     }
 
     @Test
