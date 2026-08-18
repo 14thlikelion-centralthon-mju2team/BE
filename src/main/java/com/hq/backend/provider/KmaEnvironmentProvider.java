@@ -7,15 +7,29 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriComponentsBuilder;
 
-// TRD 11.2. 기상청 단기예보(TMP=기온, POP=강수확률)만 실제로 연동했다.
-// PM10(에어코리아 — 좌표→측정소 매핑 필요)과 자외선지수(기상청 별도 API — 응답 필드 미검증)는
-// 아직 없어 -1로 채워 둔다 (05-blocked-on-user.md 참고, 실 키로 검증 후 이어서 구현).
-// 두 값이 완성될 때까지는 @Component가 아니라 StubEnvironmentProvider가 계속 쓰인다.
+/**
+ * TRD 11.2. 기상청 단기예보(TMP=기온, POP=강수확률) 실 연동.
+ * PM10(에어코리아)과 자외선지수는 아직 미구현(-1로 채움).
+ * API 호출 실패 시 기본값 반환 — 시간 계획은 정상, 웰니스만 생략 (TRD 11.5).
+ *
+ * provider.kma.service-key가 실제로 설정된 경우에만 빈으로 등록된다 — 인증키
+ * 미발급 상태(로컬·테스트 기본값)에서는 여전히 StubEnvironmentProvider가 유일한
+ * EnvironmentProvider 빈이라 @Primary 없이도 모호성이 없다.
+ */
+@Component
+@ConditionalOnExpression("!'${provider.kma.service-key:}'.isBlank()")
 public class KmaEnvironmentProvider implements EnvironmentProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(KmaEnvironmentProvider.class);
 
     // 기상청 단기예보 격자 변환 상수 (LCC DFS 투영, 공식 문서 고정값)
     private static final double RE = 6371.00877;
@@ -43,6 +57,15 @@ public class KmaEnvironmentProvider implements EnvironmentProvider {
 
     @Override
     public EnvironmentSnapshot fetch(GeoPoint point, Instant at) {
+        try {
+            return doFetch(point, at);
+        } catch (RestClientException | NullPointerException | java.util.NoSuchElementException e) {
+            log.warn("[KMA] API 호출 실패, 기본값 반환: {}", e.getMessage());
+            return new EnvironmentSnapshot(-1.0, -1, 22.0, 0, at, "kma_fallback");
+        }
+    }
+
+    private EnvironmentSnapshot doFetch(GeoPoint point, Instant at) {
         int[] grid = toGrid(point.lat(), point.lng());
         String[] baseDateTime = baseDateTime(at);
 
@@ -73,6 +96,7 @@ public class KmaEnvironmentProvider implements EnvironmentProvider {
                 .map(item -> Integer.parseInt(item.fcstValue()))
                 .orElseThrow();
 
+        log.debug("[KMA] 조회 성공: grid=({},{}), TMP={}, POP={}", grid[0], grid[1], tempC, precipitationProb);
         return new EnvironmentSnapshot(-1.0, -1, tempC, precipitationProb, at, "kma");
     }
 
@@ -136,8 +160,6 @@ public class KmaEnvironmentProvider implements EnvironmentProvider {
     private record KmaItems(List<KmaItem> item) {
     }
 
-    // jackson.property-naming-strategy: SNAKE_CASE(application.yaml 전역 설정)가 fcstValue를
-    // fcst_value로 찾으려 하는 걸 막기 위해 실제 응답 필드명을 명시한다.
     private record KmaItem(String category, @JsonProperty("fcstValue") String fcstValue) {
     }
 }
