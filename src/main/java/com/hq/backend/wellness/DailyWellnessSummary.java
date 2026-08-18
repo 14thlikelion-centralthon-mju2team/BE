@@ -51,11 +51,11 @@ public class DailyWellnessSummary {
 
     private BigDecimal avgRls;
 
-    @Column(nullable = false)
-    private short dwlScore; // 0~100, 내부용
+    // WIS/RLS 원천이 모두 없으면 null/unknown — 데이터 부재를 low로 오인하지 않는다.
+    private Short dwlScore; // 0~100 또는 null, 내부용
 
     @Column(nullable = false)
-    private String dwlBand; // low | mid | high, 클라이언트 노출용
+    private String dwlBand; // low | mid | high | unknown, 클라이언트 노출용
 
     @Column(nullable = false)
     private String cardScenario; // default | exposure | density | rushed | stable

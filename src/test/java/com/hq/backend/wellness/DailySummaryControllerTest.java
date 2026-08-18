@@ -108,7 +108,7 @@ class DailySummaryControllerTest {
                 .andExpect(jsonPath("$.is_viewed").value(true));
 
         assertThat(productEventRepository.findAll())
-                .anyMatch(pe -> pe.getUserId().equals(userId) && "card_viewed".equals(pe.getEventName()));
+                .anyMatch(pe -> userId.equals(pe.getUserId()) && "card_viewed".equals(pe.getEventName()));
     }
 
     @Test
@@ -138,7 +138,29 @@ class DailySummaryControllerTest {
                         .param("date", "2026-08-17"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.total_outdoor_minutes").value(0))
-                .andExpect(jsonPath("$.outdoor_source").value("estimated"));
+                .andExpect(jsonPath("$.outdoor_source").value("estimated"))
+                .andExpect(jsonPath("$.dwl_score").doesNotExist())
+                .andExpect(jsonPath("$.dwl_band").value("unknown"));
+    }
+
+    @Test
+    void 관리_제외_상태는_일일_요약에서_제외한다() throws Exception {
+        String accessToken = signupAndLogin();
+        UUID userId = extractUserId(accessToken);
+        LocalDate date = LocalDate.of(2026, 8, 18);
+        Instant startsAt = date.atTime(14, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+
+        eventRepository.save(Event.builder()
+                .userId(userId).sourceType("internal").startsAt(startsAt)
+                .isAllDay(false).locationState("not_required").autoManageExcluded(false)
+                .status("cancelled").createdAt(startsAt)
+                .build());
+
+        mockMvc.perform(get("/summary/daily")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("date", "2026-08-18"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("SUMMARY_NOT_GENERATED"));
     }
 
     @Test
