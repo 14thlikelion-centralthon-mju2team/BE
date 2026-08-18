@@ -39,6 +39,7 @@ class AuthServiceTest {
     @Mock private UserIdentityRepository userIdentityRepository;
     @Mock private UserCredentialRepository userCredentialRepository;
     @Mock private RefreshTokenRepository refreshTokenRepository;
+    @Mock private com.hq.backend.pushdevice.PushDeviceRepository pushDeviceRepository;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private JwtService jwtService;
     @Mock private TransactionTemplate transactionTemplate;
@@ -49,7 +50,7 @@ class AuthServiceTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         authService = new AuthService(
-                userRepository, userIdentityRepository, userCredentialRepository, refreshTokenRepository, passwordEncoder, jwtService,
+                userRepository, userIdentityRepository, userCredentialRepository, refreshTokenRepository, pushDeviceRepository, passwordEncoder, jwtService,
                 restClient, transactionTemplate);
         ReflectionTestUtils.setField(authService, "googleTokenInfoUrl", "https://oauth2.googleapis.com/tokeninfo");
         ReflectionTestUtils.setField(authService, "googleClientId", "ensom-client-id");
