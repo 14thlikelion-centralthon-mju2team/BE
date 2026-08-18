@@ -10,4 +10,6 @@ public interface PlanRevisionRepository extends JpaRepository<PlanRevision, UUID
     Optional<PlanRevision> findByEventIdAndPlanStatus(UUID eventId, String planStatus);
 
     List<PlanRevision> findByEventIdOrderByRevisionNoDesc(UUID eventId);
+
+    List<PlanRevision> findByEventIdIn(List<UUID> eventIds);
 }

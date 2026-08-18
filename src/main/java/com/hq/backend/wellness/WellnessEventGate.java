@@ -3,6 +3,7 @@ package com.hq.backend.wellness;
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
 import com.hq.backend.plan.PlanRevision;
+import com.hq.backend.plan.PlanRevisionRepository;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -34,15 +35,18 @@ public class WellnessEventGate {
     private final PlanWellnessScoreRepository scoreRepository;
     private final WellnessEventScheduleRepository scheduleRepository;
     private final EventRepository eventRepository;
+    private final PlanRevisionRepository planRevisionRepository;
 
     public WellnessEventGate(UserWellnessPrefRepository prefRepository,
                              PlanWellnessScoreRepository scoreRepository,
                              WellnessEventScheduleRepository scheduleRepository,
-                             EventRepository eventRepository) {
+                             EventRepository eventRepository,
+                             PlanRevisionRepository planRevisionRepository) {
         this.prefRepository = prefRepository;
         this.scoreRepository = scoreRepository;
         this.scheduleRepository = scheduleRepository;
         this.eventRepository = eventRepository;
+        this.planRevisionRepository = planRevisionRepository;
     }
 
     /**
@@ -129,15 +133,28 @@ public class WellnessEventGate {
         Instant startOfDay = today.atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
         Instant endOfDay = today.plusDays(1).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
 
-        // 해당 사용자의 오늘 일정들의 plan에서 해당 topic의 웰니스 이벤트 수
+        // 해당 사용자의 오늘 일정들의 plan에서 해당 topic의 웰니스 이벤트 수.
+        // scheduleRepository.findAll()로 전체 사용자를 다 훑으면 다른 사용자의 오늘 발송
+        // 건수까지 이 사용자의 상한 소진량으로 잡힌다 — userId로 좁힌 이벤트의 planId만
+        // 대상으로 삼는다(원래는 findByUserIdAndStartsAtBetween으로만 걸러서 크로스유저였음).
         List<Event> todayEvents = eventRepository.findByUserIdAndStartsAtBetweenOrderByStartsAtAsc(
                 userId, startOfDay, endOfDay);
+        if (todayEvents.isEmpty()) {
+            return 0;
+        }
 
-        return todayEvents.stream()
-                .flatMap(e -> scheduleRepository.findAll().stream()
-                        .filter(s -> actionCodeToTopic(s.getActionCode()).equals(topic))
-                        .filter(s -> s.getSentAt() != null)
-                        .filter(s -> !s.getSentAt().isBefore(startOfDay) && s.getSentAt().isBefore(endOfDay)))
+        List<UUID> eventIds = todayEvents.stream().map(Event::getEventId).toList();
+        List<UUID> planIds = planRevisionRepository.findByEventIdIn(eventIds).stream()
+                .map(PlanRevision::getPlanId)
+                .toList();
+        if (planIds.isEmpty()) {
+            return 0;
+        }
+
+        return scheduleRepository.findByPlanIdIn(planIds).stream()
+                .filter(s -> actionCodeToTopic(s.getActionCode()).equals(topic))
+                .filter(s -> s.getSentAt() != null)
+                .filter(s -> !s.getSentAt().isBefore(startOfDay) && s.getSentAt().isBefore(endOfDay))
                 .count();
     }
 

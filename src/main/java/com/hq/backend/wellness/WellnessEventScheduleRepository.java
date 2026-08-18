@@ -9,4 +9,6 @@ public interface WellnessEventScheduleRepository extends JpaRepository<WellnessE
     List<WellnessEventSchedule> findByPlanIdAndActionCode(UUID planId, String actionCode);
 
     List<WellnessEventSchedule> findByPlanId(UUID planId);
+
+    List<WellnessEventSchedule> findByPlanIdIn(List<UUID> planIds);
 }
