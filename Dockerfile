@@ -9,5 +9,7 @@ RUN ./gradlew bootJar --no-daemon -x test
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /app/build/libs/*-SNAPSHOT.jar app.jar
+RUN useradd --system --uid 10001 --create-home appuser
+USER appuser
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]
