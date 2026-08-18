@@ -38,7 +38,7 @@ provider:
 app:
   jwt:
     # ponytail: 로컬 개발용 기본값. 배포 시 JWT_SECRET 환경변수로 반드시 교체 (setting/security 티켓)
-    secret: ${JWT_SECRET:dev-only-local-secret-change-before-deploy-32bytes-min}
+    secret: ${JWT_SECRET:dev-only-local-jwt-secret-must-be-at-least-64-bytes-long-for-hmac-sha512!!}
     access-token-expiration-ms: 3600000
     refresh-token-expiration-ms: 1209600000
   encryption:
