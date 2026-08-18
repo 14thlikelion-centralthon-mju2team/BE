@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: ${DB_NAME:-backend}
       POSTGRES_USER: ${DB_USER:-backend}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-backend}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD before deploying}
     # 운영 시 포트 퍼블리시 제거 — 내부 네트워크만 접근
     # ports:
     #   - "5432:5432"
@@ -45,7 +45,7 @@ services:
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-backend}
       DB_USER: ${DB_USER:-backend}
-      DB_PASSWORD: ${DB_PASSWORD:-backend}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD before deploying}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET before deploying}
       ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:?set ENCRYPTION_SECRET before deploying}
       ENCRYPTION_SALT: ${ENCRYPTION_SALT:?set ENCRYPTION_SALT before deploying}
@@ -54,8 +54,9 @@ services:
       DATA_GO_KR_SERVICE_KEY: ${DATA_GO_KR_SERVICE_KEY:-}
       FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-}
       PLAN_ENGINE_BASE_URL: http://plan-engine:8000
-    ports:
-      - "8080:8080"
+    # 운영 시 외부 노출 불필요 — nginx가 프록시
+    # ports:
+    #   - "8080:8080"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
@@ -70,7 +71,8 @@ services:
         condition: service_healthy
     ports:
       - "80:80"
-      - "443:443"
+      # TLS 활성화 후 주석 해제
+      # - "443:443"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       # TLS 인증서 (가비아 도메인 확정 후 certbot으로 발급)
