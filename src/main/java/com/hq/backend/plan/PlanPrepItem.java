@@ -50,6 +50,8 @@ public class PlanPrepItem {
     @Column(nullable = false)
     private String sourceType; // rule | event_item | weather
 
+    private String reasonSnapshot;
+
     @Setter
     @Column(nullable = false)
     private String completionStatus; // pending | completed
