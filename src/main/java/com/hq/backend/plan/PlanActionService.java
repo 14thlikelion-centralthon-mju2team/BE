@@ -9,13 +9,21 @@ import com.hq.backend.event.EventActionLogRepository;
 import com.hq.backend.event.EventRepository;
 import com.hq.backend.event.EventStatus;
 import com.hq.backend.personalization.ArrivalResult;
+import com.hq.backend.personalization.EventDelayReason;
+import com.hq.backend.personalization.EventDelayReasonRepository;
 import com.hq.backend.personalization.EventExecution;
 import com.hq.backend.personalization.EventExecutionRepository;
+import com.hq.backend.personalization.PersonalizationEngineClient;
+import com.hq.backend.personalization.UserPrepEstimate;
+import com.hq.backend.personalization.UserPrepEstimateRepository;
+import com.hq.backend.personalization.dto.PersonalizationEngineRequest;
+import com.hq.backend.personalization.dto.PersonalizationEngineResponse;
 import com.hq.backend.plan.dto.ActionBatchRequest;
 import com.hq.backend.plan.dto.ActionBatchResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +44,18 @@ public class PlanActionService {
     private static final long EARLY_THRESHOLD_MINUTES = 10;
     private static final long LATE_THRESHOLD_MINUTES = 10;
 
+    // PersonalizationEngineConfig 시드값(V6 prep_ema_alpha=0.30, 나머지는 TRD §6/§15.2
+    // 가드레일 상수 — Python 쪽 기본값과 동일). DB 실연결은 PR #105 리뷰의 키 합의 이후.
+    private static final double PREP_EMA_ALPHA = 0.30;
+    private static final double LATE_WEIGHT = 1.50;
+    private static final double EARLY_WEIGHT = 0.70;
+    private static final int MAX_STEP_MINUTES = 15;
+    private static final int COLD_STEP_MINUTES = 20;
+    private static final int PREP_FLOOR_MINUTES = 10;
+    private static final double PREP_CEILING_RATIO = 2.0;
+    private static final String MODEL_VERSION = "ema-v1";
+    private static final String DELAY_CAUSE_UNKNOWN = "unknown"; // ck_delay_reason_code엔 없는 값 — 저장 제외
+
     private static final Set<ActionType> EXECUTION_RELEVANT_ACTIONS =
             EnumSet.of(ActionType.PREP_STARTED, ActionType.DEPARTED, ActionType.ARRIVED);
 
@@ -43,6 +63,9 @@ public class PlanActionService {
     private final EventRepository eventRepository;
     private final EventActionLogRepository eventActionLogRepository;
     private final EventExecutionRepository eventExecutionRepository;
+    private final EventDelayReasonRepository eventDelayReasonRepository;
+    private final UserPrepEstimateRepository userPrepEstimateRepository;
+    private final PersonalizationEngineClient personalizationEngineClient;
     private final PlanContextRepository planContextRepository;
     private final PlanService planService;
 
@@ -123,6 +146,78 @@ public class PlanActionService {
         }
         execution.setUpdatedAt(now);
         eventExecutionRepository.save(execution);
+
+        if (item.actionType() == ActionType.ARRIVED) {
+            runPersonalizationAdjustment(event, revision, execution, item);
+        }
+    }
+
+    // TRD §6 원인 분리 EMA 보정 — 도착이 확정된 시점에 계획 대비 실행 데이터를 엔진에 보내
+    // 원인과 보정값을 받는다. 학습에서 제외된 이벤트(되돌리기, §15.3)나 기준 추정값이 아직
+    // 없는 사용자(콜드 스타트 이전)는 호출 자체를 건너뛴다.
+    private void runPersonalizationAdjustment(
+            Event event, PlanRevision revision, EventExecution execution, ActionBatchRequest.ActionItem item) {
+        if (event.isExcludedFromLearning()) {
+            return;
+        }
+        UserPrepEstimate current = userPrepEstimateRepository.findByUserIdAndValidToIsNull(event.getUserId()).stream()
+                .filter(e -> "global".equals(e.getScopeType()))
+                .findFirst()
+                .orElse(null);
+        if (current == null) {
+            return;
+        }
+
+        Instant now = Instant.now();
+        int clockSkewSeconds = (int) Duration.between(item.deviceTs(), now).abs().getSeconds();
+
+        PersonalizationEngineRequest request = new PersonalizationEngineRequest(
+                event.getEventId().toString(),
+                new PersonalizationEngineRequest.PlannedExecutionSnapshot(
+                        revision.getPrepStartAt(), revision.getRecommendedDepartAt(), revision.getTargetArriveAt(),
+                        revision.getEstimatedPrepMinutes(), revision.getTravelMinutes(), revision.getTrafficBufferMinutes()),
+                new PersonalizationEngineRequest.ActualExecutionSnapshot(
+                        execution.getActualPrepStartedAt(), execution.getActualDepartedAt(), execution.getActualArrivedAt(),
+                        execution.getResultSource(), clockSkewSeconds),
+                new PersonalizationEngineRequest.EventOutcome(
+                        execution.getArrivalResult(), null, event.isAutoManageExcluded()),
+                new PersonalizationEngineRequest.CurrentPrepEstimate(
+                        current.getEstimatedMinutes(), current.getSampleCount(),
+                        current.getConfidence() != null ? current.getConfidence().doubleValue() : null,
+                        current.getModelVersion()),
+                new PersonalizationEngineRequest.EngineConfig(
+                        PREP_EMA_ALPHA, LATE_WEIGHT, EARLY_WEIGHT, MAX_STEP_MINUTES, COLD_STEP_MINUTES,
+                        PREP_FLOOR_MINUTES, PREP_CEILING_RATIO, MODEL_VERSION));
+
+        Optional<PersonalizationEngineResponse> responseOpt = personalizationEngineClient.adjust(request);
+        if (responseOpt.isEmpty()) {
+            return;
+        }
+        PersonalizationEngineResponse response = responseOpt.get();
+
+        if (!DELAY_CAUSE_UNKNOWN.equals(response.cause())) {
+            eventDelayReasonRepository.save(EventDelayReason.builder()
+                    .eventId(event.getEventId())
+                    .reasonCode(response.cause())
+                    .reasonSource("inferred")
+                    .createdAt(now)
+                    .build());
+        }
+
+        if (response.excludedFromLearning() || !"prep_estimate".equals(response.adjustedKnob()) || response.newValue() == null) {
+            return;
+        }
+        current.setValidTo(now);
+        userPrepEstimateRepository.save(UserPrepEstimate.builder()
+                .userId(event.getUserId())
+                .scopeType("global")
+                .estimatedMinutes((int) Math.round(response.newValue()))
+                .sampleCount(current.getSampleCount() + 1)
+                .confidence(current.getConfidence())
+                .modelVersion(response.modelVersion())
+                .adjustmentReason(response.adjustmentReason())
+                .validFrom(now)
+                .build());
     }
 
     private String toResultSource(ActionSource actionSource) {
