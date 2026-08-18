@@ -1,0 +1,45 @@
+{
+  "caseId": "00_contract_smoke_personalization",
+  "description": "Personalization Engine 계약 검증용 smoke fixture — M0에서 형식만 검증",
+  "engine": "personalization",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "stub",
+  "configVersion": "m0",
+  "input": {
+    "eventId": "evt-smoke-001",
+    "planned": {
+      "prepStartAt": "2026-08-18T12:00:00+09:00",
+      "recommendedDepartAt": "2026-08-18T12:40:00+09:00",
+      "targetArriveAt": "2026-08-18T13:30:00+09:00",
+      "estimatedPrepMinutes": 30,
+      "travelMinutes": 40,
+      "trafficBufferMinutes": 5
+    },
+    "actual": {
+      "actualPrepStartedAt": "2026-08-18T12:05:00+09:00",
+      "actualDepartedAt": "2026-08-18T12:50:00+09:00",
+      "actualArrivedAt": "2026-08-18T13:35:00+09:00",
+      "resultSource": "geofence"
+    },
+    "outcome": {
+      "arrivalResult": "late",
+      "rushAssessment": "rushed"
+    },
+    "currentEstimate": {
+      "estimatedMinutes": 30.0,
+      "sampleCount": 5,
+      "confidence": 0.8,
+      "modelVersion": "v1"
+    },
+    "config": {
+      "modelVersion": "v1"
+    }
+  },
+  "expected": {
+    "cause": "unknown",
+    "adjustedKnob": "none",
+    "excludedFromLearning": true,
+    "contractVersion": "m0-v1"
+  },
+  "tags": ["contract", "smoke", "personalization"]
+}

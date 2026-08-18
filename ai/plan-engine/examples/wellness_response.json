@@ -1,0 +1,38 @@
+{
+  "wisScore": 72,
+  "wisBand": "high",
+  "normalizedLoads": {
+    "uvLoad": 0.85,
+    "pmLoad": 0.15,
+    "thermalLoad": 0.70,
+    "outdoorLoad": 0.46,
+    "interestMultiplier": 1.15
+  },
+  "actions": [
+    {
+      "wellnessTopic": "uv",
+      "actionCode": "sunscreen_reapply",
+      "actionLabel": "선크림 재도포 준비",
+      "displayRank": 1,
+      "reason": "UV 지수 8 이상, 야외 55분 예상"
+    },
+    {
+      "wellnessTopic": "temp",
+      "actionCode": "hydration_bottle",
+      "actionLabel": "물병 챙기기",
+      "displayRank": 2,
+      "reason": "체감온도 33.5°C, 야외 55분 예상"
+    },
+    {
+      "wellnessTopic": "hydration",
+      "actionCode": "hydration_reminder",
+      "actionLabel": "수분 섭취 리마인드",
+      "displayRank": 3,
+      "reason": "사용자 수분 리마인드 활성, 체감온도 33.5°C"
+    }
+  ],
+  "eventArmed": true,
+  "weightVersion": "w1",
+  "contractVersion": "m0-v1",
+  "degraded": []
+}
