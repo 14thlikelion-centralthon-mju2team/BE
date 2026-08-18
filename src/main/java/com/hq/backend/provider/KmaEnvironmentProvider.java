@@ -10,7 +10,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Primary;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -20,9 +20,13 @@ import org.springframework.web.util.UriComponentsBuilder;
  * TRD 11.2. 기상청 단기예보(TMP=기온, POP=강수확률) 실 연동.
  * PM10(에어코리아)과 자외선지수는 아직 미구현(-1로 채움).
  * API 호출 실패 시 기본값 반환 — 시간 계획은 정상, 웰니스만 생략 (TRD 11.5).
+ *
+ * provider.kma.service-key가 실제로 설정된 경우에만 빈으로 등록된다 — 인증키
+ * 미발급 상태(로컬·테스트 기본값)에서는 여전히 StubEnvironmentProvider가 유일한
+ * EnvironmentProvider 빈이라 @Primary 없이도 모호성이 없다.
  */
 @Component
-@Primary
+@ConditionalOnExpression("!'${provider.kma.service-key:}'.isBlank()")
 public class KmaEnvironmentProvider implements EnvironmentProvider {
 
     private static final Logger log = LoggerFactory.getLogger(KmaEnvironmentProvider.class);
