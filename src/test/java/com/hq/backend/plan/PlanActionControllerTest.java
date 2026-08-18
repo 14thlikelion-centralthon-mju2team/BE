@@ -1,5 +1,6 @@
 package com.hq.backend.plan;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -139,6 +140,39 @@ class PlanActionControllerTest {
                         .content(body))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("PLAN_NOT_FOUND"));
+    }
+
+    @Test
+    void 도착_액션을_보내면_실행_결과가_생성되고_조회된다() throws Exception {
+        Created created = createEventWithPlan();
+
+        String body = """
+                {"actions":[
+                  {"action_type":"PREP_STARTED","action_source":"USER",
+                   "device_ts":"2026-08-20T12:26:00+09:00","client_event_id":"%s"},
+                  {"action_type":"DEPARTED","action_source":"USER",
+                   "device_ts":"2026-08-20T13:06:00+09:00","client_event_id":"%s"},
+                  {"action_type":"ARRIVED","action_source":"GEO",
+                   "device_ts":"2026-08-20T13:50:00+09:00","client_event_id":"%s","confidence":0.9}
+                ]}
+                """.formatted(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+
+        mockMvc.perform(post("/plans/" + created.planId() + "/actions")
+                        .header("Authorization", "Bearer " + created.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accepted").value(3))
+                .andExpect(jsonPath("$.event_status").value("arrived"));
+
+        mockMvc.perform(get("/events/" + created.eventId() + "/execution")
+                        .header("Authorization", "Bearer " + created.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.actual_prep_started_at").value("2026-08-20T03:26:00Z"))
+                .andExpect(jsonPath("$.actual_departed_at").value("2026-08-20T04:06:00Z"))
+                .andExpect(jsonPath("$.actual_arrived_at").value("2026-08-20T04:50:00Z"))
+                .andExpect(jsonPath("$.arrival_result").value("ON_TIME"))
+                .andExpect(jsonPath("$.result_source").value("geo"));
     }
 
     private record Created(String accessToken, UUID eventId, UUID planId) {
