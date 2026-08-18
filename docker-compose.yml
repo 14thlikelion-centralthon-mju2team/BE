@@ -23,10 +23,11 @@ services:
     container_name: backend-plan-engine
     environment:
       PYTHONUNBUFFERED: "1"
-    ports:
-      - "8000:8000"
+    # 포트 외부 노출 불필요 — api가 내부 네트워크로 접근
+    # ports:
+    #   - "8000:8000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -55,12 +56,18 @@ services:
       PLAN_ENGINE_BASE_URL: http://plan-engine:8000
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   nginx:
     image: nginx:1.27-alpine
     container_name: backend-nginx
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
       - "80:80"
       - "443:443"
