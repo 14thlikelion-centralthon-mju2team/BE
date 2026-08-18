@@ -16,8 +16,9 @@ import lombok.Setter;
 
 // SET-01. plan_revision.origin_place_id / user_prep_rule.apply_place_id가 참조하는 테이블.
 // DELETE는 소프트 삭제(deleted_at) — 과거 계획의 originSnapshot*은 스냅샷이라 영향받지 않는다
-// (API 명세 §5). lat/lng는 TRD §14.3이 애플리케이션 레벨 AES-GCM 암호화를 요구하지만,
-// 이 엔티티는 평문 컬럼 매핑까지만 — 암호화 컨버터는 Service 계층 붙일 때 추가한다.
+// (API 명세 §5). lat/lng는 TRD §14.3 요구대로 애플리케이션 레벨 AES-GCM 암호화된 바이트로
+// 저장한다(PlaceService가 BytesEncryptor로 (역)직렬화 — CalendarConnection.refreshTokenEnc와
+// 같은 패턴). 숫자 범위 검증은 암호화된 값에 걸 수 없어 DB CHECK 대신 PlaceService에서 한다.
 @Entity
 @Table(name = "user_place")
 @Getter
@@ -47,11 +48,11 @@ public class UserPlace {
 
     @Setter
     @Column(nullable = false)
-    private double lat;
+    private byte[] latEnc;
 
     @Setter
     @Column(nullable = false)
-    private double lng;
+    private byte[] lngEnc;
 
     @Setter
     @Column(nullable = false)

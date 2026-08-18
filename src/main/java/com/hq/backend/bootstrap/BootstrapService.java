@@ -4,6 +4,7 @@ import com.hq.backend.bootstrap.dto.BootstrapResponse;
 import com.hq.backend.bootstrap.dto.EngineConfigSummary;
 import com.hq.backend.bootstrap.dto.PlaceSummary;
 import com.hq.backend.bootstrap.dto.SettingsSummary;
+import com.hq.backend.place.PlaceCoordinateCodec;
 import com.hq.backend.place.UserPlaceRepository;
 import java.util.List;
 import java.util.UUID;
@@ -23,6 +24,7 @@ public class BootstrapService {
             new EngineConfigSummary("2.1.0", "w1");
 
     private final UserPlaceRepository userPlaceRepository;
+    private final PlaceCoordinateCodec placeCoordinateCodec;
 
     public BootstrapResponse bootstrap(UUID userId) {
         List<PlaceSummary> places = userPlaceRepository.findByUserIdAndDeletedAtIsNull(userId).stream()
@@ -31,8 +33,8 @@ public class BootstrapService {
                         place.getPlaceType(),
                         place.getPlaceName(),
                         place.getAddress(),
-                        place.getLat(),
-                        place.getLng(),
+                        placeCoordinateCodec.decode(place.getLatEnc()),
+                        placeCoordinateCodec.decode(place.getLngEnc()),
                         place.isPrimary()))
                 .toList();
 
