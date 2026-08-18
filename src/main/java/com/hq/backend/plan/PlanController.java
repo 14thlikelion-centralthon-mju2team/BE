@@ -1,6 +1,8 @@
 package com.hq.backend.plan;
 
 import com.hq.backend.common.auth.CurrentUserId;
+import com.hq.backend.plan.dto.ActionBatchRequest;
+import com.hq.backend.plan.dto.ActionBatchResponse;
 import com.hq.backend.plan.dto.PlanDetailResponse;
 import com.hq.backend.plan.dto.PlanPatchRequest;
 import com.hq.backend.plan.dto.RouteOptionResponse;
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class PlanController {
 
     private final PlanService planService;
+    private final PlanActionService planActionService;
 
     @GetMapping
     public PlanDetailResponse get(@CurrentUserId UUID userId, @PathVariable UUID planId) {
@@ -44,5 +47,11 @@ public class PlanController {
     public PlanDetailResponse selectRoute(
             @CurrentUserId UUID userId, @PathVariable UUID planId, @Valid @RequestBody RouteSelectRequest request) {
         return planService.selectRoute(userId, planId, request.routeOptionId());
+    }
+
+    @PostMapping("/actions")
+    public ActionBatchResponse submitActions(
+            @CurrentUserId UUID userId, @PathVariable UUID planId, @Valid @RequestBody ActionBatchRequest request) {
+        return planActionService.submit(userId, planId, request);
     }
 }
