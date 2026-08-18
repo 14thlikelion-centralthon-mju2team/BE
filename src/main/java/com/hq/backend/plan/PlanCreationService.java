@@ -27,9 +27,11 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -252,13 +254,21 @@ public class PlanCreationService {
                     .build());
         }
 
+        // uq_wellness_action_rank(plan_id, display_rank) — 엔진이 같은 순위를 중복 반환하면
+        // INSERT가 제약 위반으로 실패해 계획 생성 트랜잭션 전체가 롤백된다(TR-11.5 위반:
+        // 웰니스 문제가 시간 계획까지 깨뜨리면 안 된다). 중복 순위는 먼저 온 것만 반영한다.
+        Set<Short> seenRanks = new HashSet<>();
         for (WellnessEngineResponse.WellnessAction action : output.actions()) {
+            short displayRank = (short) action.displayRank();
+            if (!seenRanks.add(displayRank)) {
+                continue;
+            }
             planWellnessActionRepository.save(PlanWellnessAction.builder()
                     .planId(revision.getPlanId())
                     .wellnessTopic(action.wellnessTopic())
                     .actionCode(action.actionCode())
                     .actionLabel(action.actionLabel())
-                    .displayRank((short) action.displayRank())
+                    .displayRank(displayRank)
                     .reasonSnapshot(action.reason())
                     .completionStatus("proposed")
                     .build());

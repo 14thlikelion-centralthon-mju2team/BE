@@ -10,6 +10,7 @@ import com.hq.backend.event.EventRepository;
 import com.hq.backend.event.EventStatus;
 import com.hq.backend.personalization.ArrivalResult;
 import com.hq.backend.personalization.EventDelayReason;
+import com.hq.backend.personalization.EventDelayReasonId;
 import com.hq.backend.personalization.EventDelayReasonRepository;
 import com.hq.backend.personalization.EventExecution;
 import com.hq.backend.personalization.EventExecutionRepository;
@@ -195,10 +196,15 @@ public class PlanActionService {
         }
         PersonalizationEngineResponse response = responseOpt.get();
 
-        if (!DELAY_CAUSE_UNKNOWN.equals(response.cause())) {
+        // event_delay_reason PK는 (event_id, reason_code) — 지오펜스 재확인이나 클라이언트
+        // 재시도로 같은 일정에 arrived가 두 번 들어오면(각각 다른 clientEventId라 위의 중복
+        // 흡수를 통과함) 같은 사유로 다시 저장하려다 PK 충돌로 배치 전체가 깨질 수 있다.
+        String cause = response.cause();
+        if (!DELAY_CAUSE_UNKNOWN.equals(cause)
+                && !eventDelayReasonRepository.existsById(new EventDelayReasonId(event.getEventId(), cause))) {
             eventDelayReasonRepository.save(EventDelayReason.builder()
                     .eventId(event.getEventId())
-                    .reasonCode(response.cause())
+                    .reasonCode(cause)
                     .reasonSource("inferred")
                     .createdAt(now)
                     .build());
