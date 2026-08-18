@@ -50,4 +50,8 @@ public class CalendarConnection {
 
     @Setter
     private Instant revokedAt;
+
+    /** Google Calendar API syncToken — 증분 동기화에 사용. 초기값 null = full sync. */
+    @Setter
+    private String syncToken;
 }

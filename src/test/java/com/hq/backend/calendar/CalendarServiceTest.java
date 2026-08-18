@@ -280,11 +280,12 @@ class CalendarServiceTest {
                 .thenReturn(new GoogleTokenResponse("access-token", null, null, 3600L));
 
         GoogleCalendarEvent timedEvent = new GoogleCalendarEvent(
+                "evt-1", "confirmed",
                 new GoogleEventDateTime(Instant.parse("2026-08-14T09:00:00Z")),
                 new GoogleEventDateTime(Instant.parse("2026-08-14T10:00:00Z")));
-        GoogleCalendarEvent allDayEvent = new GoogleCalendarEvent(new GoogleEventDateTime(null), new GoogleEventDateTime(null));
+        GoogleCalendarEvent allDayEvent = new GoogleCalendarEvent("evt-2", "confirmed", new GoogleEventDateTime(null), new GoogleEventDateTime(null));
         when(responseSpec.body(GoogleCalendarEventsResponse.class))
-                .thenReturn(new GoogleCalendarEventsResponse(List.of(timedEvent, allDayEvent)));
+                .thenReturn(new GoogleCalendarEventsResponse(List.of(timedEvent, allDayEvent), null));
 
         Event userEvent = Event.builder()
                 .eventId(UUID.randomUUID())
