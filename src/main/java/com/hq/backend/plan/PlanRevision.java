@@ -44,6 +44,10 @@ public class PlanRevision {
     @Setter
     private UUID selectedRouteOptionId;
 
+    // PATCH /plans/{planId}(§9.5)가 사용자 지정 시각으로 새 리비전 생성 직후(같은 트랜잭션
+    // 내, 아직 컨트롤러에 응답하기 전) 이 필드만 덮어쓴다. 리비전 자체는 여전히 불변 —
+    // "다시 계산"이 아니라 "이 리비전의 최종 확정값"이라 별도 리비전을 새로 만들지 않는다.
+    @Setter
     @Column(nullable = false)
     private Instant prepStartAt;
 
@@ -76,6 +80,7 @@ public class PlanRevision {
 
     // PlanEngine이 반환하는 필드별 근거 문장 배열({field, source, adjusted, text, sampleCount}).
     // 구조가 고정적이지 않아 정규화 테이블 대신 jsonb로 그대로 보관한다(TRD §5.2).
+    @Setter
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(nullable = false, columnDefinition = "jsonb")
     private String reasons;
