@@ -67,6 +67,30 @@ public class JwtService {
         }
     }
 
+    /**
+     * Refresh 토큰을 검증하고 userId를 반환한다.
+     * typ 클레임이 "refresh"가 아니거나 서명/만료 검증에 실패하면 예외를 던진다.
+     */
+    public UUID getUserIdFromRefreshToken(String token) {
+        try {
+            var claims = Jwts.parser()
+                    .verifyWith(key)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+            if (!TYPE_REFRESH.equals(claims.get(CLAIM_TYPE, String.class))) {
+                throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "유효하지 않은 토큰입니다.");
+            }
+            return UUID.fromString(claims.getSubject());
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "유효하지 않은 토큰입니다.");
+        }
+    }
+
+    public long getRefreshTokenExpirationMs() {
+        return refreshTokenExpirationMs;
+    }
+
     private String buildToken(UUID userId, long expirationMs, String type) {
         Instant now = Instant.now();
         return Jwts.builder()

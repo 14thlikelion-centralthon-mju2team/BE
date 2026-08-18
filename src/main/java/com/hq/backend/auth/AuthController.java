@@ -5,7 +5,10 @@ import com.hq.backend.auth.dto.LoginRequest;
 import com.hq.backend.auth.dto.SignupRequest;
 import com.hq.backend.auth.dto.SignupResponse;
 import com.hq.backend.auth.dto.TokenResponse;
+import com.hq.backend.common.auth.CurrentUserId;
 import jakarta.validation.Valid;
+import java.util.Map;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,5 +38,21 @@ public class AuthController {
     @PostMapping("/google")
     public TokenResponse loginWithGoogle(@Valid @RequestBody GoogleLoginRequest request) {
         return authService.loginWithGoogle(request);
+    }
+
+    @PostMapping("/refresh")
+    public TokenResponse refresh(@RequestBody Map<String, String> body) {
+        String refreshToken = body.get("refresh_token");
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new com.hq.backend.common.exception.ApiException(
+                    HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "refresh_token이 필요합니다.");
+        }
+        return authService.refresh(refreshToken);
+    }
+
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logout(@CurrentUserId UUID userId) {
+        authService.logout(userId);
     }
 }

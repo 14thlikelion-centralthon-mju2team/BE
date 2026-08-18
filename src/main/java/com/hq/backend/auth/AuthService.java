@@ -17,6 +17,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -45,6 +46,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final UserIdentityRepository userIdentityRepository;
     private final UserCredentialRepository userCredentialRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final RestClient restClient;
@@ -193,9 +195,57 @@ public class AuthService {
     }
 
     private TokenResponse issueTokens(User user) {
-        return new TokenResponse(
-                jwtService.generateAccessToken(user.getUserId()),
-                jwtService.generateRefreshToken(user.getUserId()),
-                jwtService.getAccessTokenExpirationSeconds());
+        String accessToken = jwtService.generateAccessToken(user.getUserId());
+        String refreshToken = jwtService.generateRefreshToken(user.getUserId());
+
+        // refresh 토큰 해시를 DB에 저장 (회전·폐기 지원)
+        String tokenHash = hashToken(refreshToken);
+        Instant expiresAt = Instant.now().plusMillis(jwtService.getRefreshTokenExpirationMs());
+        refreshTokenRepository.save(RefreshToken.create(user.getUserId(), tokenHash, expiresAt));
+
+        return new TokenResponse(accessToken, refreshToken, jwtService.getAccessTokenExpirationSeconds());
+    }
+
+    /**
+     * Refresh 토큰으로 새 토큰 쌍 발급 (토큰 회전).
+     * 구 refresh 토큰은 즉시 revoke된다.
+     */
+    @Transactional
+    public TokenResponse refresh(String rawRefreshToken) {
+        UUID userId = jwtService.getUserIdFromRefreshToken(rawRefreshToken);
+
+        String tokenHash = hashToken(rawRefreshToken);
+        RefreshToken stored = refreshTokenRepository.findByTokenHash(tokenHash)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "유효하지 않은 토큰입니다."));
+
+        if (stored.isRevoked() || stored.isExpired()) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "만료되었거나 폐기된 토큰입니다.");
+        }
+
+        // 구 토큰 폐기 (회전)
+        stored.revoke();
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "사용자를 찾을 수 없습니다."));
+
+        return issueTokens(user);
+    }
+
+    /**
+     * 로그아웃 — 해당 사용자의 모든 활성 refresh 토큰 폐기.
+     */
+    @Transactional
+    public void logout(UUID userId) {
+        refreshTokenRepository.revokeAllByUserId(userId);
+    }
+
+    private String hashToken(String token) {
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(token.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(hash);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 }
