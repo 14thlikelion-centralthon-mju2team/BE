@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.hq.backend.metrics.ProductEventRepository;
 import com.hq.backend.personalization.EventDelayReasonRepository;
 import com.hq.backend.personalization.UserPrepEstimate;
 import com.hq.backend.personalization.UserPrepEstimateRepository;
@@ -62,6 +63,9 @@ class AiEngineIntegrationTest {
 
     @Autowired
     private EventDelayReasonRepository eventDelayReasonRepository;
+
+    @Autowired
+    private ProductEventRepository productEventRepository;
 
     @BeforeAll
     static void startFakeEngine() throws IOException {
@@ -123,6 +127,9 @@ class AiEngineIntegrationTest {
 
         assertThat(planWellnessActionRepository.findAll())
                 .anyMatch(a -> a.getPlanId().equals(created.planId()) && "sunscreen".equals(a.getActionCode()));
+
+        assertThat(productEventRepository.findAll())
+                .anyMatch(e -> "plan_created".equals(e.getEventName()) && created.userId().equals(e.getUserId()));
     }
 
     @Test
@@ -158,6 +165,11 @@ class AiEngineIntegrationTest {
 
         assertThat(eventDelayReasonRepository.findByEventId(created.eventId()))
                 .anyMatch(r -> "prep_overrun".equals(r.getReasonCode()));
+
+        assertThat(productEventRepository.findAll())
+                .anyMatch(e -> "arrival_result".equals(e.getEventName()) && created.userId().equals(e.getUserId()));
+        assertThat(productEventRepository.findAll())
+                .anyMatch(e -> "personalization_adjusted".equals(e.getEventName()) && created.userId().equals(e.getUserId()));
     }
 
     private record Created(String accessToken, UUID userId, UUID eventId, UUID planId) {

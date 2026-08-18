@@ -3,6 +3,7 @@ package com.hq.backend.plan;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.hq.backend.event.Event;
+import com.hq.backend.metrics.ProductEventService;
 import com.hq.backend.personalization.UserPrepEstimateRepository;
 import com.hq.backend.place.PlaceCoordinateCodec;
 import com.hq.backend.place.UserPlace;
@@ -30,6 +31,7 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -69,6 +71,7 @@ public class PlanCreationService {
 
     private final PlanEngineClient planEngineClient;
     private final WellnessEngineClient wellnessEngineClient;
+    private final ProductEventService productEventService;
     private final PlanRevisionRepository planRevisionRepository;
     private final PlanContextRepository planContextRepository;
     private final RouteOptionRepository routeOptionRepository;
@@ -200,6 +203,12 @@ public class PlanCreationService {
         persistEnvironmentContext(revision, computed.environment());
         persistChecklist(revision, output.checklist());
         computeAndPersistWellness(revision, computed);
+
+        productEventService.record(computed.userId(), "plan_created", Map.of(
+                "planId", revision.getPlanId().toString(),
+                "eventId", revision.getEventId().toString(),
+                "revisionNo", revisionNo,
+                "feasible", output.feasible()));
 
         return revision;
     }

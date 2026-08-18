@@ -8,6 +8,7 @@ import com.hq.backend.event.EventActionLog;
 import com.hq.backend.event.EventActionLogRepository;
 import com.hq.backend.event.EventRepository;
 import com.hq.backend.event.EventStatus;
+import com.hq.backend.metrics.ProductEventService;
 import com.hq.backend.personalization.ArrivalResult;
 import com.hq.backend.personalization.EventDelayReason;
 import com.hq.backend.personalization.EventDelayReasonId;
@@ -24,6 +25,7 @@ import com.hq.backend.plan.dto.ActionBatchResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -69,6 +71,7 @@ public class PlanActionService {
     private final PersonalizationEngineClient personalizationEngineClient;
     private final PlanContextRepository planContextRepository;
     private final PlanService planService;
+    private final ProductEventService productEventService;
 
     @Transactional
     public ActionBatchResponse submit(UUID userId, UUID planId, ActionBatchRequest request) {
@@ -147,9 +150,23 @@ public class PlanActionService {
         }
         execution.setUpdatedAt(now);
         eventExecutionRepository.save(execution);
+        recordActionMetric(event, item, execution);
 
         if (item.actionType() == ActionType.ARRIVED) {
             runPersonalizationAdjustment(event, revision, execution, item);
+        }
+    }
+
+    private void recordActionMetric(Event event, ActionBatchRequest.ActionItem item, EventExecution execution) {
+        switch (item.actionType()) {
+            case PREP_STARTED -> productEventService.record(event.getUserId(), "prep_started",
+                    Map.of("eventId", event.getEventId().toString()));
+            case DEPARTED -> productEventService.record(event.getUserId(), "departed",
+                    Map.of("eventId", event.getEventId().toString()));
+            case ARRIVED -> productEventService.record(event.getUserId(), "arrival_result", Map.of(
+                    "eventId", event.getEventId().toString(), "arrivalResult", execution.getArrivalResult()));
+            default -> {
+            }
         }
     }
 
@@ -224,6 +241,8 @@ public class PlanActionService {
                 .adjustmentReason(response.adjustmentReason())
                 .validFrom(now)
                 .build());
+        productEventService.record(event.getUserId(), "personalization_adjusted", Map.of(
+                "eventId", event.getEventId().toString(), "cause", cause));
     }
 
     private String toResultSource(ActionSource actionSource) {
