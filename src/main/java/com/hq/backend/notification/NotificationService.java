@@ -3,7 +3,11 @@ package com.hq.backend.notification;
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
 import com.hq.backend.plan.PlanRevision;
+import com.hq.backend.pushdevice.PushDevice;
+import com.hq.backend.pushdevice.PushDeviceRepository;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,10 +15,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 알림 취소 및 아웃박스 투입을 담당하는 서비스.
+ * 알림 발송 및 취소를 담당하는 서비스.
  *
- * TRD §13.1 — notification INSERT → 커밋 → 아웃박스 → FCM 발송.
- * 상태 입력 시 남은 예약 알림을 취소하고 일정 상태를 원자적으로 전이한다.
+ * TRD §13.1 — notification INSERT → 커밋 → FCM 발송.
+ * 아웃박스 패턴은 notification_outbox DDL 추가 후 활성화 예정.
+ * 현재는 발송 시각 도래 시 즉시 FCM을 호출하는 단순 구조.
  */
 @Service
 public class NotificationService {
@@ -22,40 +27,55 @@ public class NotificationService {
     private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
 
     private final NotificationRepository notificationRepository;
-    private final NotificationOutboxRepository outboxRepository;
     private final EventRepository eventRepository;
+    private final PushDeviceRepository pushDeviceRepository;
+    private final FcmSender fcmSender;
 
     public NotificationService(NotificationRepository notificationRepository,
-                               NotificationOutboxRepository outboxRepository,
-                               EventRepository eventRepository) {
+                               EventRepository eventRepository,
+                               PushDeviceRepository pushDeviceRepository,
+                               FcmSender fcmSender) {
         this.notificationRepository = notificationRepository;
-        this.outboxRepository = outboxRepository;
         this.eventRepository = eventRepository;
+        this.pushDeviceRepository = pushDeviceRepository;
+        this.fcmSender = fcmSender;
     }
 
     /**
-     * 예약된 알림의 발송 시각이 도래했을 때 아웃박스에 투입한다.
-     * PlanOrchestrator에서 scheduled_at <= now인 알림을 찾아 호출.
+     * 발송 시각이 도래한 알림을 즉시 FCM으로 발송한다.
      */
     @Transactional
-    public void enqueueForDelivery(Notification notification, PlanRevision revision) {
+    public void sendNotification(Notification notification, PlanRevision revision) {
         UUID eventId = revision.getEventId();
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new IllegalStateException("event not found: " + eventId));
 
+        List<String> tokens = pushDeviceRepository.findByUserIdAndTokenStatus(event.getUserId(), "active")
+                .stream()
+                .map(PushDevice::getCurrentToken)
+                .toList();
+
+        if (tokens.isEmpty()) {
+            log.warn("[NotificationService] user_id={} 등록된 푸시 기기 없음", event.getUserId());
+            notification.setDeliveryStatus("failed");
+            notification.setSentAt(Instant.now());
+            return;
+        }
+
         String collapseKey = eventId + ":" + notification.getNotificationType();
+        int sent = fcmSender.send(tokens, "Ensom", notification.getBodyMasked(), collapseKey,
+                Map.of("notification_id", notification.getNotificationId().toString(),
+                        "type", notification.getNotificationType(),
+                        "plan_id", notification.getPlanId().toString()));
 
-        NotificationOutbox outbox = NotificationOutbox.builder()
-                .notificationId(notification.getNotificationId())
-                .userId(event.getUserId())
-                .collapseKey(collapseKey)
-                .payload(notification.getBodyMasked())
-                .createdAt(Instant.now())
-                .build();
-
-        outboxRepository.save(outbox);
-        log.debug("[NotificationService] 아웃박스 투입: notification_id={}, user_id={}",
-                notification.getNotificationId(), event.getUserId());
+        if (sent > 0) {
+            notification.setDeliveryStatus("sent");
+            notification.setSentAt(Instant.now());
+            log.info("[NotificationService] 발송 완료: notification_id={}", notification.getNotificationId());
+        } else {
+            notification.setDeliveryStatus("failed");
+            notification.setSentAt(Instant.now());
+        }
     }
 
     /**
@@ -67,15 +87,6 @@ public class NotificationService {
     @Transactional
     public int cancelPendingNotifications(UUID planId) {
         int cancelled = notificationRepository.cancelPendingByPlanId(planId);
-
-        // 아웃박스에서도 pending 상태인 것을 done으로 마킹
-        notificationRepository.findByPlanIdAndDeliveryStatus(planId, "cancelled")
-                .forEach(n -> outboxRepository.findByNotificationIdAndStatus(n.getNotificationId(), "pending")
-                        .forEach(o -> {
-                            o.setStatus("done");
-                            o.setProcessedAt(Instant.now());
-                        }));
-
         if (cancelled > 0) {
             log.info("[NotificationService] plan_id={} 예약 알림 {}건 취소", planId, cancelled);
         }

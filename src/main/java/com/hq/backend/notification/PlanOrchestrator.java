@@ -83,14 +83,13 @@ public class PlanOrchestrator {
                 revision.getPlanId(), nextEval);
     }
 
-    /** 해당 plan의 scheduled 알림 중 시각이 도래한 것을 아웃박스에 투입 */
+    /** 해당 plan의 scheduled 알림 중 시각이 도래한 것을 FCM으로 발송 */
     private void enqueueDueNotifications(PlanRevision revision, Instant now) {
         notificationRepository.findByPlanIdAndDeliveryStatus(revision.getPlanId(), "scheduled")
                 .stream()
                 .filter(n -> !n.getScheduledAt().isAfter(now))
                 .forEach(n -> {
-                    notificationService.enqueueForDelivery(n, revision);
-                    n.setDeliveryStatus("sent"); // 아웃박스에 들어갔으므로 상태 전이
+                    notificationService.sendNotification(n, revision);
                 });
     }
 
