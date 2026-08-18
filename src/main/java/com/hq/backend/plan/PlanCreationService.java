@@ -15,13 +15,23 @@ import com.hq.backend.preprule.UserPrepRuleRepository;
 import com.hq.backend.provider.EnvironmentProvider;
 import com.hq.backend.provider.GeoPoint;
 import com.hq.backend.provider.RouteProvider;
+import com.hq.backend.wellness.PlanWellnessAction;
+import com.hq.backend.wellness.PlanWellnessActionRepository;
+import com.hq.backend.wellness.PlanWellnessScore;
+import com.hq.backend.wellness.PlanWellnessScoreRepository;
+import com.hq.backend.wellness.UserWellnessPrefRepository;
+import com.hq.backend.wellness.WellnessEngineClient;
+import com.hq.backend.wellness.dto.WellnessEngineRequest;
+import com.hq.backend.wellness.dto.WellnessEngineResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -44,11 +54,28 @@ public class PlanCreationService {
     private static final int TRAFFIC_BUFFER_MINUTES = 5;
     private static final String ANCHOR_ARRIVE_BY = "arrive_by";
 
+    // WellnessEngineConfig 시드값(V6 engine_config: wis_weights/wis_interest_boost_max/
+    // outdoor_cap_min/wellness_event_min). wis_band_card(40)는 API 명세 §12.1 밴드표에서
+    // 가져왔다 — V6엔 mid 하한을 별도 키로 안 둔다. DB 실연결은 PR #105 리뷰의 키 합의 이후.
+    private static final double WIS_WEIGHT_UV = 0.35;
+    private static final double WIS_WEIGHT_PM = 0.25;
+    private static final double WIS_WEIGHT_TEMP = 0.20;
+    private static final double WIS_WEIGHT_OUTDOOR = 0.20;
+    private static final double WIS_INTEREST_BOOST_MAX = 1.25;
+    private static final int OUTDOOR_CAP_MINUTES = 120;
+    private static final int WIS_BAND_CARD = 40;
+    private static final int WIS_BAND_EVENT = 70;
+    private static final String WEIGHT_VERSION = "w1";
+
     private final PlanEngineClient planEngineClient;
+    private final WellnessEngineClient wellnessEngineClient;
     private final PlanRevisionRepository planRevisionRepository;
     private final PlanContextRepository planContextRepository;
     private final RouteOptionRepository routeOptionRepository;
     private final PlanPrepItemRepository planPrepItemRepository;
+    private final PlanWellnessScoreRepository planWellnessScoreRepository;
+    private final PlanWellnessActionRepository planWellnessActionRepository;
+    private final UserWellnessPrefRepository userWellnessPrefRepository;
     private final UserPrepRuleRepository userPrepRuleRepository;
     private final UserPrepEstimateRepository userPrepEstimateRepository;
     private final UserPlaceRepository userPlaceRepository;
@@ -93,7 +120,7 @@ public class PlanCreationService {
     }
 
     private record ComputedPlan(
-            UUID eventId, UUID originPlaceId, String originName, double originLat, double originLng,
+            UUID userId, UUID eventId, UUID originPlaceId, String originName, double originLat, double originLng,
             List<com.hq.backend.provider.RouteOption> routes,
             com.hq.backend.provider.RouteOption selectedRoute,
             com.hq.backend.provider.EnvironmentSnapshot environment,
@@ -137,7 +164,7 @@ public class PlanCreationService {
         String inputHash = computeInputHash(event, originPlaceId, selectedRoute, environment, output);
 
         return Optional.of(new ComputedPlan(
-                event.getEventId(), originPlaceId, origin.getPlaceName(), originLat, originLng,
+                userId, event.getEventId(), originPlaceId, origin.getPlaceName(), originLat, originLng,
                 routes, selectedRoute, environment, output, inputHash, now));
     }
 
@@ -172,8 +199,91 @@ public class PlanCreationService {
         persistRouteOptions(revision, computed.routes(), computed.selectedRoute());
         persistEnvironmentContext(revision, computed.environment());
         persistChecklist(revision, output.checklist());
+        computeAndPersistWellness(revision, computed);
 
         return revision;
+    }
+
+    // TRD §7 — 환경 데이터가 없어도(environment=null) 엔진에 그대로 보내 degraded 처리를
+    // 맡긴다(TR-11.5와 같은 원칙, "웰니스만 조용히 생략"). 엔진 호출 자체가 실패하면(empty)
+    // 또는 wisScore가 없으면(degraded) 아무것도 저장하지 않는다 — 계획 생성은 이미 끝났다.
+    private void computeAndPersistWellness(PlanRevision revision, ComputedPlan computed) {
+        WellnessEngineRequest.EnvironmentSnapshot environmentSnapshot = computed.environment() == null ? null
+                : new WellnessEngineRequest.EnvironmentSnapshot(
+                        computed.environment().precipitationProb(), computed.environment().tempC(), computed.environment().asOf());
+
+        List<WellnessEngineRequest.WellnessPreference> preferences = userWellnessPrefRepository
+                .findByUserId(computed.userId()).stream()
+                .map(pref -> new WellnessEngineRequest.WellnessPreference(
+                        pref.getWellnessTopic(), pref.isEnabled(), pref.getRemindIntervalMinutes(), pref.getDailyEventCap()))
+                .toList();
+
+        List<WellnessEngineRequest.PrepItemSnapshot> prepItems = userPrepRuleRepository
+                .findByUserIdAndIsActiveTrueOrderByCreatedAtDesc(computed.userId()).stream()
+                .filter(rule -> !RuleTiming.POST_ARRIVAL.name().toLowerCase().equals(rule.getRuleTiming()))
+                .map(this::toWellnessPrepItemSnapshot)
+                .toList();
+
+        WellnessEngineRequest request = new WellnessEngineRequest(
+                environmentSnapshot,
+                computed.selectedRoute().outdoorSec() / 60,
+                preferences,
+                prepItems,
+                new WellnessEngineRequest.EngineConfig(
+                        WIS_WEIGHT_UV, WIS_WEIGHT_PM, WIS_WEIGHT_TEMP, WIS_WEIGHT_OUTDOOR,
+                        WIS_INTEREST_BOOST_MAX, OUTDOOR_CAP_MINUTES, WIS_BAND_CARD, WIS_BAND_EVENT, WEIGHT_VERSION));
+
+        Optional<WellnessEngineResponse> response = wellnessEngineClient.evaluate(request);
+        if (response.isEmpty() || response.get().wisScore() == null) {
+            return;
+        }
+        WellnessEngineResponse output = response.get();
+
+        if (output.normalizedLoads() != null) {
+            planWellnessScoreRepository.save(PlanWellnessScore.builder()
+                    .planId(revision.getPlanId())
+                    .uvLoad(java.math.BigDecimal.valueOf(output.normalizedLoads().uvLoad()))
+                    .pmLoad(java.math.BigDecimal.valueOf(output.normalizedLoads().pmLoad()))
+                    .thermalLoad(java.math.BigDecimal.valueOf(output.normalizedLoads().thermalLoad()))
+                    .outdoorLoad(java.math.BigDecimal.valueOf(output.normalizedLoads().outdoorLoad()))
+                    .interestMultiplier(java.math.BigDecimal.valueOf(output.normalizedLoads().interestMultiplier()))
+                    .wisScore(output.wisScore().shortValue())
+                    .wisBand(output.wisBand())
+                    .weightVersion(output.weightVersion())
+                    .calculatedAt(Instant.now())
+                    .build());
+        }
+
+        // uq_wellness_action_rank(plan_id, display_rank) — 엔진이 같은 순위를 중복 반환하면
+        // INSERT가 제약 위반으로 실패해 계획 생성 트랜잭션 전체가 롤백된다(TR-11.5 위반:
+        // 웰니스 문제가 시간 계획까지 깨뜨리면 안 된다). 중복 순위는 먼저 온 것만 반영한다.
+        Set<Short> seenRanks = new HashSet<>();
+        for (WellnessEngineResponse.WellnessAction action : output.actions()) {
+            short displayRank = (short) action.displayRank();
+            if (!seenRanks.add(displayRank)) {
+                continue;
+            }
+            planWellnessActionRepository.save(PlanWellnessAction.builder()
+                    .planId(revision.getPlanId())
+                    .wellnessTopic(action.wellnessTopic())
+                    .actionCode(action.actionCode())
+                    .actionLabel(action.actionLabel())
+                    .displayRank(displayRank)
+                    .reasonSnapshot(action.reason())
+                    .completionStatus("proposed")
+                    .build());
+        }
+    }
+
+    private WellnessEngineRequest.PrepItemSnapshot toWellnessPrepItemSnapshot(UserPrepRule rule) {
+        boolean timedRoutine = "timed_routine".equals(rule.getActionType());
+        return new WellnessEngineRequest.PrepItemSnapshot(
+                rule.getPrepRuleId().toString(),
+                rule.getRuleName(),
+                rule.getActionType(),
+                "rule",
+                timedRoutine && rule.getDefaultMinutes() != null ? rule.getDefaultMinutes() : 0,
+                rule.isSensitive());
     }
 
     private void persistRouteOptions(

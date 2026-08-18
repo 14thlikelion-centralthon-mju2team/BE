@@ -78,6 +78,10 @@ public class Event {
 
     @Setter
     @Column(nullable = false)
+    private boolean excludedFromLearning;
+
+    @Setter
+    @Column(nullable = false)
     private String status; // planned -> notified -> preparing -> enroute -> arrived -> closed (+ skipped/cancelled/unresolved)
 
     @Column(nullable = false)

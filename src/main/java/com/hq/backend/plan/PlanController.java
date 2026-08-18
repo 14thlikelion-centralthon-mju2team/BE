@@ -1,10 +1,17 @@
 package com.hq.backend.plan;
 
 import com.hq.backend.common.auth.CurrentUserId;
+import com.hq.backend.plan.dto.ActionBatchRequest;
+import com.hq.backend.plan.dto.ActionBatchResponse;
 import com.hq.backend.plan.dto.PlanDetailResponse;
 import com.hq.backend.plan.dto.PlanPatchRequest;
+import com.hq.backend.plan.dto.PrepItemResolveRequest;
+import com.hq.backend.plan.dto.PrepItemResolveResponse;
 import com.hq.backend.plan.dto.RouteOptionResponse;
 import com.hq.backend.plan.dto.RouteSelectRequest;
+import com.hq.backend.wellness.WellnessActionResolveService;
+import com.hq.backend.wellness.dto.WellnessActionResolveRequest;
+import com.hq.backend.wellness.dto.WellnessActionResolveResponse;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -23,6 +30,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class PlanController {
 
     private final PlanService planService;
+    private final PlanActionService planActionService;
+    private final PlanPrepItemResolveService planPrepItemResolveService;
+    private final WellnessActionResolveService wellnessActionResolveService;
 
     @GetMapping
     public PlanDetailResponse get(@CurrentUserId UUID userId, @PathVariable UUID planId) {
@@ -44,5 +54,25 @@ public class PlanController {
     public PlanDetailResponse selectRoute(
             @CurrentUserId UUID userId, @PathVariable UUID planId, @Valid @RequestBody RouteSelectRequest request) {
         return planService.selectRoute(userId, planId, request.routeOptionId());
+    }
+
+    @PostMapping("/actions")
+    public ActionBatchResponse submitActions(
+            @CurrentUserId UUID userId, @PathVariable UUID planId, @Valid @RequestBody ActionBatchRequest request) {
+        return planActionService.submit(userId, planId, request);
+    }
+
+    @PostMapping("/prep-items/{planPrepItemId}/resolve")
+    public PrepItemResolveResponse resolvePrepItem(
+            @CurrentUserId UUID userId, @PathVariable UUID planId, @PathVariable UUID planPrepItemId,
+            @Valid @RequestBody PrepItemResolveRequest request) {
+        return planPrepItemResolveService.resolve(userId, planId, planPrepItemId, request);
+    }
+
+    @PostMapping("/wellness-actions/{wellnessActionId}/resolve")
+    public WellnessActionResolveResponse resolveWellnessAction(
+            @CurrentUserId UUID userId, @PathVariable UUID planId, @PathVariable UUID wellnessActionId,
+            @Valid @RequestBody WellnessActionResolveRequest request) {
+        return wellnessActionResolveService.resolve(userId, planId, wellnessActionId, request);
     }
 }

@@ -1,12 +1,16 @@
 package com.hq.backend.personalization;
 
 import com.hq.backend.common.auth.CurrentUserId;
+import com.hq.backend.personalization.dto.PersonalizationRevertRequest;
 import com.hq.backend.personalization.dto.PersonalizationResponse;
+import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,5 +31,11 @@ public class PersonalizationController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void reset(@CurrentUserId UUID userId) {
         personalizationService.reset(userId);
+    }
+
+    @PostMapping("/revert")
+    public PersonalizationResponse revert(
+            @CurrentUserId UUID userId, @Valid @RequestBody PersonalizationRevertRequest request) {
+        return personalizationService.revert(userId, request.eventId());
     }
 }
