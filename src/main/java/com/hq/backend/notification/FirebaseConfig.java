@@ -8,17 +8,17 @@ import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
  * Firebase Admin SDK 초기화.
- * firebase.service-account-path가 설정되어 있을 때만 활성화.
- * 없으면 StubFcmSender가 사용된다.
+ * firebase.service-account-path가 실제 값으로 설정되어 있을 때만 활성화.
+ * 빈 문자열이면 비활성화 — StubFcmSender가 사용된다.
  */
 @Configuration
-@ConditionalOnProperty(name = "firebase.service-account-path")
+@ConditionalOnExpression("!'${firebase.service-account-path:}'.isBlank()")
 public class FirebaseConfig {
 
     private static final Logger log = LoggerFactory.getLogger(FirebaseConfig.class);
