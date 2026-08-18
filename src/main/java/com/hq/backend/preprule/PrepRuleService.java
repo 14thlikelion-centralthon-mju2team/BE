@@ -1,11 +1,13 @@
 package com.hq.backend.preprule;
 
 import com.hq.backend.common.exception.ApiException;
+import com.hq.backend.metrics.ProductEventService;
 import com.hq.backend.preprule.dto.PrepRuleRequest;
 import com.hq.backend.preprule.dto.PrepRuleResponse;
 import com.hq.backend.preprule.dto.PrepRuleUpdateRequest;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PrepRuleService {
 
     private final UserPrepRuleRepository userPrepRuleRepository;
+    private final ProductEventService productEventService;
 
     @Transactional(readOnly = true)
     public List<PrepRuleResponse> list(UUID userId) {
@@ -51,6 +54,9 @@ public class PrepRuleService {
                 .isActive(true)
                 .createdAt(Instant.now())
                 .build());
+
+        productEventService.record(userId, "prep_rule_created", Map.of(
+                "ruleCategory", saved.getRuleCategory(), "fromChip", saved.isFromChip()));
 
         return PrepRuleResponse.from(saved);
     }

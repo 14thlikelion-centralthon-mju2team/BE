@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.hq.backend.consent.UserConsentRepository;
+import com.hq.backend.metrics.ProductEventRepository;
 import com.jayway.jsonpath.JsonPath;
 import java.util.List;
 import java.util.UUID;
@@ -32,6 +33,9 @@ class UserControllerTest {
 
     @Autowired
     private UserConsentRepository userConsentRepository;
+
+    @Autowired
+    private ProductEventRepository productEventRepository;
 
     @Test
     void 탈퇴하면_사용자_데이터가_하드_삭제되고_동의_이력만_남는다() throws Exception {
@@ -82,6 +86,11 @@ class UserControllerTest {
                 .filter(c -> c.getUserId() == null)
                 .toList();
         assertThat(remainingConsents).isNotEmpty();
+
+        // user_withdrawn은 탈퇴 CASCADE로 자기 로그가 같이 삭제되지 않도록 userId=null로 남는다.
+        boolean withdrawnEventLogged = productEventRepository.findAll().stream()
+                .anyMatch(e -> "user_withdrawn".equals(e.getEventName()) && e.getUserId() == null);
+        assertThat(withdrawnEventLogged).isTrue();
     }
 
     @Test

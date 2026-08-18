@@ -3,11 +3,13 @@ package com.hq.backend.personalization;
 import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
+import com.hq.backend.metrics.ProductEventService;
 import com.hq.backend.personalization.dto.PersonalizationResponse;
 import com.hq.backend.personalization.dto.PrepEstimateResponse;
 import com.hq.backend.wellness.UserWellnessPrefRepository;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -29,6 +31,7 @@ public class PersonalizationService {
     private final UserPrepEstimateRepository userPrepEstimateRepository;
     private final UserWellnessPrefRepository userWellnessPrefRepository;
     private final EventRepository eventRepository;
+    private final ProductEventService productEventService;
 
     @Transactional(readOnly = true)
     public PersonalizationResponse get(UUID userId) {
@@ -46,6 +49,7 @@ public class PersonalizationService {
         userPrepEstimateRepository.findByUserIdAndValidToIsNull(userId)
                 .forEach(estimate -> estimate.setValidTo(now));
         userWellnessPrefRepository.deleteByUserId(userId);
+        productEventService.record(userId, "personalization_reset", Map.of());
     }
 
     // §15.3 — 값 복원에 그치지 않고 해당 이벤트의 표본을 학습에서 영구 제외한다(그러지 않으면
@@ -78,6 +82,7 @@ public class PersonalizationService {
                 .build());
 
         event.setExcludedFromLearning(true);
+        productEventService.record(userId, "personalization_reverted", Map.of("eventId", eventId.toString()));
 
         return get(userId);
     }
