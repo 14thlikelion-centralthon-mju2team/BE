@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -27,6 +28,39 @@ class WellnessEventSchedulerServiceTest {
     @Mock private UserWellnessPrefRepository prefRepository;
     @Mock private EventRepository eventRepository;
     @Mock private PlanRevisionRepository planRevisionRepository;
+
+    @Test
+    void 모든_gate를_통과하면_notification과_schedule을_생성한다() {
+        UUID planId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        Instant now = Instant.now();
+        PlanRevision revision = PlanRevision.builder()
+                .planId(planId).eventId(eventId).revisionNo(2).build();
+        PlanWellnessAction action = PlanWellnessAction.builder()
+                .planId(planId).actionCode("sunscreen").wellnessTopic("uv")
+                .actionLabel("선크림").displayRank((short) 1).reasonSnapshot("UV")
+                .completionStatus("proposed").build();
+        UUID notificationId = UUID.randomUUID();
+
+        when(scheduleRepository.findByPlanId(planId)).thenReturn(List.of());
+        when(actionRepository.findByPlanId(planId)).thenReturn(List.of(action));
+        when(gate.evaluate(revision, "sunscreen", now)).thenReturn(true);
+        when(notificationPort.existsByDedupKey(org.mockito.ArgumentMatchers.anyString())).thenReturn(false);
+        when(notificationPort.createWellnessNotification(
+                org.mockito.ArgumentMatchers.eq(planId), org.mockito.ArgumentMatchers.eq(now),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString())).thenReturn(notificationId);
+
+        scheduler().tryFireWellnessEvents(revision, now);
+
+        ArgumentCaptor<WellnessEventSchedule> captor = ArgumentCaptor.forClass(WellnessEventSchedule.class);
+        verify(scheduleRepository).save(captor.capture());
+        WellnessEventSchedule saved = captor.getValue();
+        assertThat(saved.getPlanId()).isEqualTo(planId);
+        assertThat(saved.getNotificationId()).isEqualTo(notificationId);
+        assertThat(saved.getActionCode()).isEqualTo("sunscreen");
+        assertThat(saved.getScheduledAt()).isEqualTo(now);
+    }
 
     @Test
     void stop_today는_같은_사용자의_다른_당일_plan_미발송_알림도_취소한다() {
