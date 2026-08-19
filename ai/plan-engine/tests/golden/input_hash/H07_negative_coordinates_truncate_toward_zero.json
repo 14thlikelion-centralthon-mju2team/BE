@@ -1,0 +1,60 @@
+{
+  "caseId": "H07_negative_coordinates_truncate_toward_zero",
+  "description": "음수는 0 방향으로 절단한다 — -33.8688006 은 -33.868800 이다",
+  "engine": "plan",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m1-plan-engine-1.0.0",
+  "configVersion": "trd-5.5",
+  "input": {
+    "eventStartsAt": "2026-08-20T14:00:00+09:00",
+    "origin": {
+      "latitude": 37.5665,
+      "longitude": 126.978
+    },
+    "destination": {
+      "latitude": -33.8688006,
+      "longitude": -151.2093005
+    },
+    "sourceType": "map_search",
+    "estimatedPrepMinutes": 30,
+    "trafficBufferMinutes": 5,
+    "arrivalBufferMinutes": 10,
+    "selectedRoute": {
+      "routeId": "route-1",
+      "totalMinutes": 40,
+      "walkMinutes": 15
+    },
+    "quantizedContext": {
+      "rain": "none",
+      "uv": "high",
+      "pm": "good",
+      "temp": "hot",
+      "tempSwing": false
+    },
+    "activePrepItems": [
+      {
+        "itemId": "item-a",
+        "appliedMinutes": 10
+      },
+      {
+        "itemId": "item-b",
+        "appliedMinutes": 0
+      }
+    ],
+    "calcVersion": "m1-plan-engine-1.0.0",
+    "weightVersion": "m3-wellness-1.0.0"
+  },
+  "expected": {
+    "coordinates": {
+      "destinationLat": "-33.868800",
+      "destinationLng": "-151.209300"
+    },
+    "canonicalJson": "{\"activePrepItems\":[{\"appliedMinutes\":10,\"itemId\":\"item-a\"},{\"appliedMinutes\":0,\"itemId\":\"item-b\"}],\"arrivalBufferMinutes\":10,\"calcVersion\":\"m1-plan-engine-1.0.0\",\"destinationLat\":\"-33.868800\",\"destinationLng\":\"-151.209300\",\"estimatedPrepMinutes\":30,\"eventStartsAt\":\"2026-08-20T05:00:00Z\",\"originLat\":\"37.566500\",\"originLng\":\"126.978000\",\"quantizedPm\":\"good\",\"quantizedRain\":\"none\",\"quantizedTemp\":\"hot\",\"quantizedTempSwing\":false,\"quantizedUv\":\"high\",\"routeId\":\"route-1\",\"routeTotalMinutes\":40,\"routeWalkMinutes\":15,\"sourceType\":\"map_search\",\"trafficBufferMinutes\":5,\"weightVersion\":\"m3-wellness-1.0.0\"}",
+    "inputHash": "7e76be77132a7f5ad7e186aa7cb4a827f377b051339c7b1c9d68d230359fe867"
+  },
+  "tags": [
+    "conformance",
+    "input-hash",
+    "coordinate-policy"
+  ]
+}

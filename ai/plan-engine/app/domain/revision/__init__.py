@@ -12,15 +12,19 @@
 from app.domain.revision.input_hash import (
     CANONICAL_SEPARATORS,
     COORDINATE_DECIMALS,
+    COORDINATE_QUANTUM,
     canonical_json,
     compute_input_hash,
+    format_coordinate,
 )
 from app.domain.revision.models import RevisionSnapshot
 
 __all__ = [
     "CANONICAL_SEPARATORS",
     "COORDINATE_DECIMALS",
+    "COORDINATE_QUANTUM",
     "RevisionSnapshot",
     "canonical_json",
     "compute_input_hash",
+    "format_coordinate",
 ]

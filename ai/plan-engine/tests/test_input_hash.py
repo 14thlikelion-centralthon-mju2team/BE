@@ -63,9 +63,62 @@ def test_vector_dir_is_populated() -> None:
 def test_conformance_vector(vector_path: Path) -> None:
     vector = load(vector_path)
     snapshot = RevisionSnapshot.model_validate(vector["input"])
+    built = build_hash_input(snapshot)
 
-    assert canonical_json(build_hash_input(snapshot)) == vector["expected"]["canonicalJson"]
+    # 좌표 기대값이 있으면 먼저 대조한다.  Java 구현이 갈릴 때 원인이 바로 보인다.
+    for key, expected in vector["expected"].get("coordinates", {}).items():
+        assert built[key] == expected
+
+    assert canonical_json(built) == vector["expected"]["canonicalJson"]
     assert compute_input_hash(snapshot) == vector["expected"]["inputHash"]
+
+
+class TestCoordinatePolicy:
+    """좌표는 6자리 절단(0 방향)이다 — 반올림이 아니다.
+
+    반올림을 고르면 "정확히 절반"에서 언어별 기본 모드(Python round-half-even,
+    Java ``String.format`` HALF_UP)와 이진 표현 오차가 서로 다른 답을 낸다. 절단은
+    그 규칙 자체를 없앤다.
+    """
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (37.5665, "37.566500"),
+            (37.5665001, "37.566500"),
+            (37.5665005, "37.566500"),  # 정확히 절반 — 반올림이면 갈릴 자리
+            (37.5665006, "37.566500"),  # 반올림이면 37.566501
+            (37.5665009, "37.566500"),
+            (37.0, "37.000000"),
+            (-37.5665006, "-37.566500"),  # 0 방향 절단
+            (-151.2093005, "-151.209300"),
+        ],
+    )
+    def test_truncates_toward_zero(self, value: float, expected: str) -> None:
+        assert format_coordinate(value) == expected
+
+    @pytest.mark.parametrize("value", [-0.0000004, 0.0000004, -1e-07, 1e-07, -0.0])
+    def test_zero_never_carries_a_sign(self, value: float) -> None:
+        """Java ``BigDecimal``의 0은 부호가 없다. ``-0.000000``을 내보내면 그 자리에서 갈린다."""
+        assert format_coordinate(value) == "0.000000"
+
+    def test_rounding_policy_would_change_the_hash(self) -> None:
+        """정책이 반올림이었다면 H01과 H05가 다른 해시였을 것이다.
+
+        두 스냅샷은 6자리 아래에서만 다르다. 절단이면 같은 해시, 반올림이면 다른 해시다.
+        """
+        assert compute_input_hash(base_snapshot()) == compute_input_hash(
+            base_snapshot(origin={"latitude": 37.5665006, "longitude": 126.9780009})
+        )
+
+    def test_binary_error_does_not_leak_through(self) -> None:
+        """``Decimal(float)``이 아니라 ``Decimal(str(float))``을 거쳐야 한다.
+
+        ``Decimal(37.5665)``은 ``37.56650000000000205...``로 펼쳐진다. 절단 자릿수 아래라
+        지금은 결과가 같지만, 경로를 바꾸면 경계에서 갈린다.
+        """
+        assert format_coordinate(37.5665) == "37.566500"
+        assert format_coordinate(0.1) == "0.100000"
 
 
 class TestCanonicalisation:
@@ -105,12 +158,13 @@ class TestCanonicalisation:
         assert compute_input_hash(forward) == compute_input_hash(reversed_order)
 
     def test_coordinate_noise_below_six_decimals_is_ignored(self) -> None:
-        """6자리 ≈ 0.11m.  그보다 미세한 흔들림으로 리비전이 올라가면 안 된다."""
-        stable = base_snapshot(
-            origin={"latitude": 37.5665001, "longitude": 126.9780001}
-        )
+        """6자리 ≈ 0.11m.  그보다 미세한 흔들림으로 리비전이 올라가면 안 된다.
+
+        두 값은 반올림 정책에서는 갈린다(566500 vs 566501). 절단이라 같다.
+        """
+        stable = base_snapshot(origin={"latitude": 37.5665001, "longitude": 126.9780001})
         assert compute_input_hash(stable) == compute_input_hash(
-            base_snapshot(origin={"latitude": 37.5665004, "longitude": 126.9780002})
+            base_snapshot(origin={"latitude": 37.5665009, "longitude": 126.9780009})
         )
 
     def test_coordinate_change_above_the_cut_changes_the_hash(self) -> None:
