@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 public interface EventRepository extends JpaRepository<Event, UUID> {
 
@@ -32,4 +33,7 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
     // /events/next — 취소·건너뛴 일정은 "다음 일정"이 아니다.
     Optional<Event> findFirstByUserIdAndStartsAtAfterAndStatusNotInOrderByStartsAtAsc(
             UUID userId, Instant after, List<String> excludedStatuses);
+
+    @Query("SELECT e.eventId FROM Event e WHERE e.userId = :userId")
+    List<UUID> findAllEventIdsByUserId(UUID userId);
 }
