@@ -2,8 +2,10 @@ package com.hq.backend.wellness;
 
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
+import com.hq.backend.plan.PlanContextRepository;
 import com.hq.backend.plan.PlanRevision;
 import com.hq.backend.plan.PlanRevisionRepository;
+import com.hq.backend.setting.UserSettingRepository;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -36,17 +38,23 @@ public class WellnessEventGate {
     private final WellnessEventScheduleRepository scheduleRepository;
     private final EventRepository eventRepository;
     private final PlanRevisionRepository planRevisionRepository;
+    private final PlanContextRepository planContextRepository;
+    private final UserSettingRepository userSettingRepository;
 
     public WellnessEventGate(UserWellnessPrefRepository prefRepository,
                              PlanWellnessScoreRepository scoreRepository,
                              WellnessEventScheduleRepository scheduleRepository,
                              EventRepository eventRepository,
-                             PlanRevisionRepository planRevisionRepository) {
+                             PlanRevisionRepository planRevisionRepository,
+                             PlanContextRepository planContextRepository,
+                             UserSettingRepository userSettingRepository) {
         this.prefRepository = prefRepository;
         this.scoreRepository = scoreRepository;
         this.scheduleRepository = scheduleRepository;
         this.eventRepository = eventRepository;
         this.planRevisionRepository = planRevisionRepository;
+        this.planContextRepository = planContextRepository;
+        this.userSettingRepository = userSettingRepository;
     }
 
     /**
@@ -63,6 +71,17 @@ public class WellnessEventGate {
         }
 
         UUID userId = event.getUserId();
+        if (!userSettingRepository.findById(userId).map(setting -> setting.isWellnessEventEnabled()).orElse(false)) {
+            log.debug("[WellnessGate] global wellness event disabled: user_id={}", userId);
+            return false;
+        }
+        boolean hasOutdoorExposure = planContextRepository.findById(planId)
+                .map(context -> context.getEstimatedOutdoorMinutes() != null && context.getEstimatedOutdoorMinutes() > 0)
+                .orElse(false);
+        if (!hasOutdoorExposure) {
+            log.debug("[WellnessGate] no outdoor exposure: plan_id={}", planId);
+            return false;
+        }
         String topic = actionCodeToTopic(actionCode);
 
         // ① 사용자가 해당 항목과 이벤트 알림을 켬

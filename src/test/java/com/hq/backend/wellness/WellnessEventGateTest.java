@@ -6,8 +6,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
+import com.hq.backend.plan.PlanContext;
+import com.hq.backend.plan.PlanContextRepository;
 import com.hq.backend.plan.PlanRevision;
 import com.hq.backend.plan.PlanRevisionRepository;
+import com.hq.backend.setting.UserSetting;
+import com.hq.backend.setting.UserSettingRepository;
 import com.jayway.jsonpath.JsonPath;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -37,6 +41,12 @@ class WellnessEventGateTest {
 
     @Autowired
     private PlanRevisionRepository planRevisionRepository;
+
+    @Autowired
+    private PlanContextRepository planContextRepository;
+
+    @Autowired
+    private UserSettingRepository userSettingRepository;
 
     @Autowired
     private PlanWellnessScoreRepository planWellnessScoreRepository;
@@ -94,6 +104,12 @@ class WellnessEventGateTest {
                 .predictionConfidence("high").planStatus("active").calcVersion("test")
                 .createdAt(now)
                 .build());
+        userSettingRepository.save(UserSetting.builder()
+                .userId(userId).arrivalBufferMinutes(10).notificationSensitivity("normal")
+                .personalizationEnabled(true).autoManageEnabled(true).wellnessEventEnabled(true)
+                .lockscreenHideSensitive(true).updatedAt(now).build());
+        planContextRepository.save(PlanContext.builder()
+                .planId(revision.getPlanId()).estimatedOutdoorMinutes(15).build());
         planWellnessScoreRepository.save(PlanWellnessScore.builder()
                 .planId(revision.getPlanId())
                 .uvLoad(BigDecimal.ONE).pmLoad(BigDecimal.ZERO).thermalLoad(BigDecimal.ZERO)
