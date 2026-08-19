@@ -159,3 +159,52 @@ class WellnessEngineConfig(ContractModel):
     card_rushed_rls: int = Field(default=70, ge=0, le=100)
     card_density_event_count: int = Field(default=4, ge=1)
     card_exposure_outdoor_minutes: int = Field(default=90, ge=1)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Geofence Config (M4 — appendix A.3)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class GeofenceConfig(ContractModel):
+    """출발·도착 판정 신뢰도 파라미터 (TRD §9.2 · 부록 A.3).
+
+    서버는 지오펜스를 실행하지 않고 판정 결과만 받습니다(§9.2). 이 설정은 받은 관측을
+    신뢰도로 바꾸는 계수이며, 전부 원격 설정입니다(TR-06).
+    """
+
+    #: 기준점 — 아무 가점도 없는 관측의 신뢰도.
+    base_confidence: float = Field(default=0.50, ge=0.0, le=1.0)
+    #: 체류 조건 충족 가점.
+    dwell_bonus: float = Field(default=0.20, ge=0.0, le=1.0)
+    #: 진입 시 수평 정확도 양호 가점.
+    accuracy_bonus: float = Field(default=0.15, ge=0.0, le=1.0)
+    #: 진입 시각이 예상 도착 근처일 때의 가점.
+    timing_bonus: float = Field(default=0.15, ge=0.0, le=1.0)
+    #: 경계 진동 감점.  진동을 억제하지 않고 신뢰도를 깎는다 — 진동 자체가
+    #: "판정이 불확실하다"는 정보이기 때문이다 (§9.2).
+    oscillation_penalty: float = Field(default=0.30, ge=0.0, le=1.0)
+
+    #: ``DWELL_SEC`` — 체류 검증 초.
+    dwell_seconds: int = Field(default=90, ge=0)
+    #: 수평 정확도 양호 기준(m).
+    accuracy_good_meters: float = Field(default=50.0, gt=0.0)
+    #: 예상 도착 대비 허용 폭(분).
+    timing_window_minutes: int = Field(default=20, ge=0)
+    #: 이 창(초) 안에 진입/이탈이 반복되면 경계 진동으로 본다.
+    oscillation_window_seconds: int = Field(default=60, ge=0)
+
+    #: ``AUTO_CONF`` — 이 값 이상이면 자동 확정하고 확인 UI를 띄우지 않는다 (§9.3).
+    auto_confirm_confidence: float = Field(default=0.60, ge=0.0, le=1.0)
+    #: 이 값 이상이면 조용한 확인 요청, 미만이면 unresolved.
+    quiet_confirm_confidence: float = Field(default=0.40, ge=0.0, le=1.0)
+
+    #: ``GEOFENCE_ORIGIN_R_M`` — 출발지 이탈 반경.
+    origin_radius_meters: int = Field(default=150, ge=1)
+    #: ``GEOFENCE_DEST_R_M`` — 목적지 유형별 반경.
+    destination_radius_ground_meters: int = Field(default=100, ge=1)
+    destination_radius_default_meters: int = Field(default=150, ge=1)
+    destination_radius_complex_meters: int = Field(default=200, ge=1)
+
+    #: ``UNRESOLVED_AFTER_MIN`` — 일정 시작 후 이만큼 무신호면 unresolved.
+    unresolved_after_minutes: int = Field(default=30, ge=1)
