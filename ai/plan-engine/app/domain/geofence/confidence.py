@@ -44,7 +44,8 @@ class ArrivalObservation:
     """기기가 올려준 도착 판정 관측 하나.
 
     ``entered_at``과 ``expected_arrival_at``은 timezone-aware여야 합니다. 엔진은 현재 시각을
-    읽지 않고 두 값의 차이만 씁니다.
+    읽지 않고 두 값의 차이만 씁니다. naive datetime이 섞이면 뺄셈이 ``TypeError``로 죽거나,
+    둘 다 naive면 조용히 잘못된 시각차를 계산합니다 — 그래서 경계에서 막습니다.
     """
 
     #: 리전 안에서 머문 시간(초).
@@ -56,6 +57,12 @@ class ArrivalObservation:
     #: 진동 창 안에서 관측된 진입/이탈 전이 횟수.  2회 이상이면 진동으로 본다.
     transitions_in_window: int = 1
     destination_kind: DestinationKind = DestinationKind.UNKNOWN
+
+    def __post_init__(self) -> None:
+        for name in ("entered_at", "expected_arrival_at"):
+            value: datetime = getattr(self, name)
+            if value.tzinfo is None or value.utcoffset() is None:
+                raise ValueError(f"{name} must be timezone-aware")
 
 
 @dataclass(frozen=True)

@@ -20,13 +20,22 @@
 
 from dataclasses import dataclass
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.domain.plan_engine.models import CamelModel
 
 
 class WellnessMetricInput(CamelModel):
-    """한 기간(주차 등)의 원시 카운트."""
+    """한 기간(주차 등)의 원시 카운트.
+
+    분자 ≤ 분모를 모델 수준에서 강제합니다. 100%를 넘는 비율은 지표가 아니라 조인 오류이고,
+    그것이 성공 지표로 보이면 아무도 눈치채지 못합니다.
+
+    **집계 조인은 제안 시점을 기준으로 귀속해야 이 불변식이 성립합니다.** 주 경계에서 "지난주에
+    제안하고 이번 주에 완료한" 행동을 완료 시점으로 세면 완료가 제안을 넘길 수 있습니다.
+    SQL 은 ``PLAN_WELLNESS_ACTION.created_at`` 기준으로 주차를 나누고 완료 여부는 같은 행에서
+    읽어야 합니다.
+    """
 
     #: PLAN_WELLNESS_ACTION
     proposed_actions: int = Field(default=0, ge=0)
@@ -41,6 +50,29 @@ class WellnessMetricInput(CamelModel):
     #: 커버리지 — 야외 노출이 있는 일정과 그중 WIS가 생성된 일정
     outdoor_events: int = Field(default=0, ge=0)
     wis_generated_events: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def numerators_cannot_exceed_denominators(self) -> "WellnessMetricInput":
+        violations = [
+            name
+            for name, numerator, denominator in (
+                ("completedActions", self.completed_actions, self.proposed_actions),
+                (
+                    "eventsCompleted+eventsSnoozed",
+                    self.events_completed + self.events_snoozed,
+                    self.events_sent,
+                ),
+                ("ratingsUseful", self.ratings_useful, self.ratings_collected),
+                ("wisGeneratedEvents", self.wis_generated_events, self.outdoor_events),
+            )
+            if numerator > denominator
+        ]
+        if violations:
+            raise ValueError(
+                "numerator exceeds denominator — this is a join error, not a metric: "
+                + ", ".join(violations)
+            )
+        return self
 
 
 @dataclass(frozen=True)

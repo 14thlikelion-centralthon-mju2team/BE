@@ -5,7 +5,7 @@ engine parameters.  The AI server never stores or overrides config — it
 validates the values received per-request and uses them as-is.
 """
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.contracts.base import ContractModel
 
@@ -208,3 +208,25 @@ class GeofenceConfig(ContractModel):
 
     #: ``UNRESOLVED_AFTER_MIN`` — 일정 시작 후 이만큼 무신호면 unresolved.
     unresolved_after_minutes: int = Field(default=30, ge=1)
+
+    @model_validator(mode="after")
+    def thresholds_and_radii_must_be_ordered(self) -> "GeofenceConfig":
+        """원격 설정이므로 순서가 뒤집힌 값이 들어올 수 있다. 모델에서 막는다.
+
+        임계가 뒤집히면 신뢰도가 낮을 때 자동 확정되는 최악의 조합이 만들어지고, 반경이
+        뒤집히면 지하철역을 지상 POI보다 좁게 잡아 도착을 놓칩니다 (§9.2).
+        """
+        if not (
+            0.0 <= self.quiet_confirm_confidence <= self.auto_confirm_confidence <= 1.0
+        ):
+            raise ValueError(
+                "confidence thresholds must satisfy "
+                "0 <= quietConfirmConfidence <= autoConfirmConfidence <= 1"
+            )
+        if not (
+            self.destination_radius_ground_meters
+            <= self.destination_radius_default_meters
+            <= self.destination_radius_complex_meters
+        ):
+            raise ValueError("destination radii must satisfy ground <= default <= complex")
+        return self

@@ -14,6 +14,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
+from pydantic import ValidationError
 
 from app.contracts.config import GeofenceConfig
 from app.domain.geofence.confidence import (
@@ -237,6 +238,73 @@ class TestUnresolvedTimeout:
     )
     def test_timeout_boundary(self, minutes: float, expected: bool) -> None:
         assert is_unresolved_by_timeout(minutes, CONFIG) is expected
+
+
+class TestConfigGuards:
+    """원격 설정이므로 순서가 뒤집힌 값이 들어올 수 있다 (리뷰 P2)."""
+
+    def test_inverted_thresholds_are_rejected(self) -> None:
+        """임계가 뒤집히면 신뢰도가 낮을 때 자동 확정되는 조합이 만들어진다."""
+        with pytest.raises(ValidationError):
+            GeofenceConfig.model_validate(
+                {"quietConfirmConfidence": 0.8, "autoConfirmConfidence": 0.6}
+            )
+
+    def test_equal_thresholds_are_allowed(self) -> None:
+        """두 임계가 같으면 조용한 확인 구간이 없어지는 것뿐이므로 유효하다."""
+        config = GeofenceConfig.model_validate(
+            {"quietConfirmConfidence": 0.6, "autoConfirmConfidence": 0.6}
+        )
+        assert config.quiet_confirm_confidence == config.auto_confirm_confidence
+
+    def test_inverted_radii_are_rejected(self) -> None:
+        """지하철역을 지상 POI보다 좁게 잡으면 실내 진입에서 도착을 놓친다."""
+        with pytest.raises(ValidationError):
+            GeofenceConfig.model_validate({"destinationRadiusGroundMeters": 300})
+
+    def test_defaults_satisfy_the_ordering(self) -> None:
+        config = GeofenceConfig()
+        assert (
+            config.destination_radius_ground_meters
+            <= config.destination_radius_default_meters
+            <= config.destination_radius_complex_meters
+        )
+
+
+class TestObservationGuards:
+    @pytest.mark.parametrize(
+        ("entered", "expected"),
+        [
+            (datetime(2026, 8, 20, 14, 0), EXPECTED_ARRIVAL),
+            (EXPECTED_ARRIVAL, datetime(2026, 8, 20, 14, 0)),
+            (datetime(2026, 8, 20, 14, 0), datetime(2026, 8, 20, 14, 0)),
+        ],
+    )
+    def test_naive_datetimes_are_rejected(
+        self, entered: datetime, expected: datetime
+    ) -> None:
+        """naive가 섞이면 TypeError, 둘 다 naive면 조용히 틀린 시각차가 나온다."""
+        with pytest.raises(ValueError, match="timezone-aware"):
+            ArrivalObservation(
+                dwell_seconds=95.0,
+                horizontal_accuracy_meters=20.0,
+                entered_at=entered,
+                expected_arrival_at=expected,
+            )
+
+    def test_aware_datetimes_in_different_zones_are_fine(self) -> None:
+        """같은 순간을 다른 offset으로 표기해도 시각차는 같다."""
+        utc_equivalent = EXPECTED_ARRIVAL.astimezone(ZoneInfo("UTC"))
+        result = compute_arrival_confidence(
+            ArrivalObservation(
+                dwell_seconds=95.0,
+                horizontal_accuracy_meters=20.0,
+                entered_at=utc_equivalent,
+                expected_arrival_at=EXPECTED_ARRIVAL,
+            ),
+            CONFIG,
+        )
+        assert result.timing == pytest.approx(0.15)
 
 
 class TestFeedbackSuppression:

@@ -623,6 +623,10 @@ def test_daily_summary_and_metrics_are_produced(replay) -> None:
     # 200건 중 하나도 성공하지 못하거나 전부 성공하면 시뮬레이션이 한쪽으로 쏠린 것이다.
     assert 0.0 < north_star.ok_ratio < 1.0
 
+    # 커버리지 분모는 "야외 노출이 있는 일정"이므로 분자도 그 안에서 세야 한다 (§16.2).
+    # 야외 0분인 일정도 WIS 자체는 계산되므로, 전체에서 세면 분자가 분모를 넘는다 —
+    # WellnessMetricInput 의 불변식이 이 오류를 잡아 준다.
+    outdoor_records = [record for record in records if record.outdoor_minutes > 0]
     wellness_metrics = compute_wellness_metrics(
         WellnessMetricInput(
             proposed_actions=len(records),
@@ -632,8 +636,10 @@ def test_daily_summary_and_metrics_are_produced(replay) -> None:
             events_snoozed=0,
             ratings_collected=len(state.armed),
             ratings_useful=len(state.armed) // 2,
-            outdoor_events=sum(1 for record in records if record.outdoor_minutes > 0),
-            wis_generated_events=sum(1 for record in records if record.wis_score is not None),
+            outdoor_events=len(outdoor_records),
+            wis_generated_events=sum(
+                1 for record in outdoor_records if record.wis_score is not None
+            ),
         )
     )
     assert wellness_metrics.coverage_rate is not None

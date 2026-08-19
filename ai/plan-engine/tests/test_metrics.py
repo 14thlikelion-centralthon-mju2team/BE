@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from app.domain.metrics.north_star import (
     REASON_ALERTS,
@@ -240,3 +241,44 @@ class TestWellnessMetrics:
             WellnessMetricInput(outdoor_events=4, wis_generated_events=1)
         )
         assert result.coverage_rate == pytest.approx(0.25)
+
+
+class TestJoinErrorGuards:
+    """분자 ≤ 분모를 모델에서 강제한다 (리뷰 P2).
+
+    100%를 넘는 비율은 지표가 아니라 조인 오류이고, 그것이 성공 지표로 보이면 아무도
+    눈치채지 못한다.
+    """
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"proposedActions": 3, "completedActions": 4},
+            {"eventsSent": 3, "eventsCompleted": 2, "eventsSnoozed": 2},
+            {"ratingsCollected": 2, "ratingsUseful": 3},
+            {"outdoorEvents": 5, "wisGeneratedEvents": 6},
+        ],
+    )
+    def test_numerator_over_denominator_is_rejected(self, payload: dict[str, int]) -> None:
+        with pytest.raises(ValidationError, match="numerator exceeds denominator"):
+            WellnessMetricInput.model_validate(payload)
+
+    def test_equal_counts_are_allowed(self) -> None:
+        """전원이 완료한 주는 100%이고 오류가 아니다."""
+        result = compute_wellness_metrics(
+            WellnessMetricInput.model_validate(
+                {"proposedActions": 3, "completedActions": 3}
+            )
+        )
+        assert result.action_completion_rate == pytest.approx(1.0)
+
+    def test_response_invariant_counts_both_responses_together(self) -> None:
+        """completed + snoozed 합이 sent 를 넘으면 안 된다 — 각각은 넘지 않아도 잡아야 한다."""
+        ok = WellnessMetricInput.model_validate(
+            {"eventsSent": 4, "eventsCompleted": 2, "eventsSnoozed": 2}
+        )
+        assert compute_wellness_metrics(ok).event_response_rate == pytest.approx(1.0)
+        with pytest.raises(ValidationError):
+            WellnessMetricInput.model_validate(
+                {"eventsSent": 4, "eventsCompleted": 3, "eventsSnoozed": 2}
+            )
