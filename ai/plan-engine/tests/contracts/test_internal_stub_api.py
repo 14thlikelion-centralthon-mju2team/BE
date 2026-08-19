@@ -121,13 +121,13 @@ def _wellness_payload() -> dict:
     }
 
 
-def test_wellness_stub_200(client):
+def test_wellness_engine_200(client):
     resp = client.post("/internal/v1/wellness/evaluate", json=_wellness_payload())
     assert resp.status_code == 200
     data = resp.json()
     assert data["contractVersion"] == "m0-v1"
     assert data["eventArmed"] is False
-    assert data["weightVersion"] == "stub"
+    assert data["weightVersion"] == "w1"
 
 
 def test_wellness_response_is_camel_case(client):

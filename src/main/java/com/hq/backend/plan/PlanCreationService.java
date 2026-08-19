@@ -219,7 +219,8 @@ public class PlanCreationService {
     private void computeAndPersistWellness(PlanRevision revision, ComputedPlan computed) {
         WellnessEngineRequest.EnvironmentSnapshot environmentSnapshot = computed.environment() == null ? null
                 : new WellnessEngineRequest.EnvironmentSnapshot(
-                        computed.environment().precipitationProb(), computed.environment().tempC(), computed.environment().asOf());
+                        computed.environment().precipitationProb(), computed.environment().tempC(),
+                        computed.environment().uvIndex(), computed.environment().pm10(), computed.environment().asOf());
 
         List<WellnessEngineRequest.WellnessPreference> preferences = userWellnessPrefRepository
                 .findByUserId(computed.userId()).stream()

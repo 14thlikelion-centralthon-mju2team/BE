@@ -13,7 +13,8 @@ public record WellnessEngineRequest(
         EngineConfig config
 ) {
 
-    public record EnvironmentSnapshot(Integer precipitationProbability, Double feelsLikeCelsius, Instant observedAt) {
+    public record EnvironmentSnapshot(
+            Integer precipitationProbability, Double feelsLikeCelsius, Double uvIndex, Integer pm10, Instant observedAt) {
     }
 
     public record WellnessPreference(
