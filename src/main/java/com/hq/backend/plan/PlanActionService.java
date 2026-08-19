@@ -30,6 +30,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -72,6 +73,7 @@ public class PlanActionService {
     private final PlanContextRepository planContextRepository;
     private final PlanService planService;
     private final ProductEventService productEventService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public ActionBatchResponse submit(UUID userId, UUID planId, ActionBatchRequest request) {
@@ -113,7 +115,10 @@ public class PlanActionService {
         }
 
         if (!status.equals(event.getStatus())) {
+            String previousStatus = event.getStatus();
             event.setStatus(status);
+            eventPublisher.publishEvent(new com.hq.backend.notification.PlanStatusChangedEvent(
+                    planId, event.getEventId(), previousStatus, status));
         }
 
         return new ActionBatchResponse(accepted, duplicated, status, planService.getLatestForEvent(userId, event.getEventId()));
