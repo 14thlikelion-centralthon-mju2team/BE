@@ -40,6 +40,7 @@ public class WellnessEventGate {
     private final PlanRevisionRepository planRevisionRepository;
     private final PlanContextRepository planContextRepository;
     private final UserSettingRepository userSettingRepository;
+    private final com.hq.backend.config.WellnessConfigService wellnessConfigService;
 
     public WellnessEventGate(UserWellnessPrefRepository prefRepository,
                              PlanWellnessScoreRepository scoreRepository,
@@ -47,7 +48,8 @@ public class WellnessEventGate {
                              EventRepository eventRepository,
                              PlanRevisionRepository planRevisionRepository,
                              PlanContextRepository planContextRepository,
-                             UserSettingRepository userSettingRepository) {
+                             UserSettingRepository userSettingRepository,
+                             com.hq.backend.config.WellnessConfigService wellnessConfigService) {
         this.prefRepository = prefRepository;
         this.scoreRepository = scoreRepository;
         this.scheduleRepository = scheduleRepository;
@@ -55,6 +57,7 @@ public class WellnessEventGate {
         this.planRevisionRepository = planRevisionRepository;
         this.planContextRepository = planContextRepository;
         this.userSettingRepository = userSettingRepository;
+        this.wellnessConfigService = wellnessConfigService;
     }
 
     /**
@@ -96,10 +99,11 @@ public class WellnessEventGate {
         }
         UserWellnessPref pref = prefOpt.get();
 
-        // ② WIS ≥ 70
+        // ② WIS ≥ current engine_config.wisBandEvent
+        int eventMinimum = wellnessConfigService.current().wisBandEvent();
         Optional<PlanWellnessScore> scoreOpt = scoreRepository.findById(planId);
-        if (scoreOpt.isEmpty() || scoreOpt.get().getWisScore() < WELLNESS_EVENT_MIN_SCORE) {
-            log.debug("[WellnessGate] 게이트② 실패: plan_id={}, WIS < {}", planId, WELLNESS_EVENT_MIN_SCORE);
+        if (scoreOpt.isEmpty() || scoreOpt.get().getWisScore() < eventMinimum) {
+            log.debug("[WellnessGate] 게이트② 실패: plan_id={}, WIS < {}", planId, eventMinimum);
             return false;
         }
 

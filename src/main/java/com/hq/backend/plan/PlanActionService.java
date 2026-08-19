@@ -77,6 +77,7 @@ public class PlanActionService {
     private final UserSettingRepository userSettingRepository;
     private final PersonalizationEngineClient personalizationEngineClient;
     private final WellnessEngineClient wellnessEngineClient;
+    private final com.hq.backend.config.WellnessConfigService wellnessConfigService;
     private final PlanContextRepository planContextRepository;
     private final PlanService planService;
     private final ProductEventService productEventService;
@@ -177,8 +178,7 @@ public class PlanActionService {
         double departDelayMinutes = delayMinutes(execution.getActualDepartedAt(), revision.getRecommendedDepartAt());
         RushLoadEngineRequest request = new RushLoadEngineRequest(
                 execution.getEventId().toString(), prepDelayMinutes, departDelayMinutes, 0,
-                new com.hq.backend.wellness.dto.WellnessEngineRequest.EngineConfig(
-                        0.35, 0.25, 0.20, 0.20, 1.25, 120, 40, 70, "w1"));
+                wellnessConfigService.current());
         wellnessEngineClient.computeRushLoad(request).ifPresent(result -> persistRushLoad(execution, result));
     }
 

@@ -41,6 +41,21 @@ public record WellnessEngineRequest(
 
     public record EngineConfig(
             double wisWeightUv, double wisWeightPm, double wisWeightTemp, double wisWeightOutdoor,
-            double interestBoostMax, int outdoorCapMinutes, int wisBandCard, int wisBandEvent, String weightVersion) {
+            double interestBoostMax, int outdoorCapMinutes, int wisBandCard, int wisBandEvent, String weightVersion,
+            double uvHighIndex, double uvFullLoadIndex, double pmLoadModerate, double pmLoadBad, double pmLoadVeryBad,
+            double comfortMinCelsius, double comfortMaxCelsius, double heatExtremeCelsius, double coldExtremeCelsius,
+            int rainLightPercent, int rainHeavyPercent, double rainThermalBonus, double tempSwingFlagCelsius,
+            int wellnessEventMinRaised, int dailyEventCapDefault, int midBandActionCap,
+            double rlsWeightDp, double rlsWeightDd, double rlsWeightE, int rlsDelayFullLoadMinutes,
+            int rlsCriticalAlertFullCount, double dwlWeightWis, double dwlWeightRls, int dwlBandMid,
+            int dwlBandHigh, int cardRushedRls, int cardDensityEventCount, int cardExposureOutdoorMinutes) {
+
+        /** Backward-compatible M0/M3-minimal constructor; typed engine_config should be used in production. */
+        public EngineConfig(double wisWeightUv, double wisWeightPm, double wisWeightTemp, double wisWeightOutdoor,
+                double interestBoostMax, int outdoorCapMinutes, int wisBandCard, int wisBandEvent, String weightVersion) {
+            this(wisWeightUv, wisWeightPm, wisWeightTemp, wisWeightOutdoor, interestBoostMax, outdoorCapMinutes,
+                    wisBandCard, wisBandEvent, weightVersion, 6.0, 10.0, .25, .70, 1.0, 5.0, 28.0, 33.0, -12.0,
+                    30, 60, .30, 10.0, 85, 1, 2, .45, .35, .20, 30, 2, .60, .40, 40, 70, 70, 4, 90);
+        }
     }
 }

@@ -44,12 +44,6 @@ public class DailySummaryService {
 
     private static final ZoneId ZONE = ZoneId.of("Asia/Seoul");
 
-    // ponytail: DWL/카드 시나리오 경계값은 기획 승인 문구가 나오기 전까지 쓰는 임시값.
-    // dwlBand 0~39/40~69/70~100 경계만 DB CHECK(ck_summary_dwl_band)로 고정돼 있다.
-    private static final int DENSITY_EVENT_COUNT_THRESHOLD = 3;
-    private static final int EXPOSURE_OUTDOOR_MINUTES_THRESHOLD = 60;
-    private static final int STABLE_DWL_MAX = 39;
-
     private final EventRepository eventRepository;
     private final PlanRevisionRepository planRevisionRepository;
     private final EventExecutionRepository eventExecutionRepository;
@@ -58,6 +52,7 @@ public class DailySummaryService {
     private final DailyWellnessSummaryRepository dailyWellnessSummaryRepository;
     private final ProductEventRepository productEventRepository;
     private final WellnessEngineClient wellnessEngineClient;
+    private final com.hq.backend.config.WellnessConfigService wellnessConfigService;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -168,8 +163,7 @@ public class DailySummaryService {
                     outdoor, execution != null && execution.getActualOutdoorMinutes() != null);
         }).toList();
         return wellnessEngineClient.summarizeDay(new DailySummaryEngineRequest(date, summaries, 0, 0, 0,
-                new com.hq.backend.wellness.dto.WellnessEngineRequest.EngineConfig(
-                        .35, .25, .20, .20, 1.25, 120, 40, 70, "w1"))).orElse(null);
+                wellnessConfigService.current())).orElse(null);
     }
 
     private record Aggregate(
@@ -271,6 +265,7 @@ public class DailySummaryService {
     }
 
     private String pickScenario(List<Event> events, Map<UUID, EventExecution> executionByEvent, Aggregate agg) {
+        var config = wellnessConfigService.current();
         boolean anyRushedOrLate = events.stream()
                 .map(e -> executionByEvent.get(e.getEventId()))
                 .filter(java.util.Objects::nonNull)
@@ -278,13 +273,13 @@ public class DailySummaryService {
         if (anyRushedOrLate) {
             return "rushed";
         }
-        if (events.size() >= DENSITY_EVENT_COUNT_THRESHOLD) {
+        if (events.size() >= config.cardDensityEventCount()) {
             return "density";
         }
-        if (agg.totalOutdoorMinutes >= EXPOSURE_OUTDOOR_MINUTES_THRESHOLD) {
+        if (agg.totalOutdoorMinutes >= config.cardExposureOutdoorMinutes()) {
             return "exposure";
         }
-        if (agg.dwlScore != null && agg.dwlScore <= STABLE_DWL_MAX) {
+        if (agg.dwlScore != null && agg.dwlScore < config.dwlBandMid()) {
             return "stable";
         }
         return "default";

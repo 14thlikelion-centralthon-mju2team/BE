@@ -23,11 +23,12 @@ public class WellnessRuntimeEvaluator {
     private final UserSettingRepository settingRepository;
     private final WellnessEventScheduleRepository scheduleRepository;
     private final PlanWellnessScoreRepository scoreRepository;
+    private final com.hq.backend.config.WellnessConfigService wellnessConfigService;
 
     public WellnessRuntimeEvaluator(WellnessEngineClient engineClient, EventRepository eventRepository,
             PlanContextRepository contextRepository, UserWellnessPrefRepository prefRepository,
             UserSettingRepository settingRepository, WellnessEventScheduleRepository scheduleRepository,
-            PlanWellnessScoreRepository scoreRepository) {
+            PlanWellnessScoreRepository scoreRepository, com.hq.backend.config.WellnessConfigService wellnessConfigService) {
         this.engineClient = engineClient;
         this.eventRepository = eventRepository;
         this.contextRepository = contextRepository;
@@ -35,6 +36,7 @@ public class WellnessRuntimeEvaluator {
         this.settingRepository = settingRepository;
         this.scheduleRepository = scheduleRepository;
         this.scoreRepository = scoreRepository;
+        this.wellnessConfigService = wellnessConfigService;
     }
 
     @Transactional
@@ -65,7 +67,7 @@ public class WellnessRuntimeEvaluator {
                 context.getEstimatedOutdoorMinutes(),
                 prefRepository.findByUserId(event.getUserId()).stream().map(p -> new WellnessEngineRequest.WellnessPreference(
                         p.getWellnessTopic(), p.isEnabled(), p.getRemindIntervalMinutes(), p.getDailyEventCap())).toList(),
-                List.of(), new WellnessEngineRequest.EngineConfig(0.35, .25, .20, .20, 1.25, 120, 40, 70, "w1"), state);
+                List.of(), wellnessConfigService.current(), state);
         engineClient.evaluate(request).ifPresent(output -> score.setArmedActionCode(
                 output.eventArmed() ? output.armedActionCode() : null));
     }
