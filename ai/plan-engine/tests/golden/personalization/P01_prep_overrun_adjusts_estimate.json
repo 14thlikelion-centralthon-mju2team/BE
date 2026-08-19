@@ -1,0 +1,69 @@
+{
+  "caseId": "P01_prep_overrun_adjusts_estimate",
+  "description": "준비가 예상보다 10분 초과하고 교통 오차 5분 — 지배 원인은 prep_overrun, 추정만 EMA 갱신 (TRD §6.2)",
+  "engine": "personalization",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m2-personalization-1.0.0",
+  "configVersion": "trd-appendix-a1",
+  "input": {
+    "eventId": "evt-p01",
+    "planned": {
+      "prepStartAt": "2026-08-20T07:00:00+09:00",
+      "recommendedDepartAt": "2026-08-20T07:40:00+09:00",
+      "targetArriveAt": "2026-08-20T08:30:00+09:00",
+      "estimatedPrepMinutes": 30,
+      "travelMinutes": 40,
+      "trafficBufferMinutes": 5
+    },
+    "actual": {
+      "actualPrepStartedAt": "2026-08-20T07:00:00+09:00",
+      "actualPrepFinishedAt": "2026-08-20T07:50:00+09:00",
+      "actualDepartedAt": "2026-08-20T07:50:00+09:00",
+      "actualArrivedAt": "2026-08-20T08:35:00+09:00",
+      "resultSource": "user"
+    },
+    "outcome": {
+      "arrivalResult": "late",
+      "rushAssessment": "rushed"
+    },
+    "currentEstimate": {
+      "estimatedMinutes": 30.0,
+      "sampleCount": 12,
+      "confidence": 0.8,
+      "modelVersion": "v1",
+      "seedMinutes": 30.0
+    },
+    "config": {
+      "prepEmaAlpha": 0.3,
+      "lateWeight": 1.5,
+      "earlyWeight": 0.7,
+      "maxStepMinutes": 15,
+      "coldStepMinutes": 20,
+      "prepFloorMinutes": 10,
+      "prepCeilingRatio": 2.0,
+      "seedFallbackMinutes": 30,
+      "coldStartSampleThreshold": 3,
+      "clockSkewToleranceSeconds": 120,
+      "prepOutlierMaxMinutes": 240,
+      "geoMinConfidence": 0.6,
+      "attributionMinSignalMinutes": 3,
+      "modelVersion": "v1"
+    }
+  },
+  "expected": {
+    "cause": "prep_overrun",
+    "adjustedKnob": "prep_estimate",
+    "previousValue": 30.0,
+    "newValue": 34.5,
+    "causeConfidence": 0.667,
+    "candidates": [
+      { "cause": "prep_overrun", "confidence": 0.667, "signalMinutes": 10.0 },
+      { "cause": "traffic", "confidence": 0.333, "signalMinutes": 5.0 }
+    ],
+    "excludedFromLearning": false,
+    "exclusionReasons": [],
+    "degraded": [],
+    "reasonContains": "준비 시간 추정을 30분에서 34.5분으로 조정했습니다"
+  },
+  "tags": ["golden", "personalization", "ema", "TR-05"]
+}

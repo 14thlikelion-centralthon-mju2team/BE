@@ -26,7 +26,7 @@ def test_health(client):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Personalization stub
+# Personalization engine (M2 — real logic, no stub gate)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -61,14 +61,30 @@ def _personalization_payload() -> dict:
     }
 
 
-def test_personalization_stub_200(client):
+def test_personalization_200(client):
     resp = client.post("/internal/v1/personalization/adjust", json=_personalization_payload())
     assert resp.status_code == 200
     data = resp.json()
     assert data["contractVersion"] == "m0-v1"
-    assert data["cause"] == "unknown"
-    assert data["adjustedKnob"] == "none"
-    assert data["excludedFromLearning"] is True
+    assert data["modelVersion"] == "m2-personalization-1.0.0"
+    # Started 5 min late, prep ran 5 min long, travel 5 min over: a three-way
+    # tie that the causal-chain tie-break resolves to the earliest link.
+    assert data["cause"] == "prep_late"
+    assert data["adjustedKnob"] == "notification_lead"
+    assert data["excludedFromLearning"] is False
+    # No actualPrepFinishedAt in the payload, so lingering is not measurable.
+    assert "prep_finish_unknown" in data["degraded"]
+
+
+def test_personalization_endpoint_is_not_stub_gated(client, monkeypatch):
+    """M2 removed the STUB_MODE gate — the engine always computes."""
+    import app.api.internal.personalization as personalization_module
+
+    assert not hasattr(personalization_module, "_STUB_MODE")
+
+    monkeypatch.setenv("STUB_MODE", "false")
+    resp = client.post("/internal/v1/personalization/adjust", json=_personalization_payload())
+    assert resp.status_code == 200
 
 
 def test_personalization_response_is_camel_case(client):

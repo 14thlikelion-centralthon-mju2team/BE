@@ -7,6 +7,7 @@ from app.api.internal.personalization import router as personalization_router
 from app.api.internal.wellness import router as wellness_router
 from app.api.routes.plan import REQUEST_ID_HEADER
 from app.api.routes.plan import router as plan_router
+from app.domain.personalization_engine.version import MODEL_VERSION as PERSONALIZATION_VERSION
 from app.domain.plan_engine.engine import PlanInputError
 from app.domain.plan_engine.version import CALC_VERSION
 
@@ -24,7 +25,11 @@ app.include_router(wellness_router)
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "calcVersion": CALC_VERSION}
+    return {
+        "status": "ok",
+        "calcVersion": CALC_VERSION,
+        "personalizationModelVersion": PERSONALIZATION_VERSION,
+    }
 
 
 @app.exception_handler(PlanInputError)

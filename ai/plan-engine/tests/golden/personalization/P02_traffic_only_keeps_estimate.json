@@ -1,0 +1,65 @@
+{
+  "caseId": "P02_traffic_only_keeps_estimate",
+  "description": "교통 오차만 12분 — 불변식 ②: 준비 시간 추정은 건드리지 않고 교통 버퍼만 조정 (TR-05)",
+  "engine": "personalization",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m2-personalization-1.0.0",
+  "configVersion": "trd-appendix-a1",
+  "input": {
+    "eventId": "evt-p02",
+    "planned": {
+      "prepStartAt": "2026-08-20T07:00:00+09:00",
+      "recommendedDepartAt": "2026-08-20T07:40:00+09:00",
+      "targetArriveAt": "2026-08-20T08:30:00+09:00",
+      "estimatedPrepMinutes": 30,
+      "travelMinutes": 40,
+      "trafficBufferMinutes": 5
+    },
+    "actual": {
+      "actualPrepStartedAt": "2026-08-20T07:00:00+09:00",
+      "actualPrepFinishedAt": "2026-08-20T07:40:00+09:00",
+      "actualDepartedAt": "2026-08-20T07:40:00+09:00",
+      "actualArrivedAt": "2026-08-20T08:32:00+09:00",
+      "resultSource": "user"
+    },
+    "outcome": {
+      "arrivalResult": "late"
+    },
+    "currentEstimate": {
+      "estimatedMinutes": 30.0,
+      "sampleCount": 12,
+      "confidence": 0.8,
+      "modelVersion": "v1",
+      "seedMinutes": 30.0
+    },
+    "config": {
+      "prepEmaAlpha": 0.3,
+      "lateWeight": 1.5,
+      "earlyWeight": 0.7,
+      "maxStepMinutes": 15,
+      "coldStepMinutes": 20,
+      "prepFloorMinutes": 10,
+      "prepCeilingRatio": 2.0,
+      "seedFallbackMinutes": 30,
+      "coldStartSampleThreshold": 3,
+      "clockSkewToleranceSeconds": 120,
+      "prepOutlierMaxMinutes": 240,
+      "geoMinConfidence": 0.6,
+      "attributionMinSignalMinutes": 3,
+      "modelVersion": "v1"
+    }
+  },
+  "expected": {
+    "cause": "traffic",
+    "adjustedKnob": "traffic_buffer",
+    "previousValue": 5.0,
+    "newValue": 10.4,
+    "causeConfidence": 1.0,
+    "candidates": [{ "cause": "traffic", "confidence": 1.0, "signalMinutes": 12.0 }],
+    "excludedFromLearning": false,
+    "exclusionReasons": [],
+    "degraded": [],
+    "reasonContains": "교통 버퍼를 5분에서 10.4분으로 조정했습니다"
+  },
+  "tags": ["golden", "personalization", "invariant-2", "TR-05"]
+}

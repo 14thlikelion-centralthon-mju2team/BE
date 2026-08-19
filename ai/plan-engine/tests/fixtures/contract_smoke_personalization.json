@@ -3,7 +3,7 @@
   "description": "Personalization Engine 계약 검증용 smoke fixture — M0에서 형식만 검증",
   "engine": "personalization",
   "contractVersion": "m0-v1",
-  "algorithmVersion": "stub",
+  "algorithmVersion": "m2-personalization-1.0.0",
   "configVersion": "m0",
   "input": {
     "eventId": "evt-smoke-001",
@@ -36,9 +36,14 @@
     }
   },
   "expected": {
-    "cause": "unknown",
-    "adjustedKnob": "none",
-    "excludedFromLearning": true,
+    "cause": "prep_late",
+    "adjustedKnob": "notification_lead",
+    "previousValue": null,
+    "newValue": null,
+    "causeConfidence": 0.333,
+    "excludedFromLearning": false,
+    "exclusionReasons": [],
+    "degraded": ["prep_finish_unknown", "config_fallback"],
     "contractVersion": "m0-v1"
   },
   "tags": ["contract", "smoke", "personalization"]

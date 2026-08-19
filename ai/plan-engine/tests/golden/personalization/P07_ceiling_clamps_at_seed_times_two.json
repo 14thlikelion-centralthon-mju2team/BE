@@ -1,0 +1,65 @@
+{
+  "caseId": "P07_ceiling_clamps_at_seed_times_two",
+  "description": "EMA 결과가 시드×2를 넘어 상한 60분으로 절단 — 가드레일 P ∈ [10, 시드×2] (TRD §6.2)",
+  "engine": "personalization",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m2-personalization-1.0.0",
+  "configVersion": "trd-appendix-a1",
+  "input": {
+    "eventId": "evt-p07",
+    "planned": {
+      "prepStartAt": "2026-08-20T07:00:00+09:00",
+      "recommendedDepartAt": "2026-08-20T07:40:00+09:00",
+      "targetArriveAt": "2026-08-20T08:30:00+09:00",
+      "estimatedPrepMinutes": 30,
+      "travelMinutes": 40,
+      "trafficBufferMinutes": 5
+    },
+    "actual": {
+      "actualPrepStartedAt": "2026-08-20T07:00:00+09:00",
+      "actualPrepFinishedAt": "2026-08-20T08:30:00+09:00",
+      "actualDepartedAt": "2026-08-20T08:30:00+09:00",
+      "actualArrivedAt": "2026-08-20T09:10:00+09:00",
+      "resultSource": "user"
+    },
+    "outcome": {
+      "arrivalResult": "late"
+    },
+    "currentEstimate": {
+      "estimatedMinutes": 58.0,
+      "sampleCount": 20,
+      "confidence": 0.9,
+      "modelVersion": "v1",
+      "seedMinutes": 30.0
+    },
+    "config": {
+      "prepEmaAlpha": 0.3,
+      "lateWeight": 1.5,
+      "earlyWeight": 0.7,
+      "maxStepMinutes": 15,
+      "coldStepMinutes": 20,
+      "prepFloorMinutes": 10,
+      "prepCeilingRatio": 2.0,
+      "seedFallbackMinutes": 30,
+      "coldStartSampleThreshold": 3,
+      "clockSkewToleranceSeconds": 120,
+      "prepOutlierMaxMinutes": 240,
+      "geoMinConfidence": 0.6,
+      "attributionMinSignalMinutes": 3,
+      "modelVersion": "v1"
+    }
+  },
+  "expected": {
+    "cause": "prep_overrun",
+    "adjustedKnob": "prep_estimate",
+    "previousValue": 58.0,
+    "newValue": 60.0,
+    "causeConfidence": 1.0,
+    "candidates": [{ "cause": "prep_overrun", "confidence": 1.0, "signalMinutes": 50.0 }],
+    "excludedFromLearning": false,
+    "exclusionReasons": [],
+    "degraded": ["ceiling_clamped"],
+    "reasonContains": "상한 60분을 적용했습니다"
+  },
+  "tags": ["golden", "personalization", "guardrail", "invariant-1"]
+}

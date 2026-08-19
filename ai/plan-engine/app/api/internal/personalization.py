@@ -1,28 +1,27 @@
-"""Personalization Engine stub endpoint.
+"""Personalization Engine internal endpoint (M2).
 
-M0 contract-only: validates the request against the frozen schema and returns
-a stub response.  The actual cause-separation logic is implemented in M2.
-
-This endpoint is guarded by the STUB_MODE environment variable.  If STUB_MODE
-is not "true", the endpoint returns 501 Not Implemented.
+The transport layer owns request identity and logging so the domain layer stays
+pure.  The M0 ``STUB_MODE`` gate is gone: the engine is implemented, so this
+route always computes (contract doc §11 step 1–3).
 """
 
 import logging
-import os
+import time
+from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Request
 
-from app.contracts.common import AdjustmentKnob, DelayCause
 from app.contracts.personalization import (
-    CONTRACT_VERSION,
     PersonalizationInput,
     PersonalizationOutput,
 )
+from app.domain.personalization_engine.engine import adjust
+from app.domain.personalization_engine.version import MODEL_VERSION
 
 router = APIRouter(tags=["personalization"])
 logger = logging.getLogger("engine.personalization")
 
-_STUB_MODE = os.environ.get("STUB_MODE", "true").lower() == "true"
+REQUEST_ID_HEADER = "X-Request-Id"
 
 
 @router.post(
@@ -30,30 +29,28 @@ _STUB_MODE = os.environ.get("STUB_MODE", "true").lower() == "true"
     response_model=PersonalizationOutput,
     response_model_by_alias=True,
 )
-def adjust_personalization(payload: PersonalizationInput) -> PersonalizationOutput:
-    """Validate personalization request and return a stub response.
+def adjust_personalization(
+    payload: PersonalizationInput,
+    request: Request,
+) -> PersonalizationOutput:
+    """Attribute the delay cause and adjust one knob (TRD §6)."""
+    request_id = request.headers.get(REQUEST_ID_HEADER) or str(uuid4())
+    started_at = time.perf_counter()
+    result = adjust(payload)
+    duration_ms = (time.perf_counter() - started_at) * 1000
 
-    In M2 this will perform cause-separation and EMA adjustment.
-    """
-    if not _STUB_MODE:
-        raise HTTPException(
-            status_code=501,
-            detail="Personalization engine not implemented. Set STUB_MODE=true for stub responses.",
-        )
-
+    # Decisions only.  Not the event id, not the observed timestamps: the log
+    # must not become a second copy of a user's morning (§14 최소 수집).
     logger.info(
-        "personalization_stub event_id=%s contract_version=%s",
-        payload.event_id,
-        CONTRACT_VERSION,
+        "personalization_adjusted request_id=%s model_version=%s cause=%s knob=%s "
+        "excluded=%s exclusion_reasons=%s degraded=%s duration_ms=%.3f",
+        request_id,
+        MODEL_VERSION,
+        result.cause.value,
+        result.adjusted_knob.value,
+        result.excluded_from_learning,
+        ",".join(result.exclusion_reasons) or "-",
+        ",".join(result.degraded) or "-",
+        duration_ms,
     )
-
-    return PersonalizationOutput(
-        cause=DelayCause.UNKNOWN,
-        adjusted_knob=AdjustmentKnob.NONE,
-        previous_value=None,
-        new_value=None,
-        adjustment_reason="M0 stub: no adjustment performed",
-        excluded_from_learning=True,
-        model_version="stub",
-        contract_version=CONTRACT_VERSION,
-    )
+    return result
