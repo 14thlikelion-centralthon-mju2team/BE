@@ -1,4 +1,4 @@
-# Ensom AI Engine — Plan (M1) · Personalization (M2)
+# Ensom AI Engine — Plan (M1) · Personalization (M2) · Wellness (M3)
 
 기존 Java Spring Boot 백엔드와 독립적으로 실행되는 결정론적 Python 엔진입니다.
 
@@ -18,8 +18,19 @@
 - 준비 시간 추정 EMA 갱신과 가드레일 적용, 보정 사유 문장 반환
 - 학습 표본 자격 심사 — 부적격 표본은 오류가 아니라 `excludedFromLearning=true`
 
+**Wellness Engine (M3)**
+
+- 환경·야외 노출 입력을 정규화해 WIS(일정 웰니스 우선순위)와 밴드 산출
+- 승인된 행동 카탈로그에서 준비 카드 행동 최대 3개 선택, 사용자 준비 항목과 병합
+- 웰니스 푸시 4중(실질 6중) 게이트 판정 — 통과 시 행동 1건만 예약
+- RLS(촉박함 부담)와 DWL(일일 부담) 산출, 일일 마무리 카드 시나리오 선택
+
+**WIS·RLS·DWL은 알림 우선순위 값이고 건강 점수가 아닙니다** (절대 원칙 3). 진단·치료·복용량·효능·피부
+판정은 판단할 데이터 자체가 이 패키지에 들어오지 않습니다. 사용자에게 나가는 문구는 승인 템플릿뿐입니다.
+
 DB, 외부 지도·환경 API, 인증, FCM, 알림 스케줄링, 일정 원문 저장은 담당하지 않습니다.
-`USER_PREP_ESTIMATE`·`EVENT_DELAY_REASON` 기록도 백엔드 몫입니다 — 엔진은 계산값만 돌려줍니다.
+`USER_PREP_ESTIMATE`·`EVENT_DELAY_REASON`·`PLAN_WELLNESS_SCORE` 기록도 백엔드 몫입니다 —
+엔진은 계산값만 돌려줍니다.
 
 ## 실행
 
@@ -54,6 +65,7 @@ curl http://localhost:8000/health
 ```text
 app/domain/plan_engine/            순수 계산 계층 (models, engine, checklist, constraints, reasons, confidence)
 app/domain/personalization_engine/ 순수 보정 계층 (observation, eligibility, attribution, adjustment, reasons, engine)
+app/domain/wellness_engine/        순수 점수 계층 (quantize, normalize, wis, actions, arming, rls, dwl, templates, engine)
 app/contracts/                     Spring과 동결한 요청·응답 스키마
 app/schemas/plan.py                도메인 모델을 API용으로 재노출
 app/api/routes/plan.py             HTTP, 요청 식별자, 로깅
@@ -62,7 +74,7 @@ app/api/internal/                  개인화·웰니스 내부 엔드포인트
 
 도메인 계층에는 FastAPI, DB, HTTP 클라이언트, `datetime.now()`, 환경변수 조회가 없습니다. 현재 시각과 모든 설정은 요청 모델로 주입합니다.
 
-`personalization_engine`은 요청·응답 타입을 `app/contracts`에서 가져옵니다. 계약 모델이 곧 동결된 스키마이고 전송·저장 의존성이 없는 순수 Pydantic 모델이라, 도메인 순수성은 유지됩니다.
+`personalization_engine`과 `wellness_engine`은 요청·응답 타입을 `app/contracts`에서 가져옵니다. 계약 모델이 곧 동결된 스키마이고 전송·저장 의존성이 없는 순수 Pydantic 모델이라, 도메인 순수성은 유지됩니다.
 
 ## 내부 API
 
@@ -70,7 +82,9 @@ app/api/internal/                  개인화·웰니스 내부 엔드포인트
 GET  /health
 POST /internal/v1/plans/compute
 POST /internal/v1/personalization/adjust
-POST /internal/v1/wellness/evaluate      (M3 미구현 — STUB_MODE 게이트)
+POST /internal/v1/wellness/evaluate
+POST /internal/v1/wellness/rush-load
+POST /internal/v1/wellness/daily-summary
 ```
 
 JSON은 Spring Backend와의 내부 계약을 위해 camelCase입니다. Python 코드는 snake_case를 사용합니다.
@@ -194,6 +208,95 @@ P ∈ [prepFloorMinutes, 시드 × prepCeilingRatio] = [10, 시드×2]
 `app/domain/personalization_engine/reasons.py`의 템플릿 표에만 존재하고, 엔진은 숫자 슬롯만 치환합니다
 (TR-09). 일정 제목·장소·체크리스트 항목명은 계약에 애초에 들어오지 않습니다.
 
+## 웰니스 규칙 (M3)
+
+### 점수
+
+```text
+WIS = min(100, 100 × (0.35·U + 0.25·P + 0.20·T + 0.20·O) × M)   일정 웰니스 우선순위
+RLS = min(100, 100 × (0.45·Dp + 0.35·Dd + 0.20·E))              촉박함 부담
+DWL = 0.6 × (일정별 WIS의 야외시간 가중평균) + 0.4 × (일정별 RLS 평균)
+```
+
+### 정규화와 부재 처리
+
+| 항 | 정규화 | 데이터 부재 시 |
+|---|---|---|
+| U 자외선 | 0→0 · 6→0.6 · 8→0.8 · 10 이상→1.0 | U=0, `uv_unavailable` |
+| P 대기질 | 좋음 0 · 보통 0.25 · 나쁨 0.7 · 매우나쁨 1.0 | P=0, `pm_unavailable` |
+| T 체감온도 | 쾌적(5~28℃) 0 → 폭염 33℃·한파 −12℃에서 1.0 선형, heavy rain이면 +0.3 후 클램프 | T=0, `temp_unavailable` |
+| O 야외 노출 | `min(1, 야외분 / 120)` | **WIS 자체를 생략**, `outdoor_unavailable` |
+| M 관심사 | 기본 1.0, 관심 항목이 오늘 환경과 관련되면 1.25 | 1.0 |
+
+대기질은 원값(µg/m³)이 아니라 **등급**을 정규화합니다. 원값에서 등급을 유도하면 이 엔진이 대기질
+기준을 정하는 셈이 되기 때문입니다. 백엔드가 제공자 등급을 `good`/`moderate`/`bad`/`very_bad`로
+매핑해 보냅니다.
+
+환경 전체가 없으면 웰니스만 생략하고 시간 계획은 Plan Engine에서 정상 계산됩니다 (§11.5).
+
+### 양자화 (inputHash와 공유, §5.5)
+
+```text
+rain : none | light(≥30%) | heavy(≥60%)
+uv   : low  | high(≥6)
+pm   : good | bad | veryBad          좋음과 보통은 같은 결정을 낳으므로 한 버킷
+temp : cold | mild | hot             + 일교차 플래그
+```
+
+### 밴드와 행동
+
+| 밴드 | 범위 | 동작 |
+|---|---|---|
+| low | 0~39 | 조용히 — 행동도 푸시도 없음 |
+| mid | 40~69 | 준비 카드 행동 `midBandActionCap`개 (기본 2) |
+| high | 70~100 | 준비 카드 행동 3개 + 푸시 후보 |
+
+행동 매핑은 PRD §14.6 규칙표 그대로입니다.
+
+| 조건 | 외출 전 (`actions`) | 일정 중 (푸시 후보) |
+|---|---|---|
+| 자외선 + 야외 이동 | `uv_protect` | `uv_reapply` |
+| 미세먼지 나쁨 이상 | `pm_mask` | `pm_recheck` |
+| 폭염·높은 체감온도 | `temp_heat_prep` | `hydration_intake` |
+| 한파·큰 일교차 | `temp_cold_prep` | 없음 (PRD "추가 푸시 없음") |
+| 강수 | `rain_gear` | `hydration_intake` (노출이 길면) |
+
+`actions`는 준비 카드용 외출 전 행동만 담고, 일정 중 행동은 `armedActionCode`로 따로 보고합니다 —
+같은 항목을 카드와 푸시에 두 번 세지 않기 위해서입니다. 순위는 WIS 기여도 내림차순이고, 동률이면
+`uv > pm > temp > rain > hydration` 순입니다. 강수는 §7.2가 T에 접어 넣었으므로 체감온도와 기여도를
+공유합니다.
+
+비만 오는 날은 WIS가 낮아 카드에 뜨지 않습니다. 우산은 Plan Engine의 강수 체크리스트가 담당하므로
+빠지지 않습니다 (§5.4 · 절대 원칙 6 알림 예산).
+
+사용자가 이미 등록한 항목과 제안이 같으면 1건으로 병합하고, 사용자 항목의 `sourceType='rule'`을
+유지한 채 웰니스 근거만 붙입니다. 판단은 승인 키워드 표(`templates.MERGE_KEYWORDS`)로 하며 이름은
+공백·대소문자까지만 정규화합니다 — 의미 추론은 하지 않습니다. **민감 항목은 병합 대상에서 원천
+제외합니다.**
+
+### 웰니스 푸시 게이트 (TR-11)
+
+```text
+① 동의     USER_WELLNESS_PREF.is_enabled ∧ USER_SETTING.wellness_event_enabled  (둘 다 기본 false)
+② 점수     wis ≥ wellnessEventMin (70) — 항목별 상향 시 85 (D9)
+③ 노출     일정 진행 중 ∧ 야외 노출 잔여 ∧ 실내 전환 추정 아님
+④ 주기     사용자가 정한 remindIntervalMinutes 도달 (주기 미설정이면 발사하지 않음)
+⑤ 미완료   같은 action_code에 completed / stop_today 없음
+⑥ 일일 상한 dailyEventCap 미소진
+```
+
+게이트 입력 기본값이 전부 보수적이라, `eventState`를 보내지 않는 호출자는 절대 푸시를 예약하지
+못합니다. 막힌 경우 `armingBlockedBy`에 어느 게이트가 막았는지 남습니다.
+
+### 일일 마무리 카드
+
+`rushed > density > exposure > stable > default` 고정 우선순위로 시나리오를 고릅니다. 관리 일정이
+0건이면 카드를 만들지 않고(`cardVisible=false`), 야외 시간을 추정조차 할 수 없으면 수치 없는 문장을
+씁니다 — 숫자를 지어내지 않습니다. `dwlScore`는 응답에 포함하되 클라이언트는 표시하지 않습니다 (D5).
+
+DWL은 한쪽 항이 없으면 0으로 취급하는 대신 남은 항의 가중치를 재정규화합니다. WIS가 없는 날은
+환경 부하가 0인 날이 아니라 측정하지 못한 날이기 때문입니다.
+
 ## 설정 키
 
 Spring Backend가 `ENGINE_CONFIG`를 읽어 요청으로 전달합니다. AI 서버는 설정을 저장하지 않습니다.
@@ -230,13 +333,40 @@ Spring Backend가 `ENGINE_CONFIG`를 읽어 요청으로 전달합니다. AI 서
 **미등록** 다섯 개는 TRD 본문에는 값이 있으나 부록 A 파라미터 레지스트리에 키가 없습니다 — `engine_config`
 행에 추가할 키 이름을 김민형과 확정해야 합니다.
 
+### 웰니스 엔진 설정 키
+
+부록 A.2에 있는 키(가중치 4종, `WIS_INTEREST_BOOST_MAX`, `OUTDOOR_CAP_MIN`, `WIS_BAND_CARD`/`EVENT`,
+`WELLNESS_EVENT_MIN`, `WELLNESS_EVENT_MIN_RAISED`, `DAILY_EVENT_CAP_DEFAULT`, `UV_HIGH`,
+`RAIN_LIGHT`/`RAIN_HEAVY`, `RLS_W_DP`/`DD`/`E`, `DWL_W_WIS`/`DWL_W_RLS`, `DWL_BANDS`)는 이름 그대로
+쓰고, 아래는 TRD 본문에만 값이 있어 키 이름이 미정입니다.
+
+| 요청 필드 | 기본값 | 근거 |
+|---|---|---|
+| `config.uvFullLoadIndex` | 10 | §7.2 U 정규화 포화점 |
+| `config.pmLoadModerate` / `Bad` / `VeryBad` | 0.25 / 0.70 / 1.00 | §7.2 P 등급 부하 |
+| `config.comfortMinCelsius` / `comfortMaxCelsius` | 5 / 28 | §7.2 쾌적 구간 |
+| `config.heatExtremeCelsius` / `coldExtremeCelsius` | 33 / −12 | §7.2 "폭염·한파 경계" — 숫자 미명시, 제안값 |
+| `config.rainThermalBonus` | 0.30 | §7.2 강수 heavy 가산 |
+| `config.tempSwingFlagCelsius` | 10 | §7.2 일교차 플래그 — 기준 미명시 |
+| `config.midBandActionCap` | 2 | PRD §14.3 "행동 1~2개" |
+| `config.rlsDelayFullLoadMinutes` | 30 | PRD §14.4 Dp·Dd 정규화 척도 미명시, 제안값 |
+| `config.rlsCriticalAlertFullCount` | 2 | PRD §14.4 E 정규화 척도 미명시, 제안값 |
+| `config.cardRushedRls` | 70 | §7.5 rushed 판정 기준 미명시 |
+| `config.cardDensityEventCount` | 4 | §7.5 density 판정 기준 미명시 |
+| `config.cardExposureOutdoorMinutes` | 90 | §7.5 exposure 판정 기준 미명시 |
+
+세 엔드포인트는 각자 읽는 키만 검사하므로, RLS 키를 빼고 `evaluate`를 호출해도 `config_fallback`이
+붙지 않습니다.
+
 ## 버전과 로깅
 
 응답과 `/health`는 `calcVersion`을 반환합니다. 값은 `app/domain/plan_engine/version.py`에서 관리하며, 계산 규칙이나 근거 의미가 바뀌면 올립니다. Spring은 이 값을 계획 리비전과 함께 저장해 과거 계획의 재현성과 실험 단위 비교를 유지합니다.
 
 개인화는 `modelVersion`을 따로 관리합니다(`app/domain/personalization_engine/version.py`, `/health`의 `personalizationModelVersion`). 보정 규칙·가드레일·사유 문장 의미가 바뀌면 올리고, Spring은 `USER_PREP_ESTIMATE.model_version`에 함께 저장합니다. 과거 보정을 소급 재계산하지 않습니다(D15).
 
-로그에는 `request_id`, `calc_version`, `anchor_mode`, `feasible`, `prediction_confidence`, `degraded`, 준비 항목 개수, 소요 시간만 남깁니다. 개인화 로그는 `request_id`, `model_version`, `cause`, `knob`, `excluded`, `exclusion_reasons`, `degraded`, 소요 시간만 남깁니다 — `event_id`와 관측 타임스탬프는 기록하지 않습니다. 일정 제목, 체크리스트 항목명, 위치, 토큰은 기록하지 않으며 예외 로그도 traceback 없이 예외 타입만 남깁니다. 요청자는 `X-Request-Id` 헤더로 추적 ID를 넘길 수 있고, 없으면 서버가 생성합니다.
+웰니스는 `weightVersion`을 따로 관리합니다(`app/domain/wellness_engine/version.py`, `/health`의 `wellnessWeightVersion`). 가중치·정규화 경계·밴드·행동 매핑·승인 문구 의미가 바뀌면 올리고, Spring은 `PLAN_WELLNESS_SCORE.weight_version`에 저장합니다. 가중치를 바꿔도 과거 점수를 소급 재계산하지 않고 버전별로 분리 집계합니다(D15, §7.1).
+
+로그에는 `request_id`, `calc_version`, `anchor_mode`, `feasible`, `prediction_confidence`, `degraded`, 준비 항목 개수, 소요 시간만 남깁니다. 개인화 로그는 `request_id`, `model_version`, `cause`, `knob`, `excluded`, `exclusion_reasons`, `degraded`, 소요 시간만 남깁니다 — `event_id`와 관측 타임스탬프는 기록하지 않습니다. 웰니스 로그는 `request_id`, `weight_version`, `wis_band`, 행동 개수, 예약 여부와 막힌 게이트, `degraded`만 남깁니다 — 원본 환경값과 렌더된 문장은 기록하지 않습니다. 일정 제목, 체크리스트 항목명, 위치, 토큰은 기록하지 않으며 예외 로그도 traceback 없이 예외 타입만 남깁니다. 요청자는 `X-Request-Id` 헤더로 추적 ID를 넘길 수 있고, 없으면 서버가 생성합니다.
 
 ## 팀 확인이 필요한 결정
 
@@ -253,6 +383,18 @@ M2에서 새로 생긴 결정 사항입니다.
 - **계약 추가 필드** — 입력 6개·출력 4개를 Optional/기본값으로만 추가했습니다(계약 문서 §10 non-breaking). Spring 측 Jackson이 미지의 응답 필드에서 실패하지 않도록 `FAIL_ON_UNKNOWN_PROPERTIES=false` 확인이 필요합니다.
 - **미등록 설정 키 5종** — 위 설정 표 참고.
 
+M3에서 새로 생긴 결정 사항입니다.
+
+- **`EnvironmentSnapshot` 확장 (김민형)** — M0 계약의 환경 스냅샷에는 강수확률·체감온도·기준시각만 있어 U와 P를 만들 수 없었습니다. ERD `PLAN_CONTEXT`에 이미 있는 `uv_index`·`pm10`·`pm25`를 Optional로 추가하고, 대기질은 등급(`airGrade`)으로 받습니다. 일교차 플래그용 `feelsLikeMin/MaxCelsius`도 추가했습니다. Plan Engine은 이 필드를 읽지 않으므로 계획 계산은 그대로입니다.
+- **RLS·DWL 엔드포인트 신설** — M0 계약에는 WIS만 있었습니다. TRD §7.1이 RLS·DWL도 M3 산출물로 두고 있어 `POST /internal/v1/wellness/rush-load`와 `/daily-summary`를 추가했습니다. 기존 엔드포인트 스키마는 건드리지 않았습니다.
+- **폭염·한파 경계값** — §7.2는 "폭염·한파 경계에서 1.0"이라고만 적었습니다. 기상청 주의보 기준을 따라 33℃ / −12℃를 제안값으로 넣었습니다. 원격 설정이라 배포 없이 바꿀 수 있습니다.
+- **RLS 정규화 척도** — PRD §14.4는 "0~1로 정규화"까지만 정했습니다. 지연 30분에서 1.0, 극한 알림 2회에서 1.0을 제안값으로 넣었습니다.
+- **마무리 카드 판정 기준** — §7.5는 시나리오 우선순위만 정했습니다. rushed RLS 70, density 4건, exposure 90분을 제안값으로 넣었습니다.
+- **`actions`에는 외출 전 행동만** — 일정 중 행동은 `armedActionCode`로 분리했습니다. 같은 항목을 카드와 푸시에 두 번 세지 않기 위해서입니다.
+- **관심사 보정 M은 계단 함수** — §7.2의 "최대 1.25"에 등급 규칙이 없어, 관련 관심 항목이 하나라도 있으면 최대값을 적용합니다. 변경 지점은 `normalize.interest_multiplier` 한 곳입니다.
+- **행동 순위는 WIS 기여도 기준** — 강수는 §7.2가 T에 접어 넣었으므로 체감온도와 기여도를 공유하고, 동률이면 `uv > pm > temp > rain > hydration` 순입니다.
+- **병합 키워드 표** — 골든 09의 "선크림 병합"을 만들려면 항목명과 행동을 잇는 표가 필요합니다. 모델 추론이 아니라 승인된 고정 목록(`templates.MERGE_KEYWORDS`)이며, 항목 추가는 콘텐츠 검토 대상입니다.
+
 ## Spring Backend 인계 주의사항
 
 - Provider 경로의 초 단위 값을 AI 요청의 분 단위로 먼저 정규화합니다. 이동 시간을 과소평가하지 않도록 올림을 권장합니다.
@@ -262,6 +404,12 @@ M2에서 새로 생긴 결정 사항입니다.
 - 개인화 골든 케이스는 `tests/golden/personalization/*.json`에 입력·기대 출력이 함께 들어 있어 Java DTO 역직렬화 검증에 그대로 쓸 수 있습니다.
 - 개인화 응답의 `previousValue`/`newValue`는 **`adjustedKnob`이 지정한 대상의 값**입니다. `prep_estimate`면 준비 시간 추정(분), `traffic_buffer`면 교통 버퍼(분)이고, `notification_lead`·`departure_lead`는 값이 `null`입니다.
 - `excludedFromLearning=true`는 오류가 아닙니다. `EVENT_DELAY_REASON`·`USER_PREP_ESTIMATE`를 쓰지 말고 제외 사유만 지표로 집계하십시오.
+- 웰니스 골든 케이스는 `tests/golden/wellness/{evaluate,rush_load,daily}/*.json`입니다.
+- 웰니스 응답의 `wisScore=null`은 오류가 아닙니다. 환경 또는 경로가 없다는 뜻이고, 시간 계획은 그대로 진행해야 합니다.
+- `dwlScore`는 저장하되 클라이언트에 표시하지 마십시오 (D5). `dwlBand`만 노출합니다.
+- `cardMessage`는 `DAILY_WELLNESS_SUMMARY.card_message_snapshot`에 보존하십시오. 사후에 "어떤 문구가 실제로 나갔는지" 확인할 수 있어야 콘텐츠 검토가 성립합니다.
+- `eventArmed=true`면 `armedActionCode` 1건만 `WELLNESS_EVENT_SCHEDULE`에 예약하고, `interval_minutes_snapshot`에 그 시점 사용자 설정을 복사하십시오.
+- 대기질은 등급으로 보내십시오. 원값에서 등급을 유도하는 것은 엔진의 일이 아닙니다.
 - OpenAPI 스키마는 `/openapi.json`에서 확인합니다.
 - M1 API는 인증·DB·외부 API를 직접 처리하지 않습니다.
 
