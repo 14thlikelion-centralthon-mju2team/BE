@@ -34,4 +34,11 @@ public class StubWellnessNotificationPort implements WellnessNotificationPort {
                 .dedupKey(dedupKey)
                 .build()).getNotificationId();
     }
+
+    @Override
+    public void cancelWellnessNotification(UUID notificationId) {
+        notificationRepository.findById(notificationId)
+                .filter(notification -> "scheduled".equals(notification.getDeliveryStatus()))
+                .ifPresent(notification -> notification.setDeliveryStatus("cancelled"));
+    }
 }

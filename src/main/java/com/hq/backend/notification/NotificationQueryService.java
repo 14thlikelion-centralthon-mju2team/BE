@@ -22,13 +22,16 @@ public class NotificationQueryService {
     private final NotificationRepository notificationRepository;
     private final PlanRevisionRepository planRevisionRepository;
     private final EventRepository eventRepository;
+    private final com.hq.backend.wellness.WellnessEventSchedulerService wellnessEventSchedulerService;
 
     public NotificationQueryService(NotificationRepository notificationRepository,
                                     PlanRevisionRepository planRevisionRepository,
-                                    EventRepository eventRepository) {
+                                    EventRepository eventRepository,
+                                    com.hq.backend.wellness.WellnessEventSchedulerService wellnessEventSchedulerService) {
         this.notificationRepository = notificationRepository;
         this.planRevisionRepository = planRevisionRepository;
         this.eventRepository = eventRepository;
+        this.wellnessEventSchedulerService = wellnessEventSchedulerService;
     }
 
     /** 오늘(KST 기준) 예정·발송된 알림 조회 — 본인 일정만 */
@@ -77,8 +80,15 @@ public class NotificationQueryService {
             throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "알림을 찾을 수 없습니다");
         }
 
+        if ("wellness".equals(notification.getNotificationCategory())) {
+            try {
+                wellnessEventSchedulerService.handleNotificationResponse(
+                        notificationId, request.reaction(), userId);
+            } catch (IllegalArgumentException exception) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REACTION", exception.getMessage());
+            }
+        }
         notification.setDeliveryStatus("delivered");
-        // 향후: reaction에 따른 이벤트 상태 전이, 행동 로그 기록 등 (김민형 영역과 조율 필요)
     }
 
     private NotificationResponse toResponse(Notification n) {

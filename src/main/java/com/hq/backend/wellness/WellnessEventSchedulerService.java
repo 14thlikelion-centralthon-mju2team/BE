@@ -32,17 +32,23 @@ public class WellnessEventSchedulerService {
     private final WellnessNotificationPort notificationPort;
     private final PlanWellnessActionRepository actionRepository;
     private final UserWellnessPrefRepository prefRepository;
+    private final com.hq.backend.event.EventRepository eventRepository;
+    private final com.hq.backend.plan.PlanRevisionRepository planRevisionRepository;
 
     public WellnessEventSchedulerService(WellnessEventGate gate,
                                          WellnessEventScheduleRepository scheduleRepository,
                                          WellnessNotificationPort notificationPort,
                                          PlanWellnessActionRepository actionRepository,
-                                         UserWellnessPrefRepository prefRepository) {
+                                         UserWellnessPrefRepository prefRepository,
+                                         com.hq.backend.event.EventRepository eventRepository,
+                                         com.hq.backend.plan.PlanRevisionRepository planRevisionRepository) {
         this.gate = gate;
         this.scheduleRepository = scheduleRepository;
         this.notificationPort = notificationPort;
         this.actionRepository = actionRepository;
         this.prefRepository = prefRepository;
+        this.eventRepository = eventRepository;
+        this.planRevisionRepository = planRevisionRepository;
     }
 
     /**
@@ -116,30 +122,76 @@ public class WellnessEventSchedulerService {
      * - ignored: 연속 2회 시 빈도 하향
      */
     @Transactional
+    public void handleNotificationResponse(UUID notificationId, String responseAction, UUID userId) {
+        WellnessEventSchedule schedule = scheduleRepository.findByNotificationId(notificationId)
+                .orElseThrow(() -> new IllegalArgumentException("wellness notification not found: " + notificationId));
+        handleResponse(schedule.getWellnessEventId(), responseAction, userId);
+    }
+
+    @Transactional
     public void handleResponse(UUID wellnessEventId, String responseAction, UUID userId) {
         WellnessEventSchedule schedule = scheduleRepository.findById(wellnessEventId)
                 .orElseThrow(() -> new IllegalArgumentException("wellness event not found: " + wellnessEventId));
+        assertOwner(schedule, userId);
+        if (!List.of("completed", "snoozed", "stop_today", "ignored").contains(responseAction)) {
+            throw new IllegalArgumentException("unsupported wellness response: " + responseAction);
+        }
 
         schedule.setResponseAction(responseAction);
-
         switch (responseAction) {
             case "stop_today" -> handleStopToday(schedule, userId);
             case "ignored" -> handleIgnored(schedule, userId);
-            default -> { /* completed, snoozed — 추가 로직 없음 */ }
+            default -> { /* completed, snoozed — response is retained for the scheduler */ }
         }
     }
 
-    /** stop_today: 당일 해당 행동 전체 중단 */
+    /** stop_today: KST 당일 같은 사용자의 같은 행동에 대한 미래 발송 전체 중단 */
     private void handleStopToday(WellnessEventSchedule schedule, UUID userId) {
+        Instant now = Instant.now();
         log.info("[WellnessScheduler] stop_today: user_id={}, action={}", userId, schedule.getActionCode());
-        // 같은 plan의 같은 action으로 예약된 미발송 건 취소
-        scheduleRepository.findByPlanIdAndActionCode(schedule.getPlanId(), schedule.getActionCode())
-                .stream()
-                .filter(s -> s.getSentAt() == null && s.getCancelledAt() == null)
-                .forEach(s -> {
-                    s.setCancelledAt(Instant.now());
-                    s.setCancelReason("user_completed");
+        List<UUID> todayPlanIds = todayPlanIds(userId, now);
+        if (todayPlanIds.isEmpty()) {
+            return;
+        }
+        scheduleRepository.findByPlanIdIn(todayPlanIds).stream()
+                .filter(candidate -> schedule.getActionCode().equals(candidate.getActionCode()))
+                .filter(candidate -> candidate.getSentAt() == null && candidate.getCancelledAt() == null)
+                .forEach(candidate -> {
+                    candidate.setCancelledAt(now);
+                    candidate.setCancelReason("user_stop_today");
+                    if (candidate.getNotificationId() != null) {
+                        notificationPort.cancelWellnessNotification(candidate.getNotificationId());
+                    }
                 });
+    }
+
+    private void assertOwner(WellnessEventSchedule schedule, UUID userId) {
+        com.hq.backend.plan.PlanRevision revision = planRevisionRepository.findById(schedule.getPlanId())
+                .orElseThrow(() -> new IllegalArgumentException("plan not found: " + schedule.getPlanId()));
+        boolean owned = eventRepository.findById(revision.getEventId())
+                .map(event -> userId.equals(event.getUserId()))
+                .orElse(false);
+        if (!owned) {
+            throw new IllegalArgumentException("wellness event not owned by user");
+        }
+    }
+
+    private List<UUID> todayPlanIds(UUID userId, Instant now) {
+        java.time.ZoneId zone = java.time.ZoneId.of("Asia/Seoul");
+        java.time.LocalDate today = now.atZone(zone).toLocalDate();
+        Instant startOfDay = today.atStartOfDay(zone).toInstant();
+        Instant endOfDay = today.plusDays(1).atStartOfDay(zone).toInstant();
+        List<UUID> eventIds = eventRepository.findByUserIdAndStartsAtBetweenOrderByStartsAtAsc(
+                        userId, startOfDay, endOfDay)
+                .stream()
+                .map(com.hq.backend.event.Event::getEventId)
+                .toList();
+        if (eventIds.isEmpty()) {
+            return List.of();
+        }
+        return planRevisionRepository.findByEventIdIn(eventIds).stream()
+                .map(com.hq.backend.plan.PlanRevision::getPlanId)
+                .toList();
     }
 
     /** ignored 연속 2회 → 빈도 1단계 하향 (TRD §7.4) */

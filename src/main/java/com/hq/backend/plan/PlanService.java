@@ -31,6 +31,8 @@ public class PlanService {
     private final RouteOptionRepository routeOptionRepository;
     private final PlanPrepItemRepository planPrepItemRepository;
     private final PlanContextRepository planContextRepository;
+    private final com.hq.backend.wellness.PlanWellnessActionRepository planWellnessActionRepository;
+    private final com.hq.backend.wellness.PlanWellnessScoreRepository planWellnessScoreRepository;
     private final EventRepository eventRepository;
     private final PlanCreationService planCreationService;
 
@@ -177,6 +179,18 @@ public class PlanService {
                 .map(this::toChecklistItem)
                 .toList();
         PlanContext context = planContextRepository.findById(revision.getPlanId()).orElse(null);
+        List<PlanDetailResponse.WellnessActionItem> wellnessActions = planWellnessActionRepository
+                .findByPlanId(revision.getPlanId()).stream()
+                .sorted(java.util.Comparator.comparingInt(com.hq.backend.wellness.PlanWellnessAction::getDisplayRank))
+                .map(action -> new PlanDetailResponse.WellnessActionItem(
+                        action.getWellnessActionId(), action.getWellnessTopic(), action.getActionCode(),
+                        action.getActionLabel(), action.getDisplayRank(), action.getReasonSnapshot(),
+                        action.getCompletionStatus(), action.getRespondedAt()))
+                .toList();
+        PlanDetailResponse.WellnessScoreItem wellness = planWellnessScoreRepository.findById(revision.getPlanId())
+                .map(score -> new PlanDetailResponse.WellnessScoreItem(
+                        score.getWisScore(), score.getWisBand(), score.getWeightVersion(), score.getCalculatedAt()))
+                .orElse(null);
 
         return new PlanDetailResponse(
                 revision.getPlanId(),
@@ -199,8 +213,8 @@ public class PlanService {
                         revision.getArrivalBufferMinutes()),
                 parseReasons(revision.getReasons()),
                 checklist,
-                List.of(),
-                null,
+                wellnessActions,
+                wellness,
                 toContextItem(context),
                 revision.getSelectedRouteOptionId(),
                 parseDegraded(revision.getDegraded()));

@@ -16,6 +16,7 @@ import com.jayway.jsonpath.JsonPath;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -87,6 +88,27 @@ class WellnessEventGateTest {
         boolean passed = wellnessEventGate.evaluate(myPlan, "sunscreen", now);
 
         assertThat(passed).isTrue();
+    }
+
+    @Test
+    void stop_today는_같은_사용자의_다른_당일_plan에서도_동일_action을_차단한다() throws Exception {
+        UUID userId = extractUserId(signupAndLogin());
+        Instant now = Instant.now();
+        userWellnessPrefRepository.save(UserWellnessPref.builder()
+                .userId(userId).wellnessTopic("uv").isEnabled(true).dailyEventCap(3)
+                .updatedAt(now).build());
+
+        setUpEnrouteEventWithScore(userId, now, 80);
+        setUpEnrouteEventWithScore(userId, now.plusSeconds(1800), 80);
+        List<Event> events = eventRepository.findByUserIdAndStartsAtBetweenOrderByStartsAtAsc(
+                userId, now.minusSeconds(60), now.plusSeconds(3600));
+        PlanRevision firstPlan = planRevisionRepository.findByEventIdOrderByRevisionNoDesc(events.get(0).getEventId()).get(0);
+        PlanRevision secondPlan = planRevisionRepository.findByEventIdOrderByRevisionNoDesc(events.get(1).getEventId()).get(0);
+        wellnessEventScheduleRepository.save(WellnessEventSchedule.builder()
+                .planId(firstPlan.getPlanId()).actionCode("sunscreen").scheduledAt(now)
+                .responseAction("stop_today").sequenceNo((short) 1).build());
+
+        assertThat(wellnessEventGate.evaluate(secondPlan, "sunscreen", now)).isFalse();
     }
 
     private void setUpEnrouteEventWithScore(UUID userId, Instant now, int wisScore) {

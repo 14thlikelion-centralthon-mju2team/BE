@@ -118,13 +118,11 @@ public class WellnessEventGate {
             }
         }
 
-        // ⑤ 같은 일정·같은 행동에 completed/stop_today 없음
+        // ⑤ 같은 일정·같은 행동에 completed 없음, stop_today는 사용자·당일 전체 차단
         List<WellnessEventSchedule> existing = scheduleRepository.findByPlanIdAndActionCode(planId, actionCode);
-        boolean hasBlockingResponse = existing.stream()
-                .anyMatch(e -> "completed".equals(e.getResponseAction())
-                        || "stop_today".equals(e.getResponseAction()));
-        if (hasBlockingResponse) {
-            log.debug("[WellnessGate] 게이트⑤ 실패: plan_id={}, action={} 이미 completed/stop_today", planId, actionCode);
+        boolean hasCompleted = existing.stream().anyMatch(e -> "completed".equals(e.getResponseAction()));
+        if (hasCompleted || hasStopTodayForUser(userId, actionCode, now)) {
+            log.debug("[WellnessGate] 게이트⑤ 실패: user_id={}, action={} completed/stop_today", userId, actionCode);
             return false;
         }
 
@@ -175,6 +173,26 @@ public class WellnessEventGate {
                 .filter(s -> s.getSentAt() != null)
                 .filter(s -> !s.getSentAt().isBefore(startOfDay) && s.getSentAt().isBefore(endOfDay))
                 .count();
+    }
+
+    private boolean hasStopTodayForUser(UUID userId, String actionCode, Instant now) {
+        LocalDate today = now.atZone(ZoneId.of("Asia/Seoul")).toLocalDate();
+        Instant startOfDay = today.atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+        Instant endOfDay = today.plusDays(1).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+        List<UUID> eventIds = eventRepository.findByUserIdAndStartsAtBetweenOrderByStartsAtAsc(
+                        userId, startOfDay, endOfDay)
+                .stream()
+                .map(Event::getEventId)
+                .toList();
+        if (eventIds.isEmpty()) {
+            return false;
+        }
+        List<UUID> planIds = planRevisionRepository.findByEventIdIn(eventIds).stream()
+                .map(PlanRevision::getPlanId)
+                .toList();
+        return scheduleRepository.findByPlanIdIn(planIds).stream()
+                .anyMatch(schedule -> actionCode.equals(schedule.getActionCode())
+                        && "stop_today".equals(schedule.getResponseAction()));
     }
 
     /** action_code → wellness_topic 매핑 */
