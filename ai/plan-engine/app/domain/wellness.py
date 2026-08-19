@@ -67,6 +67,7 @@ def evaluate(payload: WellnessInput) -> WellnessOutput:
         else (WellnessBand.MID if score >= payload.config.wis_band_card else WellnessBand.LOW)
     )
 
+    precipitation = environment.precipitation_probability or 0
     candidates: list[tuple[float, WellnessAction]] = []
     if loads.uv_load >= 0.25 and _preference_enabled(payload, WellnessTopic.UV):
         candidates.append(
@@ -94,12 +95,10 @@ def evaluate(payload: WellnessInput) -> WellnessOutput:
                 ),
             )
         )
-    if (environment.precipitation_probability or 0) >= 50 and _preference_enabled(
-        payload, WellnessTopic.RAIN
-    ):
+    if precipitation >= 50 and _preference_enabled(payload, WellnessTopic.RAIN):
         candidates.append(
             (
-                environment.precipitation_probability / 100.0,
+                precipitation / 100.0,
                 WellnessAction(
                     wellness_topic=WellnessTopic.RAIN,
                     action_code="umbrella",
