@@ -1,0 +1,29 @@
+{
+  "caseId": "W11_low_band_stays_silent",
+  "description": "WIS 39 — low 밴드는 조용히 지나간다. 행동 제안도 푸시도 없다 (TRD §7.1, PRD §14.3)",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m3-wellness-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "environment": {
+      "uvIndex": 6.0,
+      "airGrade": "good",
+      "feelsLikeCelsius": 20.0,
+      "precipitationProbability": 0
+    },
+    "estimatedOutdoorMinutes": 108,
+    "userPreferences": [],
+    "existingPrepItems": []
+  },
+  "expected": {
+    "wisScore": 39,
+    "wisBand": "low",
+    "actionCodes": [],
+    "eventArmed": false,
+    "armedActionCode": null,
+    "armingBlockedBy": ["consent", "score", "exposure", "interval"],
+    "degraded": []
+  },
+  "tags": ["golden", "wellness", "band-boundary", "invariant-6"]
+}

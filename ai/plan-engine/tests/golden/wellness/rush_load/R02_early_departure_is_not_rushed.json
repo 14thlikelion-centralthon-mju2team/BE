@@ -1,0 +1,21 @@
+{
+  "caseId": "R02_early_departure_is_not_rushed",
+  "description": "계획보다 이른 준비·출발은 촉박함이 아니다 — 음수 지연은 0으로 본다 (PRD §14.4)",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m3-wellness-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "eventId": "evt-r02",
+    "prepDelayMinutes": -10.0,
+    "departDelayMinutes": -5.0,
+    "criticalAlertCount": 0
+  },
+  "expected": {
+    "rushLoadScore": 0,
+    "prepDelayNorm": 0.0,
+    "departDelayNorm": 0.0,
+    "criticalAlertNorm": 0.0
+  },
+  "tags": ["golden", "wellness", "rls"]
+}

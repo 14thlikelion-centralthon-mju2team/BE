@@ -12,14 +12,21 @@ public record WellnessEngineResponse(
         boolean eventArmed,
         String weightVersion,
         String contractVersion,
-        List<String> degraded
+        List<String> degraded,
+        QuantizedEnvironment quantized,
+        String armedActionCode,
+        List<String> armingBlockedBy
 ) {
 
     public record NormalizedLoads(
             double uvLoad, double pmLoad, double thermalLoad, double outdoorLoad, double interestMultiplier) {
     }
 
+    public record QuantizedEnvironment(String rain, String uv, String pm, String temp, boolean tempSwing) {
+    }
+
     public record WellnessAction(
-            String wellnessTopic, String actionCode, String actionLabel, int displayRank, String reason) {
+            String wellnessTopic, String actionCode, String actionLabel, int displayRank, String reason,
+            boolean mergedWithPrepItem, String mergedItemId) {
     }
 }

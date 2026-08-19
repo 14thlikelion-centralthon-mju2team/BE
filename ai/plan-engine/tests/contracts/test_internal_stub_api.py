@@ -112,7 +112,7 @@ def test_personalization_naive_datetime_422(client):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Wellness stub
+# Wellness engine (M3 — real logic, no stub gate)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -137,13 +137,27 @@ def _wellness_payload() -> dict:
     }
 
 
-def test_wellness_engine_200(client):
+def test_wellness_200(client):
     resp = client.post("/internal/v1/wellness/evaluate", json=_wellness_payload())
     assert resp.status_code == 200
     data = resp.json()
     assert data["contractVersion"] == "m0-v1"
+    assert data["weightVersion"] == "m3-wellness-1.0.0"
+    # The payload carries no UV or air grade and the opt-ins are absent, so
+    # nothing can be armed (TR-11 gate ①).
     assert data["eventArmed"] is False
-    assert data["weightVersion"] == "w1"
+    assert "consent" in data["armingBlockedBy"] or "no_candidate" in data["armingBlockedBy"]
+
+
+def test_wellness_endpoint_is_not_stub_gated(client, monkeypatch):
+    """M3 removed the STUB_MODE gate — the engine always computes."""
+    import app.api.internal.wellness as wellness_module
+
+    assert not hasattr(wellness_module, "_STUB_MODE")
+
+    monkeypatch.setenv("STUB_MODE", "false")
+    resp = client.post("/internal/v1/wellness/evaluate", json=_wellness_payload())
+    assert resp.status_code == 200
 
 
 def test_wellness_response_is_camel_case(client):

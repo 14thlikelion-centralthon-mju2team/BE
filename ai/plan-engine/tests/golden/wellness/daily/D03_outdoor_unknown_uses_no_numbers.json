@@ -1,0 +1,28 @@
+{
+  "caseId": "D03_outdoor_unknown_uses_no_numbers",
+  "description": "야외 시간을 추정조차 할 수 없으면 수치 없는 문장을 쓴다 — 숫자를 지어내지 않는다 (TRD §7.5)",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m3-wellness-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "summaryDate": "2026-08-20",
+    "events": [
+      { "eventId": "e1", "wisScore": 70, "rushLoadScore": 20 },
+      { "eventId": "e2", "wisScore": 50, "rushLoadScore": 30 }
+    ]
+  },
+  "expected": {
+    "eventCount": 2,
+    "totalOutdoorMinutes": null,
+    "avgWisWeighted": 60.0,
+    "avgRls": 25.0,
+    "dwlScore": 46,
+    "dwlBand": "mid",
+    "cardScenario": "default",
+    "cardVisible": true,
+    "degraded": ["outdoor_unavailable"],
+    "cardMessage": "오늘 일정을 마쳤습니다."
+  },
+  "tags": ["golden", "wellness", "dwl", "degraded"]
+}

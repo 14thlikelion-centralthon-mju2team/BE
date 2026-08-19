@@ -1,0 +1,44 @@
+{
+  "caseId": "W09_merge_sunscreen_with_prep_item",
+  "description": "골든 09 — 사용자가 등록한 선크림과 웰니스 제안이 1건으로 병합된다. 사용자 항목이 유지되고 웰니스 근거만 붙는다 (TRD §5.4)",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m3-wellness-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "environment": {
+      "uvIndex": 9.0,
+      "airGrade": "good",
+      "feelsLikeCelsius": 24.0,
+      "precipitationProbability": 0
+    },
+    "estimatedOutdoorMinutes": 105,
+    "userPreferences": [],
+    "existingPrepItems": [
+      {
+        "itemId": "item-sunscreen",
+        "itemName": "  선크림  ",
+        "actionType": "carry",
+        "sourceType": "rule"
+      },
+      {
+        "itemId": "item-charger",
+        "itemName": "보조배터리",
+        "actionType": "carry",
+        "sourceType": "rule"
+      }
+    ]
+  },
+  "expected": {
+    "wisScore": 49,
+    "wisBand": "mid",
+    "actionCodes": ["uv_protect"],
+    "mergedItemIds": ["item-sunscreen"],
+    "eventArmed": false,
+    "armedActionCode": null,
+    "armingBlockedBy": ["consent", "score", "exposure", "interval"],
+    "degraded": [],
+    "reasonContains": "이미 등록한 준비 항목 · 자외선지수 9 · 야외 105분"
+  },
+  "tags": ["golden", "wellness", "golden-09", "merge"]
+}

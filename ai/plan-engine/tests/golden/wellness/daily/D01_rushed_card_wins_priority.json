@@ -1,0 +1,50 @@
+{
+  "caseId": "D01_rushed_card_wins_priority",
+  "description": "촉박함이 가장 높은 우선순위 — rushed > density > exposure > stable > default (TRD §7.5)",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m3-wellness-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "summaryDate": "2026-08-20",
+    "events": [
+      {
+        "eventId": "e1",
+        "wisScore": 60,
+        "rushLoadScore": 80,
+        "outdoorMinutes": 30,
+        "outdoorObserved": true
+      },
+      {
+        "eventId": "e2",
+        "wisScore": 50,
+        "rushLoadScore": 75,
+        "outdoorMinutes": 60,
+        "outdoorObserved": true
+      },
+      {
+        "eventId": "e3",
+        "wisScore": 40,
+        "rushLoadScore": 70,
+        "outdoorMinutes": 90,
+        "outdoorObserved": true
+      }
+    ],
+    "proposedActionCount": 4,
+    "completedActionCount": 2,
+    "criticalAlertCount": 2
+  },
+  "expected": {
+    "eventCount": 3,
+    "totalOutdoorMinutes": 180,
+    "avgWisWeighted": 46.67,
+    "avgRls": 75.0,
+    "dwlScore": 58,
+    "dwlBand": "mid",
+    "cardScenario": "rushed",
+    "cardVisible": true,
+    "degraded": [],
+    "cardMessage": "오늘은 일정 3건을 촉박하게 움직였습니다. 다음 일정은 준비 시간을 조금 더 두는 편이 편합니다."
+  },
+  "tags": ["golden", "wellness", "dwl", "card"]
+}

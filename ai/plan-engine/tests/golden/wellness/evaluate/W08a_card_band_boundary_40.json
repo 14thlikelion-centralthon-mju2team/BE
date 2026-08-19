@@ -1,0 +1,44 @@
+{
+  "caseId": "W08a_card_band_boundary_40",
+  "description": "골든 08 — WIS가 정확히 40이면 mid 밴드(준비 카드). 경계 포함 판정 (TRD §7.1)",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m3-wellness-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "environment": {
+      "uvIndex": 6.0,
+      "airGrade": "good",
+      "feelsLikeCelsius": 20.0,
+      "precipitationProbability": 0
+    },
+    "estimatedOutdoorMinutes": 114,
+    "userPreferences": [],
+    "existingPrepItems": []
+  },
+  "expected": {
+    "wisScore": 40,
+    "wisBand": "mid",
+    "normalizedLoads": {
+      "uvLoad": 0.6,
+      "pmLoad": 0.0,
+      "thermalLoad": 0.0,
+      "outdoorLoad": 0.95,
+      "interestMultiplier": 1.0
+    },
+    "quantized": {
+      "rain": "none",
+      "uv": "high",
+      "pm": "good",
+      "temp": "mild",
+      "tempSwing": false
+    },
+    "actionCodes": ["uv_protect"],
+    "eventArmed": false,
+    "armedActionCode": null,
+    "armingBlockedBy": ["consent", "score", "exposure", "interval"],
+    "degraded": [],
+    "reasonContains": "자외선지수 6 · 야외 114분"
+  },
+  "tags": ["golden", "wellness", "golden-08", "band-boundary"]
+}

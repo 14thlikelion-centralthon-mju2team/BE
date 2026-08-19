@@ -83,6 +83,10 @@ public class WellnessEventGate {
             return false;
         }
         String topic = actionCodeToTopic(actionCode);
+        if (topic == null) {
+            log.warn("[WellnessGate] 승인되지 않은 wellness action code를 차단합니다: {}", actionCode);
+            return false;
+        }
 
         // ① 사용자가 해당 항목과 이벤트 알림을 켬
         Optional<UserWellnessPref> prefOpt = prefRepository.findByUserIdAndWellnessTopic(userId, topic);
@@ -195,15 +199,8 @@ public class WellnessEventGate {
                         && "stop_today".equals(schedule.getResponseAction()));
     }
 
-    /** action_code → wellness_topic 매핑 */
+    /** M3 approved action_code → wellness_topic mapping. Unknown codes are rejected by evaluate(). */
     static String actionCodeToTopic(String actionCode) {
-        return switch (actionCode) {
-            case "sunscreen" -> "uv";
-            case "mask" -> "pm";
-            case "hydration" -> "hydration";
-            case "outerwear" -> "temp";
-            case "umbrella" -> "rain";
-            default -> "uv";
-        };
+        return WellnessActionCatalog.topicFor(actionCode);
     }
 }

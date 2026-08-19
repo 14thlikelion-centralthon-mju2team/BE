@@ -1,0 +1,36 @@
+{
+  "caseId": "W08b_event_band_boundary_70",
+  "description": "골든 08 — WIS가 정확히 70이면 high 밴드(이벤트 후보). 점수 게이트도 이 값에서 열린다 (TRD §7.1, §7.4)",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m3-wellness-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "environment": {
+      "uvIndex": 10.0,
+      "airGrade": "bad",
+      "feelsLikeCelsius": 31.0,
+      "precipitationProbability": 0
+    },
+    "estimatedOutdoorMinutes": 33,
+    "userPreferences": [],
+    "existingPrepItems": []
+  },
+  "expected": {
+    "wisScore": 70,
+    "wisBand": "high",
+    "quantized": {
+      "rain": "none",
+      "uv": "high",
+      "pm": "bad",
+      "temp": "hot",
+      "tempSwing": false
+    },
+    "actionCodes": ["uv_protect", "pm_mask", "temp_heat_prep"],
+    "eventArmed": false,
+    "armedActionCode": null,
+    "armingBlockedBy": ["consent", "exposure", "interval"],
+    "degraded": []
+  },
+  "tags": ["golden", "wellness", "golden-08", "band-boundary"]
+}

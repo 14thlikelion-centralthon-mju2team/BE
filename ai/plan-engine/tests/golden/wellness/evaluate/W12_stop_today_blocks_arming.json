@@ -1,0 +1,43 @@
+{
+  "caseId": "W12_stop_today_blocks_arming",
+  "description": "'오늘은 그만'을 누른 항목은 점수가 충분해도 예약하지 않는다 — 게이트 ⑤ 백오프 (TRD §7.4)",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m3-wellness-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "environment": {
+      "uvIndex": 10.0,
+      "airGrade": "good",
+      "feelsLikeCelsius": -1.0,
+      "precipitationProbability": 0
+    },
+    "estimatedOutdoorMinutes": 120,
+    "userPreferences": [
+      {
+        "wellnessTopic": "uv",
+        "isEnabled": true,
+        "remindIntervalMinutes": 120,
+        "dailyEventCap": 1
+      }
+    ],
+    "existingPrepItems": [],
+    "eventState": {
+      "wellnessEventEnabled": true,
+      "eventInProgress": true,
+      "outdoorRemainingMinutes": 30,
+      "minutesSinceLastEvent": 200,
+      "stopTodayActionCodes": ["uv_reapply"]
+    }
+  },
+  "expected": {
+    "wisScore": 78,
+    "wisBand": "high",
+    "actionCodes": ["uv_protect", "temp_cold_prep"],
+    "eventArmed": false,
+    "armedActionCode": null,
+    "armingBlockedBy": ["already_handled"],
+    "degraded": []
+  },
+  "tags": ["golden", "wellness", "TR-11", "backoff"]
+}
