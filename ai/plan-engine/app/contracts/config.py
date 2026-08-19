@@ -36,8 +36,14 @@ class PersonalizationEngineConfig(ContractModel):
 
     Controls EMA smoothing, guard-rails, and step limits for prep estimate
     adjustment (TRD §6).
+
+    The fields below the M0 block were added in M2 with defaults, so an M0
+    payload keeps validating unchanged (contract doc §10 non-breaking rule).
+    They carry the sample-eligibility and cause-attribution thresholds that
+    TRD §6.1 states in prose but appendix A does not yet register as keys.
     """
 
+    # ── M0 frozen keys (appendix A.1) ────────────────────────────────────────
     prep_ema_alpha: float = Field(default=0.30, gt=0.0, le=1.0)
     late_weight: float = Field(default=1.50, gt=0.0)
     early_weight: float = Field(default=0.70, gt=0.0)
@@ -46,6 +52,23 @@ class PersonalizationEngineConfig(ContractModel):
     prep_floor_minutes: int = Field(default=10, ge=0)
     prep_ceiling_ratio: float = Field(default=2.0, gt=0.0)
     model_version: str = Field(min_length=1)
+
+    # ── M2 additions (defaults keep M0 payloads valid) ───────────────────────
+    #: Seed used when ``currentEstimate.seedMinutes`` is absent — mirrors the
+    #: plan engine's SEED_FALLBACK_MIN (TRD §6.2).
+    seed_fallback_minutes: int = Field(default=30, ge=0)
+    #: sampleCount below this stays on the seed (TRD §6.2 cold start).
+    cold_start_sample_threshold: int = Field(default=3, ge=0)
+    #: EVENT_ACTION_LOG clock skew tolerance in seconds (TRD §6.1, TR-02).
+    clock_skew_tolerance_seconds: int = Field(default=120, ge=0)
+    #: Observed prep duration above this is an outlier ("pressed start and
+    #: forgot") and is dropped from learning (TRD §6.1).
+    prep_outlier_max_minutes: int = Field(default=240, ge=1)
+    #: Minimum geofence confidence for ``resultSource='geo'`` samples
+    #: (TRD §6.1 출처 신뢰, appendix A.3 AUTO_CONF).
+    geo_min_confidence: float = Field(default=0.60, ge=0.0, le=1.0)
+    #: A delay signal below this many minutes is noise, not a cause.
+    attribution_min_signal_minutes: int = Field(default=3, ge=0)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
