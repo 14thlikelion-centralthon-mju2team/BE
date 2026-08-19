@@ -521,6 +521,20 @@ M2가 개인화에서, M3가 웰니스에서 이 절차를 밟았다.
 | 불변식 ④⑤⑥ 속성 테스트 | `tests/test_wellness_properties.py` |
 | 알고리즘 상세 | `../README.md` "웰니스 규칙 (M3)" |
 
+### M4 구현 결과
+
+M4는 엔드포인트를 추가하지 않습니다 — 아래 §13 참고.
+
+| 항목 | 위치 |
+|---|---|
+| `inputHash` 참조 구현 | `app/domain/revision/` |
+| 도착 판정 신뢰도 참조 구현 | `app/domain/geofence/` |
+| 지표 정의 | `app/domain/metrics/` (north_star · wellness_metrics) |
+| 적합성 벡터 | `tests/golden/input_hash` · `tests/golden/geofence` · `tests/golden/metrics` |
+| 16조합 진리표 | `tests/test_geofence_confidence.py` |
+| 하루 재생 시뮬레이션 | `tests/simulation/test_day_replay.py` (일정 200건) |
+| 지표 SQL 스케치 | `../README.md` "참조 구현과 적합성 벡터 (M4)" |
+
 ---
 
 ## 12. 참고 파일 위치
@@ -531,19 +545,51 @@ ai/plan-engine/
 ├── app/domain/plan_engine/           ← M1 계산 로직
 ├── app/domain/personalization_engine/ ← M2 보정 로직
 ├── app/domain/wellness_engine/        ← M3 점수·행동·게이트 로직
+├── app/domain/revision/    ← M4 inputHash 참조 구현 (엔드포인트 없음)
+├── app/domain/geofence/    ← M4 도착 판정 신뢰도 참조 구현 (엔드포인트 없음)
+├── app/domain/metrics/     ← M4 북극성·웰니스 지표 정의 (엔드포인트 없음)
 ├── app/api/internal/       ← 개인화 · 웰니스 엔드포인트
 ├── app/testing/clock.py    ← 가상 시계
 ├── tests/contracts/        ← 계약 검증 테스트
 ├── tests/fixtures/         ← smoke fixture JSON
+├── tests/simulation/       ← 하루 재생 시뮬레이션 (일정 200건)
 ├── tests/golden/           ← 계획 골든 01~06
 ├── tests/golden/personalization/ ← 개인화 골든 P01~P10
 ├── tests/golden/wellness/  ← 웰니스 골든 (evaluate · rush_load · daily)
+├── tests/golden/input_hash/ ← inputHash 적합성 벡터 (canonicalJson + 해시)
+├── tests/golden/geofence/  ← 신뢰도 적합성 벡터
+├── tests/golden/metrics/   ← 지표 적합성 벡터
 └── examples/               ← 요청·응답 Mock JSON
 ```
 
 ---
 
-## 13. 교차 검증 체크리스트 (김민형)
+## 13. 적합성 벡터 — Java·SQL 구현이 대조할 기준 (M4)
+
+`inputHash`·도착 판정 신뢰도·지표 집계는 **AI 서버가 서비스하지 않습니다.** 호출 지점이 전부
+Spring 안이기 때문입니다(§5.5 "외부 호출 0회", §9.2 "서버는 판정 결과 수신 API만 제공",
+§16 "주간 집계 뷰"). 대신 정의를 한 곳에 고정하고 적합성 벡터를 남깁니다.
+
+| 대상 | 벡터 | 대조 방법 |
+|---|---|---|
+| `inputHash` | `tests/golden/input_hash/*.json` | `canonicalJson` 문자열을 먼저 맞추고, 그다음 sha256 |
+| 도착 판정 신뢰도 | `tests/golden/geofence/*.json` + 16조합 진리표 | `confidence` · `decision` · `radiusMeters` |
+| 북극성 | `tests/golden/metrics/M01_*.json` | `okEvents` · `okRatio` · 사유별 실패 건수 |
+| 웰니스 4종 | `tests/golden/metrics/M02_*.json` | 네 비율, 분모 0이면 `NULL` |
+
+### `inputHash` 정규화 규칙 (§5.5에 없던 부분)
+
+1. 키 사전순, 구분자 `,`·`:` 공백 없음, **중첩 객체 키까지 정렬**
+2. 좌표는 소수점 6자리 고정 문자열 (`37.566500`) — 부동소수 표기 차이 제거, 6자리 ≈ 0.11m
+3. 시각은 UTC 초 단위 `2026-08-20T05:00:00Z`
+4. 비ASCII 이스케이프, 준비 항목은 `itemId` 사전순 정렬
+
+이 넷 중 하나라도 어긋나면 두 구현이 다른 해시를 내고, 리비전이 매 틱 올라가거나 반대로 영원히
+안 올라갑니다.
+
+---
+
+## 14. 교차 검증 체크리스트 (김민형)
 
 - [ ] Java DTO 필드명과 Python 모델 필드명 일치
 - [ ] JSON camelCase 변환 규칙 동일
@@ -579,3 +625,15 @@ ai/plan-engine/
 - [ ] `raisedThresholdActionCodes`를 해제율·not_relevant 집계에서 계산해 넘기는지 (D9)
 - [ ] RLS·DWL 엔드포인트 신설 승인, 호출 시점 합의 (일정 종료 시 / 일일 배치)
 - [ ] 폭염·한파 경계, RLS 정규화 척도, 카드 판정 기준 제안값 확정
+
+### M4 추가 확인 항목
+
+- [ ] Java `inputHash` 구현이 벡터의 `canonicalJson`을 바이트 단위로 재현하는지
+- [ ] 좌표 6자리 절단·UTC Z·키 정렬·항목 정렬 네 규칙 합의
+- [ ] `inputHash` 컬럼 채택 여부 (D13). 미채택이면 활성 리비전 입력 재조립으로 대체 (§5.5)
+- [ ] 도착 판정 신뢰도를 어디서 계산할지 확정 (수신 API 안 / 별도 서비스)
+- [ ] 지오펜스 계수 6종을 `engine_config`에 등재
+- [ ] 지표 SQL이 벡터를 재현하는지 — 특히 분모 0에서 `NULL`인지
+- [ ] SQL 스케치의 테이블·컬럼 이름 확정 (`notification_log` 등 가안 포함)
+- [ ] 스케줄러 시뮬레이션 — 알림 3회 예산·`dedupKey` 중복 0·잔존 예약 0 (§17.4, Spring 소유)
+- [ ] 분류기(§4.6)를 Spring 안에 둘지 결정 — 제목 원문 전송을 피하는 편이 절대 원칙 8에 맞음
