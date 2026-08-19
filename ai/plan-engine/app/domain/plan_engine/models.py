@@ -11,6 +11,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domain.plan_engine.enums import (
+    AirQualityGrade,
     AnchorMode,
     DegradedReason,
     PredictionConfidence,
@@ -75,9 +76,28 @@ class RouteSnapshot(CamelModel):
 
 
 class EnvironmentSnapshot(CamelModel):
+    """Environment values for one event, mirroring ERD ``PLAN_CONTEXT``.
+
+    The plan engine only reads ``precipitation_probability``.  The remaining
+    fields were added in M3 for the wellness engine and are all optional, so a
+    plan-only caller keeps sending the same payload (contract doc §10).
+    """
+
     precipitation_probability: int | None = Field(default=None, ge=0, le=100)
     feels_like_celsius: float | None = None
     observed_at: datetime | None = None
+
+    # ── M3 additions (wellness input, TRD §7.2) ──────────────────────────────
+    #: 기상청 자외선지수, 출발~도착 시간대 값.
+    uv_index: float | None = Field(default=None, ge=0.0)
+    #: 에어코리아 통합 등급.  Raw µg/m³ values are stored for explainability but
+    #: the load normalisation reads the grade (§7.2).
+    air_grade: AirQualityGrade | None = None
+    pm10: float | None = Field(default=None, ge=0.0)
+    pm25: float | None = Field(default=None, ge=0.0)
+    #: Day's feels-like range — feeds the 일교차 flag in the temp bucket (§7.2).
+    feels_like_min_celsius: float | None = None
+    feels_like_max_celsius: float | None = None
 
     _observed_at_aware = field_validator("observed_at")(require_aware)
 
