@@ -224,14 +224,7 @@ public class WellnessEventSchedulerService {
 
     /** 승인 템플릿 기반 웰니스 알림 문구 (TR-09: 자유 생성 LLM 금지) */
     private String buildWellnessBody(String actionCode) {
-        return switch (actionCode) {
-            case "sunscreen" -> "설정하신 시간이 지났어요. 자외선 차단제를 다시 바를 타이밍이에요.";
-            case "mask" -> "미세먼지가 높아요. 마스크를 착용해 주세요.";
-            case "hydration" -> "물 한 잔 마실 시간이에요.";
-            case "outerwear" -> "기온이 낮아요. 겉옷을 챙기세요.";
-            case "umbrella" -> "비 소식이 있어요. 우산을 확인해 주세요.";
-            default -> "웰니스 행동을 확인해 주세요.";
-        };
+        return WellnessActionCatalog.bodyFor(actionCode);
     }
 
     /** TRD §8.4 — dedup_key = sha1(event_id:W:action_code:revision_no) */

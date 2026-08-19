@@ -36,7 +36,7 @@ public class WellnessEventSchedule {
     private UUID notificationId;
 
     @Column(nullable = false)
-    private String actionCode; // sunscreen | mask | hydration | outerwear | umbrella
+    private String actionCode; // M3 catalog: uv_reapply | pm_recheck | hydration_intake (plus persisted legacy codes)
 
     private Integer intervalMinutesSnapshot;
 

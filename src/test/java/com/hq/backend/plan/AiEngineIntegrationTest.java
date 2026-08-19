@@ -85,9 +85,13 @@ class AiEngineIntegrationTest {
                 {"wisScore":72,"wisBand":"high",
                  "normalizedLoads":{"uvLoad":0.85,"pmLoad":0.15,"thermalLoad":0.70,
                    "outdoorLoad":0.46,"interestMultiplier":1.15},
-                 "actions":[{"wellnessTopic":"uv","actionCode":"sunscreen",
-                   "actionLabel":"선크림 재도포 준비","displayRank":1,"reason":"UV 지수 8 이상"}],
-                 "eventArmed":true,"weightVersion":"w1","contractVersion":"m0-v1","degraded":[]}
+                 "quantized":{"rain":"none","uv":"high","pm":"bad","temp":"hot","tempSwing":false},
+                 "actions":[{"wellnessTopic":"pm","actionCode":"pm_mask",
+                   "actionLabel":"마스크 확인","displayRank":1,"reason":"대기질 나쁨 · 야외 55분",
+                   "mergedWithPrepItem":false,"mergedItemId":null}],
+                 "eventArmed":true,"armedActionCode":"pm_recheck","armingBlockedBy":[],
+                 "weightVersion":"m3-wellness-1.0.0","contractVersion":"m0-v1","degraded":[],
+                 "futureM3Field":{"safeToIgnore":true}}
                 """));
         fakeEngine.createContext("/internal/v1/personalization/adjust", exchange -> respond(exchange, """
                 {"cause":"prep_overrun","adjustedKnob":"prep_estimate",
@@ -131,7 +135,9 @@ class AiEngineIntegrationTest {
         assertThat(score.getWisBand()).isEqualTo("high");
 
         assertThat(planWellnessActionRepository.findAll())
-                .anyMatch(a -> a.getPlanId().equals(created.planId()) && "sunscreen".equals(a.getActionCode()));
+                .anyMatch(a -> a.getPlanId().equals(created.planId())
+                        && "pm".equals(a.getWellnessTopic())
+                        && "pm_mask".equals(a.getActionCode()));
 
         assertThat(productEventRepository.findAll())
                 .anyMatch(e -> "plan_created".equals(e.getEventName()) && created.userId().equals(e.getUserId()));

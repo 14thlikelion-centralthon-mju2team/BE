@@ -35,7 +35,7 @@ public class PlanWellnessAction {
     private String wellnessTopic; // uv | pm | temp | rain | hydration
 
     @Column(nullable = false)
-    private String actionCode; // sunscreen | mask | hydration | outerwear | umbrella
+    private String actionCode; // uv_protect | pm_mask | temp_heat_prep | temp_cold_prep | rain_gear | uv_reapply | pm_recheck | hydration_intake
 
     @Column(nullable = false)
     private String actionLabel;
