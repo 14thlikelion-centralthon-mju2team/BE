@@ -1,0 +1,28 @@
+{
+  "caseId": "D04_exposure_card_with_minutes",
+  "description": "야외 이동이 기준을 넘으면 exposure 카드. 추정값이면 그 사실을 degraded에 남긴다 (TRD §7.5)",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m3-wellness-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "summaryDate": "2026-08-20",
+    "events": [
+      { "eventId": "e1", "wisScore": 50, "rushLoadScore": 10, "outdoorMinutes": 60 },
+      { "eventId": "e2", "wisScore": 50, "rushLoadScore": 10, "outdoorMinutes": 60 }
+    ]
+  },
+  "expected": {
+    "eventCount": 2,
+    "totalOutdoorMinutes": 120,
+    "avgWisWeighted": 50.0,
+    "avgRls": 10.0,
+    "dwlScore": 34,
+    "dwlBand": "low",
+    "cardScenario": "exposure",
+    "cardVisible": true,
+    "degraded": ["outdoor_estimated"],
+    "cardMessage": "오늘은 야외 이동이 120분이었습니다. 실내에서 잠시 쉬어가세요."
+  },
+  "tags": ["golden", "wellness", "dwl", "card"]
+}

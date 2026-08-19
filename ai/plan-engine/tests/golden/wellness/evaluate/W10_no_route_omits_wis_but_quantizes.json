@@ -1,0 +1,36 @@
+{
+  "caseId": "W10_no_route_omits_wis_but_quantizes",
+  "description": "경로가 없어 야외 노출을 알 수 없으면 WIS 자체를 생략한다. 환경 양자화는 그대로 남아 inputHash에 쓸 수 있다 (TRD §7.2, §5.5)",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m3-wellness-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "environment": {
+      "uvIndex": 8.0,
+      "airGrade": "very_bad",
+      "feelsLikeCelsius": 34.0,
+      "precipitationProbability": 70
+    },
+    "userPreferences": [],
+    "existingPrepItems": []
+  },
+  "expected": {
+    "wisScore": null,
+    "wisBand": null,
+    "normalizedLoads": null,
+    "quantized": {
+      "rain": "heavy",
+      "uv": "high",
+      "pm": "veryBad",
+      "temp": "hot",
+      "tempSwing": false
+    },
+    "actionCodes": [],
+    "eventArmed": false,
+    "armedActionCode": null,
+    "armingBlockedBy": ["consent", "score", "exposure", "interval"],
+    "degraded": ["outdoor_unavailable"]
+  },
+  "tags": ["golden", "wellness", "degraded", "no-route"]
+}

@@ -1,0 +1,38 @@
+{
+  "caseId": "W14_sensitive_item_is_never_touched",
+  "description": "민감 준비 항목은 병합 대상에서 원천 제외한다 — 엔진이 추천하거나 근거를 붙이지 않는다 (절대 원칙 3, PRD §14.8)",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m3-wellness-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "environment": {
+      "uvIndex": 9.0,
+      "airGrade": "good",
+      "feelsLikeCelsius": 24.0,
+      "precipitationProbability": 0
+    },
+    "estimatedOutdoorMinutes": 105,
+    "userPreferences": [],
+    "existingPrepItems": [
+      {
+        "itemId": "item-sensitive",
+        "itemName": "선크림",
+        "actionType": "carry",
+        "sourceType": "rule",
+        "isSensitive": true
+      }
+    ]
+  },
+  "expected": {
+    "wisScore": 49,
+    "wisBand": "mid",
+    "actionCodes": ["uv_protect"],
+    "mergedItemIds": [null],
+    "eventArmed": false,
+    "armedActionCode": null,
+    "armingBlockedBy": ["consent", "score", "exposure", "interval"],
+    "degraded": []
+  },
+  "tags": ["golden", "wellness", "privacy", "merge"]
+}

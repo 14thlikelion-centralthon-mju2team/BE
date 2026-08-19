@@ -1,0 +1,26 @@
+{
+  "caseId": "W07_no_env_data_omits_wis",
+  "description": "골든 07 — 환경 데이터 부재 시 WIS를 생략한다. 시간 계획은 Plan Engine에서 정상 계산된다 (PRD §23.2, TRD §11.5)",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m3-wellness-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "environment": null,
+    "estimatedOutdoorMinutes": 60,
+    "userPreferences": [],
+    "existingPrepItems": []
+  },
+  "expected": {
+    "wisScore": null,
+    "wisBand": null,
+    "normalizedLoads": null,
+    "quantized": null,
+    "actionCodes": [],
+    "eventArmed": false,
+    "armedActionCode": null,
+    "armingBlockedBy": ["no_candidate"],
+    "degraded": ["env_unavailable"]
+  },
+  "tags": ["golden", "wellness", "golden-07", "degraded"]
+}

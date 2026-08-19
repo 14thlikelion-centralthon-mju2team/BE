@@ -1,0 +1,21 @@
+{
+  "caseId": "R01_rush_load_basic",
+  "description": "준비 12분·출발 6분 지연에 극한 알림 1회 — RLS 35 (TRD §7.1, PRD §14.4)",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m3-wellness-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "eventId": "evt-r01",
+    "prepDelayMinutes": 12.0,
+    "departDelayMinutes": 6.0,
+    "criticalAlertCount": 1
+  },
+  "expected": {
+    "rushLoadScore": 35,
+    "prepDelayNorm": 0.4,
+    "departDelayNorm": 0.2,
+    "criticalAlertNorm": 0.5
+  },
+  "tags": ["golden", "wellness", "rls"]
+}

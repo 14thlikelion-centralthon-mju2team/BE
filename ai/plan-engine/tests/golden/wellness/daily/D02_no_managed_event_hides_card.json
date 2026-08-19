@@ -1,0 +1,25 @@
+{
+  "caseId": "D02_no_managed_event_hides_card",
+  "description": "관리 일정이 0건이면 카드를 만들지 않는다 (TRD §7.5)",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m3-wellness-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "summaryDate": "2026-08-20",
+    "events": []
+  },
+  "expected": {
+    "eventCount": 0,
+    "totalOutdoorMinutes": null,
+    "avgWisWeighted": null,
+    "avgRls": null,
+    "dwlScore": null,
+    "dwlBand": null,
+    "cardScenario": null,
+    "cardVisible": false,
+    "degraded": [],
+    "cardMessage": null
+  },
+  "tags": ["golden", "wellness", "dwl", "card"]
+}

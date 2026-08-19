@@ -1,0 +1,49 @@
+{
+  "caseId": "W13_all_gates_pass_arms_one_action",
+  "description": "TR-11 게이트 6개를 모두 통과해 uv_reapply 1건을 예약한다. 예약은 언제나 한 건이다 (TRD §7.4, ERD uq_wellness_event_once)",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m3-wellness-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "environment": {
+      "uvIndex": 9.0,
+      "airGrade": "bad",
+      "feelsLikeCelsius": 31.0,
+      "precipitationProbability": 10
+    },
+    "estimatedOutdoorMinutes": 90,
+    "userPreferences": [
+      {
+        "wellnessTopic": "uv",
+        "isEnabled": true,
+        "remindIntervalMinutes": 120,
+        "dailyEventCap": 1
+      }
+    ],
+    "existingPrepItems": [],
+    "eventState": {
+      "wellnessEventEnabled": true,
+      "eventInProgress": true,
+      "outdoorRemainingMinutes": 40,
+      "minutesSinceLastEvent": 180
+    }
+  },
+  "expected": {
+    "wisScore": 95,
+    "wisBand": "high",
+    "normalizedLoads": {
+      "uvLoad": 0.9,
+      "pmLoad": 0.7,
+      "thermalLoad": 0.6,
+      "outdoorLoad": 0.75,
+      "interestMultiplier": 1.25
+    },
+    "actionCodes": ["uv_protect", "pm_mask", "temp_heat_prep"],
+    "eventArmed": true,
+    "armedActionCode": "uv_reapply",
+    "armingBlockedBy": [],
+    "degraded": []
+  },
+  "tags": ["golden", "wellness", "TR-11", "arming"]
+}

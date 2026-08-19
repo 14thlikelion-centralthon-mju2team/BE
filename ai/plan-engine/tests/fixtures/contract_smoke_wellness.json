@@ -3,7 +3,7 @@
   "description": "Wellness Engine 계약 검증용 smoke fixture — M0에서 형식만 검증",
   "engine": "wellness",
   "contractVersion": "m0-v1",
-  "algorithmVersion": "stub",
+  "algorithmVersion": "m3-wellness-1.0.0",
   "configVersion": "m0",
   "input": {
     "environment": {
@@ -41,9 +41,14 @@
     }
   },
   "expected": {
+    "wisScore": 26,
+    "wisBand": "low",
+    "actionCodes": [],
     "eventArmed": false,
+    "armedActionCode": null,
+    "armingBlockedBy": ["consent", "score", "exposure", "interval"],
     "contractVersion": "m0-v1",
-    "degraded": []
+    "degraded": ["uv_unavailable", "pm_unavailable", "config_fallback"]
   },
   "tags": ["contract", "smoke", "wellness"]
 }
