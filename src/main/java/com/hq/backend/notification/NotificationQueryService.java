@@ -4,6 +4,7 @@ import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.event.ActionSource;
 import com.hq.backend.event.ActionType;
 import com.hq.backend.event.Event;
+import com.hq.backend.event.EventActionLogRepository;
 import com.hq.backend.event.EventRepository;
 import com.hq.backend.notification.dto.NotificationRespondRequest;
 import com.hq.backend.notification.dto.NotificationResponse;
@@ -11,6 +12,7 @@ import com.hq.backend.plan.PlanActionService;
 import com.hq.backend.plan.PlanRevision;
 import com.hq.backend.plan.PlanRevisionRepository;
 import com.hq.backend.plan.dto.ActionBatchRequest;
+import com.hq.backend.wellness.WellnessEventScheduleRepository;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -29,17 +31,23 @@ public class NotificationQueryService {
     private final EventRepository eventRepository;
     private final PlanActionService planActionService;
     private final com.hq.backend.wellness.WellnessEventSchedulerService wellnessEventSchedulerService;
+    private final EventActionLogRepository eventActionLogRepository;
+    private final WellnessEventScheduleRepository wellnessEventScheduleRepository;
 
     public NotificationQueryService(NotificationRepository notificationRepository,
                                     PlanRevisionRepository planRevisionRepository,
                                     EventRepository eventRepository,
                                     PlanActionService planActionService,
-                                    com.hq.backend.wellness.WellnessEventSchedulerService wellnessEventSchedulerService) {
+                                    com.hq.backend.wellness.WellnessEventSchedulerService wellnessEventSchedulerService,
+                                    EventActionLogRepository eventActionLogRepository,
+                                    WellnessEventScheduleRepository wellnessEventScheduleRepository) {
         this.notificationRepository = notificationRepository;
         this.planRevisionRepository = planRevisionRepository;
         this.eventRepository = eventRepository;
         this.planActionService = planActionService;
         this.wellnessEventSchedulerService = wellnessEventSchedulerService;
+        this.eventActionLogRepository = eventActionLogRepository;
+        this.wellnessEventScheduleRepository = wellnessEventScheduleRepository;
     }
 
     @Transactional(readOnly = true)
@@ -54,6 +62,7 @@ public class NotificationQueryService {
                 .filter(plan -> "active".equals(plan.getPlanStatus())).map(PlanRevision::getPlanId).toList();
         return notificationRepository.findAll().stream()
                 .filter(notification -> planIds.contains(notification.getPlanId()))
+                .filter(notification -> !"cancelled".equals(notification.getDeliveryStatus()))
                 .filter(notification -> !notification.getScheduledAt().isBefore(start) && notification.getScheduledAt().isBefore(end))
                 .map(this::toResponse).toList();
     }
@@ -101,8 +110,48 @@ public class NotificationQueryService {
     }
 
     private NotificationResponse toResponse(Notification notification) {
-        return new NotificationResponse(notification.getNotificationId(), notification.getPlanId(), notification.getNotificationCategory(),
-                notification.getNotificationType(), notification.getScheduledAt(), notification.getSentAt(), notification.getDeliveryStatus(),
-                notification.getBodyMasked(), notification.getTriggerReason());
+        return new NotificationResponse(
+                notification.getNotificationId(),
+                notification.getPlanId(),
+                notification.getNotificationCategory(),
+                notification.getNotificationType(),
+                slotFor(notification.getNotificationType()),
+                notification.getScheduledAt(),
+                notification.getSentAt(),
+                deliveryStatusFor(notification.getDeliveryStatus()),
+                notification.getBodyMasked(),
+                notification.getTriggerReason(),
+                reactionFor(notification));
+    }
+
+    private String slotFor(String notificationType) {
+        return switch (notificationType) {
+            case "relaxed" -> "A";
+            case "critical" -> "B";
+            case "disruption" -> "C";
+            case "wellness_event" -> "W";
+            default -> throw new IllegalStateException("unsupported notification type: " + notificationType);
+        };
+    }
+
+    private String deliveryStatusFor(String deliveryStatus) {
+        return switch (deliveryStatus) {
+            case "scheduled" -> "pending";
+            case "sent", "delivered" -> "delivered";
+            case "failed" -> "failed";
+            default -> throw new IllegalStateException("unsupported delivery status: " + deliveryStatus);
+        };
+    }
+
+    private String reactionFor(Notification notification) {
+        if ("wellness".equals(notification.getNotificationCategory())) {
+            return wellnessEventScheduleRepository.findByNotificationId(notification.getNotificationId())
+                    .map(com.hq.backend.wellness.WellnessEventSchedule::getResponseAction)
+                    .orElse(null);
+        }
+        return eventActionLogRepository
+                .findFirstByNotificationIdOrderByReceivedAtDesc(notification.getNotificationId())
+                .map(com.hq.backend.event.EventActionLog::getActionType)
+                .orElse(null);
     }
 }

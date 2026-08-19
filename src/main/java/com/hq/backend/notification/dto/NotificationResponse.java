@@ -8,10 +8,12 @@ public record NotificationResponse(
         UUID planId,
         String notificationCategory,
         String notificationType,
+        String slot,
         Instant scheduledAt,
         Instant sentAt,
         String deliveryStatus,
-        String bodyMasked,
-        String triggerReason
+        String body,
+        String triggerReason,
+        String reaction
 ) {
 }
