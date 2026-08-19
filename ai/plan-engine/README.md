@@ -306,6 +306,12 @@ DWL은 한쪽 항이 없으면 0으로 취급하는 대신 남은 항의 가중�
 
 M4의 산출물은 성격이 다릅니다. **엔드포인트를 제공하지 않습니다.**
 
+> **이 절만으로는 TRD §18의 M4 완료 판정을 충족하지 않습니다.** 여기 있는 것은 정의의 단일
+> 출처와 적합성 벡터이고, 실제 사용자 흐름에 붙는 것은 Spring 쪽 작업입니다.
+> 후속: [#157](https://github.com/14thlikelion-centralthon-mju2team/BE/issues/157) Java `inputHash` ·
+> [#158](https://github.com/14thlikelion-centralthon-mju2team/BE/issues/158) 도착 판정 수신 처리 ·
+> [#159](https://github.com/14thlikelion-centralthon-mju2team/BE/issues/159) 주간 집계 SQL + 스케줄러 시뮬레이션
+
 세 계산 모두 Spring이 해야 합니다. `inputHash`를 얻으려고 30초 틱마다 AI 서버를 호출하면 §5.5가
 노리는 "해시가 같으면 외부 호출 0회"가 무너집니다. 지오펜스 신뢰도는 판정 결과를 받는 쪽에서
 계산해야 하고(§9.2 "서버는 판정 결과 수신 API만 제공"), 지표 집계는 Postgres 주간 집계 뷰에서
@@ -447,6 +453,12 @@ SELECT date_trunc('week', c.created_at) AS week,
 > 테이블·컬럼 이름은 ERD v3 기준 가안입니다. `notification_log`처럼 아직 확정되지 않은 이름이
 > 섞여 있으니 실제 스키마와 교차 확인이 필요합니다. 벡터(`tests/golden/metrics/*.json`)가 정답이고
 > SQL은 그 정답을 재현해야 합니다.
+
+**집계 조인은 제안 시점을 기준으로 귀속해야 합니다.** 주 경계에서 "지난주에 제안하고 이번 주에
+완료한" 행동을 완료 시점으로 세면 분자가 분모를 넘어 100%를 넘는 완료율이 나옵니다. 위 스케치가
+`date_trunc('week', w.created_at)`로 주차를 나누는 이유이고, 완료 여부는 같은 행에서 읽어야 합니다.
+`WellnessMetricInput`이 분자 ≤ 분모를 모델에서 강제하므로, 조인이 어긋나면 참조 구현과 대조하는
+순간 드러납니다 — 이 가드는 도입 즉시 시뮬레이션의 커버리지 분자 오산을 잡아냈습니다.
 
 ### 하루 재생 시뮬레이션 (§17.4)
 

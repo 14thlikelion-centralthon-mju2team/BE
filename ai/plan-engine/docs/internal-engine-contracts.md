@@ -570,12 +570,15 @@ ai/plan-engine/
 Spring 안이기 때문입니다(§5.5 "외부 호출 0회", §9.2 "서버는 판정 결과 수신 API만 제공",
 §16 "주간 집계 뷰"). 대신 정의를 한 곳에 고정하고 적합성 벡터를 남깁니다.
 
-| 대상 | 벡터 | 대조 방법 |
-|---|---|---|
-| `inputHash` | `tests/golden/input_hash/*.json` | `canonicalJson` 문자열을 먼저 맞추고, 그다음 sha256 |
-| 도착 판정 신뢰도 | `tests/golden/geofence/*.json` + 16조합 진리표 | `confidence` · `decision` · `radiusMeters` |
-| 북극성 | `tests/golden/metrics/M01_*.json` | `okEvents` · `okRatio` · 사유별 실패 건수 |
-| 웰니스 4종 | `tests/golden/metrics/M02_*.json` | 네 비율, 분모 0이면 `NULL` |
+| 대상 | 벡터 | 대조 방법 | 후속 이슈 |
+|---|---|---|---|
+| `inputHash` | `tests/golden/input_hash/*.json` (8종) | `coordinates` → `canonicalJson` → sha256 순으로 좁힌다 | #157 |
+| 도착 판정 신뢰도 | `tests/golden/geofence/*.json` (6종) + 16조합 진리표 | `confidence` · `decision` · `radiusMeters` | #158 |
+| 북극성 | `tests/golden/metrics/M01_*.json` | `okEvents` · `okRatio` · 사유별 실패 건수 | #159 |
+| 웰니스 4종 | `tests/golden/metrics/M02_*.json` | 네 비율, 분모 0이면 `NULL` | #159 |
+
+> 벡터가 통과해도 **M4 완료는 아닙니다.** 실제 계획 리비전 억제·도착 처리·주간 집계에 붙는 것은
+> 위 후속 이슈의 몫이고, 스케줄러 시뮬레이션(알림 예산·`dedupKey`·잔존 예약)도 #159에 있습니다.
 
 ### `inputHash` 정규화 규칙 (§5.5에 없던 부분)
 
