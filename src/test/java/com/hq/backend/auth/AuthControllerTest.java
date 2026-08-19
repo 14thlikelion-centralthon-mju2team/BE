@@ -23,6 +23,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -37,6 +38,9 @@ class AuthControllerTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private EmailVerificationService emailVerificationService;
+
     @TestConfiguration
     static class EmailVerificationTestConfig {
         @Bean
@@ -47,6 +51,12 @@ class AuthControllerTest {
                 @Override public void sendVerificationLink(String recipientEmail, String verificationLink) { }
             };
         }
+    }
+
+    @Test
+    void 이메일_인증_token_기본_TTL은_명세대로_24시간이다() {
+        assertThat(ReflectionTestUtils.getField(emailVerificationService, "tokenTtlMinutes"))
+                .isEqualTo(1440L);
     }
 
     @Test

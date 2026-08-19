@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import com.hq.backend.user.User;
 import com.hq.backend.user.UserRepository;
 import java.net.URI;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,7 +31,7 @@ class EmailVerificationServiceTest {
         User user = User.builder().userId(userId).email("verify@example.com")
                 .nickname("verify").timezone("Asia/Seoul").createdAt(Instant.now()).accountStatus("active").build();
         EmailVerificationService service = new EmailVerificationService(tokenRepository, userRepository, emailSender);
-        ReflectionTestUtils.setField(service, "tokenTtlMinutes", 30L);
+        ReflectionTestUtils.setField(service, "tokenTtlMinutes", 1440L);
         ReflectionTestUtils.setField(service, "resendCooldownSeconds", 60L);
         ReflectionTestUtils.setField(service, "verificationBaseUrl", "https://api.example.test");
         when(emailSender.isAvailable()).thenReturn(true);
@@ -45,6 +46,8 @@ class EmailVerificationServiceTest {
         String rawToken = URI.create(link.getValue()).getQuery().substring("token=".length());
         assertThat(stored.getValue().getTokenHash()).isNotEqualTo(rawToken);
         assertThat(stored.getValue().getTokenHash()).hasSize(64);
+        assertThat(Duration.between(stored.getValue().getCreatedAt(), stored.getValue().getExpiresAt()))
+                .isEqualTo(Duration.ofHours(24));
 
         when(tokenRepository.findByTokenHash(any())).thenReturn(Optional.of(stored.getValue()));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
