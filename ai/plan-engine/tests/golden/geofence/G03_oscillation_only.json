@@ -1,0 +1,45 @@
+{
+  "caseId": "G03_oscillation_only",
+  "description": "경계 진동만 — 0.2로 unresolved. 진동은 억제 대상이 아니라 감점 사유다",
+  "engine": "plan",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m4-geofence-1.0.0",
+  "configVersion": "trd-appendix-a3",
+  "input": {
+    "observation": {
+      "dwellSeconds": 10,
+      "horizontalAccuracyMeters": 120.0,
+      "enteredAt": "2026-08-20T15:00:00+09:00",
+      "expectedArrivalAt": "2026-08-20T14:00:00+09:00",
+      "transitionsInWindow": 3,
+      "destinationKind": "unknown"
+    },
+    "config": {
+      "baseConfidence": 0.5,
+      "dwellBonus": 0.2,
+      "accuracyBonus": 0.15,
+      "timingBonus": 0.15,
+      "oscillationPenalty": 0.3,
+      "dwellSeconds": 90,
+      "accuracyGoodMeters": 50.0,
+      "timingWindowMinutes": 20,
+      "oscillationWindowSeconds": 60,
+      "autoConfirmConfidence": 0.6,
+      "quietConfirmConfidence": 0.4,
+      "originRadiusMeters": 150,
+      "destinationRadiusGroundMeters": 100,
+      "destinationRadiusDefaultMeters": 150,
+      "destinationRadiusComplexMeters": 200,
+      "unresolvedAfterMinutes": 30
+    }
+  },
+  "expected": {
+    "confidence": 0.2,
+    "decision": "unresolved",
+    "radiusMeters": 150
+  },
+  "tags": [
+    "conformance",
+    "geofence"
+  ]
+}

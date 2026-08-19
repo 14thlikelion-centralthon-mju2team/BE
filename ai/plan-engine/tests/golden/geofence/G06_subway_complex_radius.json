@@ -1,0 +1,45 @@
+{
+  "caseId": "G06_subway_complex_radius",
+  "description": "지하철·복합시설은 반경 200m. 체류만 충족해도 0.7로 자동 확정",
+  "engine": "plan",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m4-geofence-1.0.0",
+  "configVersion": "trd-appendix-a3",
+  "input": {
+    "observation": {
+      "dwellSeconds": 95,
+      "horizontalAccuracyMeters": 90.0,
+      "enteredAt": "2026-08-20T14:40:00+09:00",
+      "expectedArrivalAt": "2026-08-20T14:00:00+09:00",
+      "transitionsInWindow": 1,
+      "destinationKind": "subway_or_complex"
+    },
+    "config": {
+      "baseConfidence": 0.5,
+      "dwellBonus": 0.2,
+      "accuracyBonus": 0.15,
+      "timingBonus": 0.15,
+      "oscillationPenalty": 0.3,
+      "dwellSeconds": 90,
+      "accuracyGoodMeters": 50.0,
+      "timingWindowMinutes": 20,
+      "oscillationWindowSeconds": 60,
+      "autoConfirmConfidence": 0.6,
+      "quietConfirmConfidence": 0.4,
+      "originRadiusMeters": 150,
+      "destinationRadiusGroundMeters": 100,
+      "destinationRadiusDefaultMeters": 150,
+      "destinationRadiusComplexMeters": 200,
+      "unresolvedAfterMinutes": 30
+    }
+  },
+  "expected": {
+    "confidence": 0.7,
+    "decision": "auto_confirm",
+    "radiusMeters": 200
+  },
+  "tags": [
+    "conformance",
+    "geofence"
+  ]
+}

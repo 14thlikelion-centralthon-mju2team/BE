@@ -1,0 +1,60 @@
+{
+  "caseId": "H06_exact_half_boundary",
+  "description": "정확히 절반(...5)에서도 절단한다. 반올림 모드 차이가 개입할 자리를 없앤다",
+  "engine": "plan",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m1-plan-engine-1.0.0",
+  "configVersion": "trd-5.5",
+  "input": {
+    "eventStartsAt": "2026-08-20T14:00:00+09:00",
+    "origin": {
+      "latitude": 37.5665005,
+      "longitude": 126.9780005
+    },
+    "destination": {
+      "latitude": 37.4979,
+      "longitude": 127.0276
+    },
+    "sourceType": "map_search",
+    "estimatedPrepMinutes": 30,
+    "trafficBufferMinutes": 5,
+    "arrivalBufferMinutes": 10,
+    "selectedRoute": {
+      "routeId": "route-1",
+      "totalMinutes": 40,
+      "walkMinutes": 15
+    },
+    "quantizedContext": {
+      "rain": "none",
+      "uv": "high",
+      "pm": "good",
+      "temp": "hot",
+      "tempSwing": false
+    },
+    "activePrepItems": [
+      {
+        "itemId": "item-a",
+        "appliedMinutes": 10
+      },
+      {
+        "itemId": "item-b",
+        "appliedMinutes": 0
+      }
+    ],
+    "calcVersion": "m1-plan-engine-1.0.0",
+    "weightVersion": "m3-wellness-1.0.0"
+  },
+  "expected": {
+    "coordinates": {
+      "originLat": "37.566500",
+      "originLng": "126.978000"
+    },
+    "canonicalJson": "{\"activePrepItems\":[{\"appliedMinutes\":10,\"itemId\":\"item-a\"},{\"appliedMinutes\":0,\"itemId\":\"item-b\"}],\"arrivalBufferMinutes\":10,\"calcVersion\":\"m1-plan-engine-1.0.0\",\"destinationLat\":\"37.497900\",\"destinationLng\":\"127.027600\",\"estimatedPrepMinutes\":30,\"eventStartsAt\":\"2026-08-20T05:00:00Z\",\"originLat\":\"37.566500\",\"originLng\":\"126.978000\",\"quantizedPm\":\"good\",\"quantizedRain\":\"none\",\"quantizedTemp\":\"hot\",\"quantizedTempSwing\":false,\"quantizedUv\":\"high\",\"routeId\":\"route-1\",\"routeTotalMinutes\":40,\"routeWalkMinutes\":15,\"sourceType\":\"map_search\",\"trafficBufferMinutes\":5,\"weightVersion\":\"m3-wellness-1.0.0\"}",
+    "inputHash": "231f16460b4d37d1e895beeb927950c99157f9682b2f1f8a87237d2c0420fabd"
+  },
+  "tags": [
+    "conformance",
+    "input-hash",
+    "coordinate-policy"
+  ]
+}
