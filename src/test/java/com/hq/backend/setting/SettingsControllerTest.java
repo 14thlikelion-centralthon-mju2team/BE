@@ -28,11 +28,11 @@ class SettingsControllerTest {
 
         mockMvc.perform(get("/me/settings").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.initial_prep_minutes").doesNotExist())
-                .andExpect(jsonPath("$.arrival_buffer_minutes").value(10))
-                .andExpect(jsonPath("$.notification_sensitivity").value("normal"))
-                .andExpect(jsonPath("$.wellness_event_enabled").value(false))
-                .andExpect(jsonPath("$.lockscreen_hide_sensitive").value(true));
+                .andExpect(jsonPath("$.initialPrepMinutes").doesNotExist())
+                .andExpect(jsonPath("$.arrivalBufferMinutes").value(10))
+                .andExpect(jsonPath("$.notificationSensitivity").value("normal"))
+                .andExpect(jsonPath("$.wellnessEventEnabled").value(false))
+                .andExpect(jsonPath("$.lockscreenHideSensitive").value(true));
     }
 
     @Test
@@ -43,22 +43,22 @@ class SettingsControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"initial_prep_minutes":null,"arrival_buffer_minutes":15,
-                                 "notification_sensitivity":"quiet","personalization_enabled":false,
-                                 "auto_manage_enabled":true,"wellness_event_enabled":true,
-                                 "lockscreen_hide_sensitive":false}
+                                {"initialPrepMinutes":null,"arrivalBufferMinutes":15,
+                                 "notificationSensitivity":"quiet","personalizationEnabled":false,
+                                 "autoManageEnabled":true,"wellnessEventEnabled":true,
+                                 "lockscreenHideSensitive":false}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.initial_prep_minutes").doesNotExist())
-                .andExpect(jsonPath("$.arrival_buffer_minutes").value(15))
-                .andExpect(jsonPath("$.notification_sensitivity").value("quiet"))
-                .andExpect(jsonPath("$.personalization_enabled").value(false))
-                .andExpect(jsonPath("$.wellness_event_enabled").value(true))
-                .andExpect(jsonPath("$.lockscreen_hide_sensitive").value(false));
+                .andExpect(jsonPath("$.initialPrepMinutes").doesNotExist())
+                .andExpect(jsonPath("$.arrivalBufferMinutes").value(15))
+                .andExpect(jsonPath("$.notificationSensitivity").value("quiet"))
+                .andExpect(jsonPath("$.personalizationEnabled").value(false))
+                .andExpect(jsonPath("$.wellnessEventEnabled").value(true))
+                .andExpect(jsonPath("$.lockscreenHideSensitive").value(false));
 
         mockMvc.perform(get("/me/settings").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.arrival_buffer_minutes").value(15));
+                .andExpect(jsonPath("$.arrivalBufferMinutes").value(15));
     }
 
     @Test
@@ -69,10 +69,10 @@ class SettingsControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"initial_prep_minutes":-5,"arrival_buffer_minutes":10,
-                                 "notification_sensitivity":"normal","personalization_enabled":true,
-                                 "auto_manage_enabled":true,"wellness_event_enabled":false,
-                                 "lockscreen_hide_sensitive":true}
+                                {"initialPrepMinutes":-5,"arrivalBufferMinutes":10,
+                                 "notificationSensitivity":"normal","personalizationEnabled":true,
+                                 "autoManageEnabled":true,"wellnessEventEnabled":false,
+                                 "lockscreenHideSensitive":true}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
@@ -97,6 +97,6 @@ class SettingsControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

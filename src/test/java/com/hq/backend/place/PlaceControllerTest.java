@@ -30,8 +30,8 @@ class PlaceControllerTest {
     void 장소를_생성하면_201과_평문_좌표를_반환하고_DB엔_암호화돼_저장된다() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
-                {"place_type":"HOME","place_name":"집","address":"서울시 어딘가",
-                 "lat":37.5,"lng":127.0,"is_primary":true}
+                {"placeType":"HOME","placeName":"집","address":"서울시 어딘가",
+                 "lat":37.5,"lng":127.0,"isPrimary":true}
                 """;
 
         String response = mockMvc.perform(post("/places")
@@ -39,15 +39,15 @@ class PlaceControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.place_type").value("HOME"))
+                .andExpect(jsonPath("$.placeType").value("HOME"))
                 .andExpect(jsonPath("$.lat").value(37.5))
                 .andExpect(jsonPath("$.lng").value(127.0))
-                .andExpect(jsonPath("$.is_primary").value(true))
+                .andExpect(jsonPath("$.isPrimary").value(true))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
-        String placeId = JsonPath.read(response, "$.place_id");
+        String placeId = JsonPath.read(response, "$.placeId");
         UserPlace saved = userPlaceRepository.findById(UUID.fromString(placeId)).orElseThrow();
         org.assertj.core.api.Assertions.assertThat(new String(saved.getLatEnc())).doesNotContain("37.5");
     }
@@ -59,26 +59,26 @@ class PlaceControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"place_type":"HOME","place_name":"집","address":"주소1",
-                                 "lat":37.5,"lng":127.0,"is_primary":true}
+                                {"placeType":"HOME","placeName":"집","address":"주소1",
+                                 "lat":37.5,"lng":127.0,"isPrimary":true}
                                 """))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        String firstId = JsonPath.read(first, "$.place_id");
+        String firstId = JsonPath.read(first, "$.placeId");
 
         mockMvc.perform(post("/places")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"place_type":"WORK","place_name":"회사","address":"주소2",
-                                 "lat":37.6,"lng":127.1,"is_primary":true}
+                                {"placeType":"WORK","placeName":"회사","address":"주소2",
+                                 "lat":37.6,"lng":127.1,"isPrimary":true}
                                 """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.is_primary").value(true));
+                .andExpect(jsonPath("$.isPrimary").value(true));
 
         mockMvc.perform(get("/places").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.place_id=='" + firstId + "')].is_primary").value(org.hamcrest.Matchers.contains(false)));
+                .andExpect(jsonPath("$[?(@.placeId=='" + firstId + "')].isPrimary").value(org.hamcrest.Matchers.contains(false)));
     }
 
     @Test
@@ -88,8 +88,8 @@ class PlaceControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"place_type":"HOME","place_name":"집","address":"서울시 어딘가",
-                                 "lat":200,"lng":127.0,"is_primary":false}
+                                {"placeType":"HOME","placeName":"집","address":"서울시 어딘가",
+                                 "lat":200,"lng":127.0,"isPrimary":false}
                                 """))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
@@ -102,21 +102,21 @@ class PlaceControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"place_type":"HOME","place_name":"집","address":"서울시 어딘가",
-                                 "lat":37.5,"lng":127.0,"is_primary":false}
+                                {"placeType":"HOME","placeName":"집","address":"서울시 어딘가",
+                                 "lat":37.5,"lng":127.0,"isPrimary":false}
                                 """))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        String placeId = JsonPath.read(created, "$.place_id");
+        String placeId = JsonPath.read(created, "$.placeId");
 
         mockMvc.perform(patch("/places/" + placeId)
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"place_name":"우리집"}
+                                {"placeName":"우리집"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.place_name").value("우리집"))
+                .andExpect(jsonPath("$.placeName").value("우리집"))
                 .andExpect(jsonPath("$.lat").value(37.5));
 
         mockMvc.perform(delete("/places/" + placeId).header("Authorization", "Bearer " + accessToken))
@@ -134,12 +134,12 @@ class PlaceControllerTest {
                         .header("Authorization", "Bearer " + ownerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"place_type":"HOME","place_name":"집","address":"서울시 어딘가",
-                                 "lat":37.5,"lng":127.0,"is_primary":false}
+                                {"placeType":"HOME","placeName":"집","address":"서울시 어딘가",
+                                 "lat":37.5,"lng":127.0,"isPrimary":false}
                                 """))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        String placeId = JsonPath.read(created, "$.place_id");
+        String placeId = JsonPath.read(created, "$.placeId");
 
         String otherToken = signupAndLogin();
         mockMvc.perform(delete("/places/" + placeId).header("Authorization", "Bearer " + otherToken))
@@ -166,6 +166,6 @@ class PlaceControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

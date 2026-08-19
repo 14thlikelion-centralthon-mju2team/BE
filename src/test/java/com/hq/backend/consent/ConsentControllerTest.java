@@ -25,7 +25,7 @@ class ConsentControllerTest {
         String accessToken = signupAndLogin();
         String idempotencyKey = UUID.randomUUID().toString();
         String body = """
-                {"consent_type":"LOCATION","agreed":true,"policy_version":"1.0.0"}
+                {"consentType":"LOCATION","agreed":true,"policyVersion":"1.0.0"}
                 """;
 
         mockMvc.perform(post("/consents")
@@ -34,9 +34,9 @@ class ConsentControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.consent_type").value("LOCATION"))
+                .andExpect(jsonPath("$.consentType").value("LOCATION"))
                 .andExpect(jsonPath("$.agreed").value(true))
-                .andExpect(jsonPath("$.recorded_at").exists());
+                .andExpect(jsonPath("$.recordedAt").exists());
     }
 
     @Test
@@ -44,7 +44,7 @@ class ConsentControllerTest {
         String accessToken = signupAndLogin();
         String idempotencyKey = UUID.randomUUID().toString();
         String body = """
-                {"consent_type":"FOO","agreed":true,"policy_version":"1.0.0"}
+                {"consentType":"FOO","agreed":true,"policyVersion":"1.0.0"}
                 """;
 
         mockMvc.perform(post("/consents")
@@ -60,7 +60,7 @@ class ConsentControllerTest {
     void 인증_없이_요청하면_401() throws Exception {
         String idempotencyKey = UUID.randomUUID().toString();
         String body = """
-                {"consent_type":"LOCATION","agreed":true,"policy_version":"1.0.0"}
+                {"consentType":"LOCATION","agreed":true,"policyVersion":"1.0.0"}
                 """;
 
         mockMvc.perform(post("/consents")
@@ -90,6 +90,6 @@ class ConsentControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

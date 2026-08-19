@@ -28,7 +28,7 @@ class IdempotencyFilterTest {
         String accessToken = signupAndLogin();
         String idempotencyKey = UUID.randomUUID().toString();
         String body = """
-                {"consent_type":"LOCATION","agreed":true,"policy_version":"1.0.0"}
+                {"consentType":"LOCATION","agreed":true,"policyVersion":"1.0.0"}
                 """;
 
         String firstResponse = mockMvc.perform(post("/consents")
@@ -61,7 +61,7 @@ class IdempotencyFilterTest {
     void Idempotency_Key가_다르면_별개_요청으로_처리된다() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
-                {"consent_type":"LOCATION","agreed":true,"policy_version":"1.0.0"}
+                {"consentType":"LOCATION","agreed":true,"policyVersion":"1.0.0"}
                 """;
 
         String firstResponse = mockMvc.perform(post("/consents")
@@ -93,7 +93,7 @@ class IdempotencyFilterTest {
     void Idempotency_Key_헤더가_없으면_400이다() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
-                {"consent_type":"LOCATION","agreed":true,"policy_version":"1.0.0"}
+                {"consentType":"LOCATION","agreed":true,"policyVersion":"1.0.0"}
                 """;
 
         mockMvc.perform(post("/consents")
@@ -123,6 +123,6 @@ class IdempotencyFilterTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

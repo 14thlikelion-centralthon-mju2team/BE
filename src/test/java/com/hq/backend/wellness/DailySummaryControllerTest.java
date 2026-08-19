@@ -89,23 +89,23 @@ class DailySummaryControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .param("date", "2026-08-16"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.event_count").value(1))
-                .andExpect(jsonPath("$.total_outdoor_minutes").value(45))
-                .andExpect(jsonPath("$.outdoor_source").value("observed"))
-                .andExpect(jsonPath("$.is_viewed").value(false))
+                .andExpect(jsonPath("$.eventCount").value(1))
+                .andExpect(jsonPath("$.totalOutdoorMinutes").value(45))
+                .andExpect(jsonPath("$.outdoorSource").value("observed"))
+                .andExpect(jsonPath("$.isViewed").value(false))
                 .andReturn().getResponse().getContentAsString();
-        String summaryId = JsonPath.read(response, "$.summary_id");
+        String summaryId = JsonPath.read(response, "$.summaryId");
 
         mockMvc.perform(post("/summary/daily/" + summaryId + "/viewed")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.is_viewed").value(true));
+                .andExpect(jsonPath("$.isViewed").value(true));
 
         mockMvc.perform(get("/summary/daily")
                         .header("Authorization", "Bearer " + accessToken)
                         .param("date", "2026-08-16"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.is_viewed").value(true));
+                .andExpect(jsonPath("$.isViewed").value(true));
 
         assertThat(productEventRepository.findAll())
                 .anyMatch(pe -> userId.equals(pe.getUserId()) && "card_viewed".equals(pe.getEventName()));
@@ -137,10 +137,10 @@ class DailySummaryControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .param("date", "2026-08-17"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.total_outdoor_minutes").value(0))
-                .andExpect(jsonPath("$.outdoor_source").value("estimated"))
-                .andExpect(jsonPath("$.dwl_score").doesNotExist())
-                .andExpect(jsonPath("$.dwl_band").value("unknown"));
+                .andExpect(jsonPath("$.totalOutdoorMinutes").value(0))
+                .andExpect(jsonPath("$.outdoorSource").value("estimated"))
+                .andExpect(jsonPath("$.dwlScore").doesNotExist())
+                .andExpect(jsonPath("$.dwlBand").value("unknown"));
     }
 
     @Test
@@ -199,6 +199,6 @@ class DailySummaryControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

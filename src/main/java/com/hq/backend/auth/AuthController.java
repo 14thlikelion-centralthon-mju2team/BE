@@ -42,10 +42,10 @@ public class AuthController {
 
     @PostMapping("/refresh")
     public TokenResponse refresh(@RequestBody Map<String, String> body) {
-        String refreshToken = body.get("refresh_token");
+        String refreshToken = body.get("refreshToken");
         if (refreshToken == null || refreshToken.isBlank()) {
             throw new com.hq.backend.common.exception.ApiException(
-                    HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "refresh_token이 필요합니다.");
+                    HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "refreshToken이 필요합니다.");
         }
         return authService.refresh(refreshToken);
     }

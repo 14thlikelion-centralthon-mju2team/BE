@@ -55,8 +55,8 @@ class PersonalizationControllerTest {
 
         mockMvc.perform(get("/me/personalization").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.estimates[0].estimated_minutes").value(35))
-                .andExpect(jsonPath("$.traffic_buffer_minutes").exists());
+                .andExpect(jsonPath("$.estimates[0].estimatedMinutes").value(35))
+                .andExpect(jsonPath("$.trafficBufferMinutes").exists());
     }
 
     @Test
@@ -112,9 +112,9 @@ class PersonalizationControllerTest {
         mockMvc.perform(post("/me/personalization/revert")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"event_id\":\"" + event.getEventId() + "\"}"))
+                        .content("{\"eventId\":\"" + event.getEventId() + "\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.estimates[0].estimated_minutes").value(30));
+                .andExpect(jsonPath("$.estimates[0].estimatedMinutes").value(30));
 
         assertThat(eventRepository.findById(event.getEventId()).orElseThrow().isExcludedFromLearning()).isTrue();
 
@@ -142,7 +142,7 @@ class PersonalizationControllerTest {
         mockMvc.perform(post("/me/personalization/revert")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"event_id\":\"" + event.getEventId() + "\"}"))
+                        .content("{\"eventId\":\"" + event.getEventId() + "\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("NO_ADJUSTMENT_TO_REVERT"));
     }
@@ -171,6 +171,6 @@ class PersonalizationControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }
