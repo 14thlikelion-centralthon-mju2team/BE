@@ -29,4 +29,16 @@ class JwtServiceTest {
                 .isInstanceOf(ApiException.class)
                 .hasFieldOrPropertyWithValue("code", "INVALID_TOKEN");
     }
+
+    @Test
+    void 같은_초에_발급한_refresh_token은_jti로_서로_다르다() {
+        UUID userId = UUID.randomUUID();
+
+        String first = jwtService.generateRefreshToken(userId);
+        String second = jwtService.generateRefreshToken(userId);
+
+        assertThat(second).isNotEqualTo(first);
+        assertThat(jwtService.getUserIdFromRefreshToken(first)).isEqualTo(userId);
+        assertThat(jwtService.getUserIdFromRefreshToken(second)).isEqualTo(userId);
+    }
 }

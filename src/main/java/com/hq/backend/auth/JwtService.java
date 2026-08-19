@@ -34,11 +34,13 @@ public class JwtService {
     private static final String TYPE_REFRESH = "refresh";
 
     public String generateAccessToken(UUID userId) {
-        return buildToken(userId, accessTokenExpirationMs, TYPE_ACCESS);
+        return buildToken(userId, accessTokenExpirationMs, TYPE_ACCESS, false);
     }
 
     public String generateRefreshToken(UUID userId) {
-        return buildToken(userId, refreshTokenExpirationMs, TYPE_REFRESH);
+        // NumericDate는 초 단위라 같은 초에 발급하면 sub/typ/iat/exp가 모두 같아질 수 있다.
+        // refresh_token.token_hash UNIQUE와 회전 안전성을 위해 매 발급마다 랜덤 jti를 포함한다.
+        return buildToken(userId, refreshTokenExpirationMs, TYPE_REFRESH, true);
     }
 
     public long getAccessTokenExpirationSeconds() {
@@ -91,13 +93,17 @@ public class JwtService {
         return refreshTokenExpirationMs;
     }
 
-    private String buildToken(UUID userId, long expirationMs, String type) {
+    private String buildToken(UUID userId, long expirationMs, String type, boolean includeJti) {
         Instant now = Instant.now();
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(userId.toString())
                 .claim(CLAIM_TYPE, type)
                 .issuedAt(Date.from(now))
-                .expiration(Date.from(now.plusMillis(expirationMs)))
+                .expiration(Date.from(now.plusMillis(expirationMs)));
+        if (includeJti) {
+            builder.id(UUID.randomUUID().toString());
+        }
+        return builder
                 .signWith(key)
                 .compact();
     }
