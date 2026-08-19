@@ -10,6 +10,7 @@ from app.api.routes.plan import router as plan_router
 from app.domain.personalization_engine.version import MODEL_VERSION as PERSONALIZATION_VERSION
 from app.domain.plan_engine.engine import PlanInputError
 from app.domain.plan_engine.version import CALC_VERSION
+from app.domain.wellness_engine.version import WEIGHT_VERSION
 
 logger = logging.getLogger("plan_engine")
 
@@ -29,6 +30,7 @@ def health() -> dict[str, str]:
         "status": "ok",
         "calcVersion": CALC_VERSION,
         "personalizationModelVersion": PERSONALIZATION_VERSION,
+        "wellnessWeightVersion": WEIGHT_VERSION,
     }
 
 
