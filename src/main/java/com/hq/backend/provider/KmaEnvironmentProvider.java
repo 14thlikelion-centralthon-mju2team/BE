@@ -9,6 +9,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
@@ -25,7 +26,7 @@ import org.springframework.web.util.UriComponentsBuilder;
  * 미발급 상태(로컬·테스트 기본값)에서는 여전히 StubEnvironmentProvider가 유일한
  * EnvironmentProvider 빈이라 @Primary 없이도 모호성이 없다.
  */
-@Component
+@Component("kmaWeatherEnvironmentProvider")
 @ConditionalOnExpression("!'${provider.kma.service-key:}'.isBlank()")
 public class KmaEnvironmentProvider implements EnvironmentProvider {
 
@@ -51,7 +52,7 @@ public class KmaEnvironmentProvider implements EnvironmentProvider {
     @Value("${provider.kma.forecast-url}")
     private String forecastUrl;
 
-    public KmaEnvironmentProvider(RestClient restClient) {
+    public KmaEnvironmentProvider(@Qualifier("environmentRestClient") RestClient restClient) {
         this.restClient = restClient;
     }
 

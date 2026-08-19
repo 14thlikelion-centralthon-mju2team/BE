@@ -39,11 +39,22 @@ provider:
     route-url: https://api.odsay.com/v1/api/searchPubTransPathT
     connect-timeout-ms: ${ODSAY_CONNECT_TIMEOUT_MS:2000}
     read-timeout-ms: ${ODSAY_READ_TIMEOUT_MS:3000}
+  environment:
+    connect-timeout-ms: ${ENVIRONMENT_CONNECT_TIMEOUT_MS:2000}
+    read-timeout-ms: ${ENVIRONMENT_READ_TIMEOUT_MS:3000}
   kma:
-    # ponytail: 공공데이터포털 인증키 미발급 — 발급 전까지 KmaEnvironmentProvider는 호출 시 실패한다.
-    # 아직 @Component가 아니라 StubEnvironmentProvider가 쓰이므로 지금은 실행 경로에 안 걸림.
+    # data.go.kr decoding key. 비어 있으면 StubEnvironmentProvider가 계속 사용된다.
     service-key: ${DATA_GO_KR_SERVICE_KEY:}
     forecast-url: https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst
+    uv:
+      # 생활기상지수 API의 행정구역 코드. 좌표에서 임의로 추론하지 않고 배포 환경에서 명시한다.
+      area-no: ${KMA_UV_AREA_NO:}
+      index-url: https://apis.data.go.kr/1360000/LivingWthrIdxServiceV4/getUVIdxV4
+  airkorea:
+    # AirKorea는 PM raw 값과 provider grade를 함께 준다. grade는 raw 값에서 BE가 계산하지 않는다.
+    service-key: ${AIRKOREA_SERVICE_KEY:}
+    station-name: ${AIRKOREA_STATION_NAME:}
+    measurement-url: https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty
 
 app:
   jwt:
