@@ -8,6 +8,7 @@ import com.hq.backend.event.EventRepository;
 import com.hq.backend.event.EventStatus;
 import com.hq.backend.metrics.ProductEvent;
 import com.hq.backend.metrics.ProductEventRepository;
+import com.hq.backend.notification.NotificationRepository;
 import com.hq.backend.personalization.EventExecution;
 import com.hq.backend.personalization.EventExecutionRepository;
 import com.hq.backend.plan.PlanContext;
@@ -51,6 +52,7 @@ public class DailySummaryService {
     private final PlanContextRepository planContextRepository;
     private final DailyWellnessSummaryRepository dailyWellnessSummaryRepository;
     private final ProductEventRepository productEventRepository;
+    private final NotificationRepository notificationRepository;
     private final WellnessEngineClient wellnessEngineClient;
     private final com.hq.backend.config.WellnessConfigService wellnessConfigService;
     private final ObjectMapper objectMapper;
@@ -60,6 +62,14 @@ public class DailySummaryService {
         return dailyWellnessSummaryRepository.findByUserIdAndSummaryDate(userId, date)
                 .map(DailySummaryResponse::from)
                 .orElseGet(() -> DailySummaryResponse.from(generate(userId, date)));
+    }
+
+    /** Scheduler entry point. Existing rows are preserved, including the viewed state. */
+    @Transactional
+    public void generateIfAbsent(UUID userId, LocalDate date) {
+        if (dailyWellnessSummaryRepository.findByUserIdAndSummaryDate(userId, date).isEmpty()) {
+            generate(userId, date);
+        }
     }
 
     // API 명세 §12.4 — "조회 기록 (지표)". PRODUCT_EVENT는 좌표·제목·민감 항목명을
@@ -162,8 +172,12 @@ public class DailySummaryService {
                     execution == null || execution.getRushLoadScore() == null ? null : (int) execution.getRushLoadScore(),
                     outdoor, execution != null && execution.getActualOutdoorMinutes() != null);
         }).toList();
-        return wellnessEngineClient.summarizeDay(new DailySummaryEngineRequest(date, summaries, 0, 0, 0,
-                wellnessConfigService.current())).orElse(null);
+        int criticalAlertCount = latestPlanByEvent.isEmpty() ? 0
+                : notificationRepository.countSentCriticalByPlanIdInBetween(
+                        latestPlanByEvent.values().stream().map(PlanRevision::getPlanId).toList(),
+                        date.atStartOfDay(ZONE).toInstant(), date.plusDays(1).atStartOfDay(ZONE).toInstant());
+        return wellnessEngineClient.summarizeDay(new DailySummaryEngineRequest(date, summaries, 0, 0,
+                criticalAlertCount, wellnessConfigService.current())).orElse(null);
     }
 
     private record Aggregate(

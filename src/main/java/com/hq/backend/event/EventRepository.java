@@ -23,6 +23,12 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
 
     List<Event> findByUserIdAndStartsAtBetweenOrderByStartsAtAsc(UUID userId, Instant from, Instant to);
 
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT DISTINCT e.userId FROM Event e
+            WHERE e.startsAt >= :from AND e.startsAt < :to
+            """)
+    List<UUID> findDistinctUserIdsByStartsAtBetween(Instant from, Instant to);
+
     // /events/next — 취소·건너뛴 일정은 "다음 일정"이 아니다.
     Optional<Event> findFirstByUserIdAndStartsAtAfterAndStatusNotInOrderByStartsAtAsc(
             UUID userId, Instant after, List<String> excludedStatuses);

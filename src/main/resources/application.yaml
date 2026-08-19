@@ -69,3 +69,8 @@ management:
   endpoint:
     health:
       show-details: never
+
+wellness:
+  daily-summary:
+    # KST 00:05에 전일 DWL을 멱등 생성한다. 운영에서 필요 시 환경변수로 cron을 바꾼다.
+    cron: ${WELLNESS_DAILY_SUMMARY_CRON:0 5 0 * * *}

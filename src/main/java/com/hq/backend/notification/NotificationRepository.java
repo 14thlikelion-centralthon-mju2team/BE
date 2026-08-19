@@ -34,6 +34,16 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
             """)
     int countTimeNotificationsByPlanId(UUID planId);
 
+    @Query("""
+            SELECT COUNT(n) FROM Notification n
+            WHERE n.planId IN :planIds
+              AND n.notificationCategory = 'time'
+              AND n.notificationType = 'critical'
+              AND n.deliveryStatus IN ('sent', 'delivered')
+              AND n.sentAt >= :startOfDay AND n.sentAt < :endOfDay
+            """)
+    int countSentCriticalByPlanIdInBetween(List<UUID> planIds, Instant startOfDay, Instant endOfDay);
+
     /** 상태 입력 시 남은 예약 알림 일괄 취소 */
     @Modifying
     @Query("""
