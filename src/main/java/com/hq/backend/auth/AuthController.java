@@ -2,18 +2,24 @@ package com.hq.backend.auth;
 
 import com.hq.backend.auth.dto.GoogleLoginRequest;
 import com.hq.backend.auth.dto.LoginRequest;
+import com.hq.backend.auth.dto.ResendVerificationRequest;
 import com.hq.backend.auth.dto.SignupRequest;
 import com.hq.backend.auth.dto.SignupResponse;
 import com.hq.backend.auth.dto.TokenResponse;
+import com.hq.backend.auth.dto.VerifyEmailRequest;
 import com.hq.backend.common.auth.CurrentUserId;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,6 +34,25 @@ public class AuthController {
     @ResponseStatus(HttpStatus.CREATED)
     public SignupResponse signup(@Valid @RequestBody SignupRequest request) {
         return authService.signup(request);
+    }
+
+    @PostMapping("/email/verify")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void verifyEmail(@Valid @RequestBody VerifyEmailRequest request) {
+        authService.verifyEmail(request.token());
+    }
+
+    /** Browser-facing verification link. The raw token is accepted only over HTTPS in deployment. */
+    @GetMapping(value = "/email/verify", produces = MediaType.TEXT_HTML_VALUE)
+    public ResponseEntity<String> verifyEmailLink(@RequestParam String token) {
+        authService.verifyEmail(token);
+        return ResponseEntity.ok("<html><body><h2>이메일 인증이 완료되었습니다.</h2><p>앱으로 돌아가 로그인해주세요.</p></body></html>");
+    }
+
+    @PostMapping("/email/verify/resend")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void resendEmailVerification(@Valid @RequestBody ResendVerificationRequest request) {
+        authService.resendEmailVerification(request.email());
     }
 
     @PostMapping("/email/login")
