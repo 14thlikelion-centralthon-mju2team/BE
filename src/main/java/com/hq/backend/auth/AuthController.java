@@ -1,13 +1,17 @@
 package com.hq.backend.auth;
 
+import com.hq.backend.auth.dto.CheckNicknameResponse;
 import com.hq.backend.auth.dto.GoogleLoginRequest;
 import com.hq.backend.auth.dto.LoginRequest;
+import com.hq.backend.auth.dto.PasswordResetExecuteRequest;
+import com.hq.backend.auth.dto.PasswordResetRequest;
 import com.hq.backend.auth.dto.ResendVerificationRequest;
 import com.hq.backend.auth.dto.SignupRequest;
 import com.hq.backend.auth.dto.SignupResponse;
 import com.hq.backend.auth.dto.TokenResponse;
 import com.hq.backend.auth.dto.VerifyEmailRequest;
 import com.hq.backend.common.auth.CurrentUserId;
+import com.hq.backend.user.AccountService;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
@@ -29,6 +33,8 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final PasswordResetService passwordResetService;
+    private final AccountService accountService;
 
     @PostMapping("/email/signup")
     @ResponseStatus(HttpStatus.CREATED)
@@ -79,5 +85,25 @@ public class AuthController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void logout(@CurrentUserId UUID userId) {
         authService.logout(userId);
+    }
+
+    @PostMapping("/password/reset-request")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void requestPasswordReset(@Valid @RequestBody PasswordResetRequest request) {
+        // TODO: rate-limit
+        passwordResetService.requestReset(request.email());
+    }
+
+    @PostMapping("/password/reset")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resetPassword(@Valid @RequestBody PasswordResetExecuteRequest request) {
+        passwordResetService.executeReset(request.token(), request.newPassword());
+    }
+
+    @GetMapping("/check-nickname")
+    public CheckNicknameResponse checkNickname(@RequestParam String value) {
+        // TODO: rate-limit
+        boolean available = accountService.isNicknameAvailable(value);
+        return new CheckNicknameResponse(available);
     }
 }
