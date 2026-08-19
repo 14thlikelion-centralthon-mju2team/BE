@@ -78,6 +78,7 @@ public class PersonalizationService {
                 .confidence(previous.getConfidence())
                 .modelVersion(previous.getModelVersion())
                 .adjustmentReason("되돌리기 — 이전 값으로 복원")
+                .coldStartAdjusted(previous.isColdStartAdjusted())
                 .validFrom(now)
                 .build());
 

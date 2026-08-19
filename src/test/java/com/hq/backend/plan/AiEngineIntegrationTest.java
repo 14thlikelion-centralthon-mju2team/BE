@@ -144,7 +144,7 @@ class AiEngineIntegrationTest {
                 .userId(created.userId())
                 .scopeType("global")
                 .estimatedMinutes(30)
-                .sampleCount(5)
+                .sampleCount(1)
                 .confidence(new BigDecimal("0.60"))
                 .modelVersion("ema-v1")
                 .validFrom(Instant.now().minusSeconds(3600))
@@ -165,6 +165,7 @@ class AiEngineIntegrationTest {
                 .findByUserIdAndScopeTypeOrderByValidFromDesc(created.userId(), "global");
         assertThat(history).hasSize(2);
         assertThat(history.get(0).getEstimatedMinutes()).isEqualTo(35); // Math.round(34.5)
+        assertThat(history.get(0).isColdStartAdjusted()).isTrue();
         assertThat(history.get(0).getAdjustmentReason()).contains("EMA 보정");
         assertThat(history.get(1).getValidTo()).isNotNull();
 

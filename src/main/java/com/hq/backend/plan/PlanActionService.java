@@ -63,7 +63,7 @@ public class PlanActionService {
     private static final String MODEL_VERSION = "ema-v1";
 
     private static final Set<ActionType> EXECUTION_RELEVANT_ACTIONS =
-            EnumSet.of(ActionType.PREP_STARTED, ActionType.DEPARTED, ActionType.ARRIVED);
+            EnumSet.of(ActionType.PREP_STARTED, ActionType.PREP_FINISHED, ActionType.DEPARTED, ActionType.ARRIVED);
 
     private final PlanRevisionRepository planRevisionRepository;
     private final EventRepository eventRepository;
@@ -145,6 +145,7 @@ public class PlanActionService {
 
         switch (item.actionType()) {
             case PREP_STARTED -> execution.setActualPrepStartedAt(item.deviceTs());
+            case PREP_FINISHED -> execution.setActualPrepFinishedAt(item.deviceTs());
             case DEPARTED -> execution.setActualDepartedAt(item.deviceTs());
             case ARRIVED -> {
                 execution.setFinalPlanId(revision.getPlanId());
@@ -210,17 +211,15 @@ public class PlanActionService {
                 new PersonalizationEngineRequest.ActualExecutionSnapshot(
                         execution.getActualPrepStartedAt(), execution.getActualDepartedAt(), execution.getActualArrivedAt(),
                         execution.getResultSource(), clockSkewSeconds,
-                        // 현재 action 계약에는 PREP_FINISHED가 없어 엔진이 prep_finish_unknown으로
-                        // degraded 처리한다. 별도 data-capture 이슈에서 실제 시각을 추가한다.
-                        null, item.confidence() == null ? null : item.confidence().doubleValue()),
+                        execution.getActualPrepFinishedAt(), item.confidence() == null ? null : item.confidence().doubleValue()),
                 new PersonalizationEngineRequest.EventOutcome(
                         execution.getArrivalResult(), null, event.isAutoManageExcluded(),
                         // revert는 event.excludedFromLearning gate에서 엔진 호출 자체를 막는다.
-                        false, false),
+                        false, event.getUpdatedAt().isAfter(revision.getCreatedAt())),
                 new PersonalizationEngineRequest.CurrentPrepEstimate(
                         current.getEstimatedMinutes(), current.getSampleCount(),
                         current.getConfidence() != null ? current.getConfidence().doubleValue() : null,
-                        current.getModelVersion(), seedMinutes, false),
+                        current.getModelVersion(), seedMinutes, current.isColdStartAdjusted()),
                 new PersonalizationEngineRequest.EngineConfig(
                         PREP_EMA_ALPHA, LATE_WEIGHT, EARLY_WEIGHT, MAX_STEP_MINUTES, COLD_STEP_MINUTES,
                         PREP_FLOOR_MINUTES, PREP_CEILING_RATIO, MODEL_VERSION));
@@ -245,6 +244,7 @@ public class PlanActionService {
                 .confidence(current.getConfidence())
                 .modelVersion(response.modelVersion())
                 .adjustmentReason(response.adjustmentReason())
+                .coldStartAdjusted(current.isColdStartAdjusted() || current.getSampleCount() < 3)
                 .validFrom(now)
                 .build());
         productEventService.record(event.getUserId(), "personalization_adjusted", Map.of(

@@ -85,6 +85,7 @@ public class EventService {
                 .autoManageExcluded(false)
                 .status(EventStatus.PLANNED.name().toLowerCase())
                 .createdAt(Instant.now())
+                .updatedAt(Instant.now())
                 .build());
 
         PlanResponse plan = null;
@@ -112,25 +113,32 @@ public class EventService {
     @Transactional
     public EventResponse update(UUID userId, UUID eventId, EventUpdateRequest request) {
         Event event = findOwned(userId, eventId);
+        boolean planInputChanged = false;
 
         if (request.startsAt() != null) {
             event.setStartsAt(request.startsAt());
+            planInputChanged = true;
         }
         if (request.endsAt() != null) {
             event.setEndsAt(request.endsAt());
+            planInputChanged = true;
         }
         if (request.locationState() != null) {
             // 사용자 지정값은 항상 자동 분류·캘린더 동기화보다 우선한다 (절대 원칙 5)
             event.setLocationState(request.locationState().name().toLowerCase());
+            planInputChanged = true;
         }
         if (request.destinationName() != null) {
             event.setDestinationName(request.destinationName());
+            planInputChanged = true;
         }
         if (request.destinationLat() != null) {
             event.setDestinationLat(request.destinationLat());
+            planInputChanged = true;
         }
         if (request.destinationLng() != null) {
             event.setDestinationLng(request.destinationLng());
+            planInputChanged = true;
         }
         validateDestinationPair(event.getDestinationLat(), event.getDestinationLng());
         validateTimeOrder(event.getStartsAt(), event.getEndsAt());
@@ -145,6 +153,9 @@ public class EventService {
         }
         if (request.autoManageExcluded() != null) {
             event.setAutoManageExcluded(request.autoManageExcluded());
+        }
+        if (planInputChanged) {
+            event.setUpdatedAt(Instant.now());
         }
 
         return EventResponse.from(event, timezoneOf(userId));

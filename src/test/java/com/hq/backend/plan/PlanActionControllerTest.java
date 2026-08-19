@@ -150,25 +150,28 @@ class PlanActionControllerTest {
                 {"actions":[
                   {"actionType":"PREP_STARTED","actionSource":"USER",
                    "deviceTs":"2026-08-20T12:26:00+09:00","clientEventId":"%s"},
+                  {"actionType":"PREP_FINISHED","actionSource":"USER",
+                   "deviceTs":"2026-08-20T12:56:00+09:00","clientEventId":"%s"},
                   {"actionType":"DEPARTED","actionSource":"USER",
                    "deviceTs":"2026-08-20T13:06:00+09:00","clientEventId":"%s"},
                   {"actionType":"ARRIVED","actionSource":"GEO",
                    "deviceTs":"2026-08-20T13:50:00+09:00","clientEventId":"%s","confidence":0.9}
                 ]}
-                """.formatted(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+                """.formatted(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
 
         mockMvc.perform(post("/plans/" + created.planId() + "/actions")
                         .header("Authorization", "Bearer " + created.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accepted").value(3))
+                .andExpect(jsonPath("$.accepted").value(4))
                 .andExpect(jsonPath("$.eventStatus").value("arrived"));
 
         mockMvc.perform(get("/events/" + created.eventId() + "/execution")
                         .header("Authorization", "Bearer " + created.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.actualPrepStartedAt").value("2026-08-20T03:26:00Z"))
+                .andExpect(jsonPath("$.actualPrepFinishedAt").value("2026-08-20T03:56:00Z"))
                 .andExpect(jsonPath("$.actualDepartedAt").value("2026-08-20T04:06:00Z"))
                 .andExpect(jsonPath("$.actualArrivedAt").value("2026-08-20T04:50:00Z"))
                 .andExpect(jsonPath("$.arrivalResult").value("ON_TIME"))
