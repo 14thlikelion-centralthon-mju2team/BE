@@ -66,6 +66,9 @@ curl http://localhost:8000/health
 app/domain/plan_engine/            순수 계산 계층 (models, engine, checklist, constraints, reasons, confidence)
 app/domain/personalization_engine/ 순수 보정 계층 (observation, eligibility, attribution, adjustment, reasons, engine)
 app/domain/wellness_engine/        순수 점수 계층 (quantize, normalize, wis, actions, arming, rls, dwl, templates, engine)
+app/domain/revision/               inputHash 참조 구현 (M4)
+app/domain/geofence/               도착 판정 신뢰도 참조 구현 (M4)
+app/domain/metrics/                북극성·웰니스 지표 정의 (M4)
 app/contracts/                     Spring과 동결한 요청·응답 스키마
 app/schemas/plan.py                도메인 모델을 API용으로 재노출
 app/api/routes/plan.py             HTTP, 요청 식별자, 로깅
@@ -299,6 +302,183 @@ temp : cold | mild | hot             + 일교차 플래그
 DWL은 한쪽 항이 없으면 0으로 취급하는 대신 남은 항의 가중치를 재정규화합니다. WIS가 없는 날은
 환경 부하가 0인 날이 아니라 측정하지 못한 날이기 때문입니다.
 
+## 참조 구현과 적합성 벡터 (M4)
+
+M4의 산출물은 성격이 다릅니다. **엔드포인트를 제공하지 않습니다.**
+
+> **이 절만으로는 TRD §18의 M4 완료 판정을 충족하지 않습니다.** 여기 있는 것은 정의의 단일
+> 출처와 적합성 벡터이고, 실제 사용자 흐름에 붙는 것은 Spring 쪽 작업입니다.
+> 후속: [#157](https://github.com/14thlikelion-centralthon-mju2team/BE/issues/157) Java `inputHash` ·
+> [#158](https://github.com/14thlikelion-centralthon-mju2team/BE/issues/158) 도착 판정 수신 처리 ·
+> [#159](https://github.com/14thlikelion-centralthon-mju2team/BE/issues/159) 주간 집계 SQL + 스케줄러 시뮬레이션
+
+세 계산 모두 Spring이 해야 합니다. `inputHash`를 얻으려고 30초 틱마다 AI 서버를 호출하면 §5.5가
+노리는 "해시가 같으면 외부 호출 0회"가 무너집니다. 지오펜스 신뢰도는 판정 결과를 받는 쪽에서
+계산해야 하고(§9.2 "서버는 판정 결과 수신 API만 제공"), 지표 집계는 Postgres 주간 집계 뷰에서
+일어납니다(§16). 그래서 AI 파트가 내놓는 것은 **정의의 단일 출처와, Java·SQL 구현이 같은 값을
+내는지 확인할 적합성 벡터**입니다. TRD §18도 M4의 지오펜스 항목을 "구현"이 아니라 "검증·튜닝"으로
+적었습니다.
+
+### `inputHash` (§5.5)
+
+§5.5는 무엇을 넣을지만 정했습니다. 두 언어가 같은 해시를 내려면 **어떻게 문자열로 만들지**까지
+고정해야 하므로 다섯 가지를 확정했습니다.
+
+| 규칙 | 이유 |
+|---|---|
+| 키 사전순 정렬, 구분자 `,`·`:` (공백 없음), **중첩 객체 키까지** | 직렬화 순서가 해시를 바꾸면 안 됨 |
+| 좌표는 소수점 6자리 **절단(0 방향)** 고정 소수점 문자열 | 부동소수 표기가 언어마다 다름(`0.1` vs `0.10000000000000001`). 6자리 ≈ 0.11m |
+| 시각은 UTC 초 단위 `...Z` | offset 표기 차이 제거 |
+| 비ASCII 이스케이프 | 실제로는 식별자·숫자·구간 이름만 들어오지만, 규칙을 비워 두면 나중에 조용히 갈라짐 |
+| 절단 결과가 0이면 부호 제거 | Python `Decimal`은 `-0.000000`을 표현하지만 Java `BigDecimal`의 0은 부호가 없음 |
+
+준비 항목은 `itemId` 사전순으로 정렬합니다. 조회 순서가 해시를 바꾸면 같은 계획이 매번 다른 해시를
+갖습니다.
+
+**반올림이 아니라 절단인 이유**는 "정확히 절반" 규칙을 아예 없애기 위해서입니다. 반올림을 고르면
+Python의 round-half-even과 Java `String.format`의 HALF_UP, 그리고 이진 표현 오차가 경계에서 서로
+다른 답을 냅니다. 절단에는 그런 자리가 없습니다.
+
+| 단계 | Python | Java |
+|---|---|---|
+| 변환 | `Decimal(str(v))` | `BigDecimal.valueOf(d)` |
+| 절단 | `.quantize(Decimal("0.000001"), ROUND_DOWN)` | `.setScale(6, RoundingMode.DOWN)` |
+
+둘 다 "double을 왕복 가능한 최단 10진 표기로 바꾼 뒤 절단"이라 값이 일치합니다.
+**`new BigDecimal(double)`은 쓰지 마십시오** — `new BigDecimal(37.5665)`가
+`37.56650000000000205...`가 되어 경계에서 갈립니다. 기준값은 **JSON에 실린 double**이고, 좌표를
+DB `numeric`에서 7자리 이상으로 읽어 온다면 DTO 경계에서 먼저 6자리로 맞춰야 합니다.
+
+적합성 벡터는 `tests/golden/input_hash/*.json`이고, 기대값에 해시·정규화된 JSON 문자열·좌표 문자열을
+함께 둡니다. 해시가 다를 때 어디서 갈렸는지 눈으로 볼 수 있어야 대조가 끝납니다. H05~H08이 절단·정확히
+절반·음수·음수 0 경계를 담당하며, **정책이 반올림이면 H05가 H01과 다른 해시가 되어 즉시 드러납니다.**
+
+### 도착 판정 신뢰도 (§9.2)
+
+```text
+confidence = 0.5 + 0.20 체류 + 0.15 정확도(<50m) + 0.15 시각(±20분) − 0.30 경계 진동
+≥ 0.6 자동 확정 · 0.4~0.6 조용한 확인 · < 0.4 unresolved
+```
+
+| 관측 | 신뢰도 | 판정 |
+|---|---|---|
+| 아무 가점 없음 | 0.50 | 조용한 확인 |
+| 가점 하나 (체류 / 정확도 / 시각) | 0.65~0.70 | 자동 확정 |
+| 진동만 | 0.20 | unresolved |
+| 진동 + 가점 하나 | 0.35~0.40 | unresolved 또는 조용한 확인 |
+| 진동 + 가점 둘 | 0.50~0.55 | 조용한 확인 |
+| 진동 + 가점 셋 | 0.70 | 자동 확정 |
+
+경계 진동은 억제하지 않고 신뢰도를 깎습니다 — 진동 자체가 "판정이 불확실하다"는 정보입니다.
+`ConfidenceBreakdown`이 각 항의 기여도를 그대로 돌려주므로, 실기기 실측(자동 확정률 ≥ 70% ·
+오판 ≤ 10%, §17.4)에서 계수를 조정할 때 무엇이 판정을 뒤집었는지 숫자로 볼 수 있습니다.
+
+목적지 반경은 지상 POI 100m · 지하철·복합시설 200m · 판별 불가 150m입니다. 실내로 들어가면
+마지막 fix가 부정확해지기 때문입니다.
+
+`confidence ≥ 0.6`이면 **확인 UI 자체를 띄우지 않습니다**(§9.3). PRD §12.10의 "충분히 판단할 수
+있는 데이터가 있으면 반복 질문을 생략한다"가 구현상 이 뜻입니다.
+
+16조합 진리표는 `tests/test_geofence_confidence.py`, 벡터는 `tests/golden/geofence/*.json`입니다.
+
+### 지표 (§16.2)
+
+북극성은 다섯 조건을 모두 통과한 일정만 셉니다.
+
+```text
+ok = arrivalResult='on_time' ∧ 극한 알림 ≤ 1 ∧ |Δdepart| ≤ 10분
+     ∧ rushAssessment ≠ 'rushed' ∧ margin ≤ 30분
+```
+
+마지막 조건이 핵심입니다. 정시 도착만 세면 "두 시간 일찍 도착해 앉아 기다린 날"도 성공이 됩니다.
+그건 여유가 아니라 다른 방향의 실패이므로(PRD §8.2) 제외합니다. `margin`을 모르는 일정도 성공으로
+세지 않습니다 — 모르는 것은 성공이 아닙니다.
+
+웰니스 보조 4종은 **분모가 0이면 `None`**입니다. 0건 중 0건은 0%가 아니라 측정 불가이고, 이 둘을
+같은 숫자로 보고하면 "제안을 아예 안 한 주"와 "제안했지만 아무도 안 한 주"가 구별되지 않습니다.
+반응률 분자에 `snoozed`를 넣는 것은 §16.2 정의 그대로입니다 — 미루기는 무시가 아니라 반응입니다.
+적합률은 `user_rating`이 유일한 원천이고, 완료를 유용함으로 바꿔 세지 않습니다.
+
+같은 정의의 SQL 스케치입니다. 임계값은 전부 파라미터로 빼서 쿼리 수정 없이 재집계할 수 있게
+합니다(TR-06).
+
+```sql
+-- 북극성: 주간 "늦지 않고 여유 있게 도착한 일정 수"
+SELECT date_trunc('week', e.starts_at) AS week,
+       count(*) FILTER (
+         WHERE x.arrival_result = 'on_time'
+           AND coalesce(a.critical_alert_count, 0) <= :max_critical_alerts
+           AND abs(extract(epoch FROM (x.actual_departed_at - p.recommended_depart_at)) / 60)
+               <= :depart_tolerance_min
+           AND coalesce(f.rush_assessment, '') <> 'rushed'
+           AND x.actual_arrived_at IS NOT NULL
+           AND extract(epoch FROM (e.starts_at - x.actual_arrived_at)) / 60
+               BETWEEN 0 AND :early_min
+       ) AS north_star,
+       count(*) AS total_events
+  FROM event_execution x
+  JOIN event e            ON e.event_id = x.event_id
+  JOIN plan_revision p    ON p.plan_id  = x.final_plan_id
+  LEFT JOIN event_feedback f ON f.event_id = x.event_id
+  LEFT JOIN (SELECT event_id, count(*) AS critical_alert_count
+               FROM notification_log WHERE notification_kind = 'critical'
+              GROUP BY event_id) a ON a.event_id = x.event_id
+ GROUP BY 1;
+
+-- 웰니스 보조 4종.  분모 0이면 NULL — 측정 불가와 0%를 구분한다.
+SELECT date_trunc('week', w.created_at) AS week,
+       count(*) FILTER (WHERE w.completed_at IS NOT NULL)::numeric
+         / nullif(count(*), 0)                                    AS action_completion_rate,
+       count(*) FILTER (WHERE s.response_action IN ('completed', 'snoozed'))::numeric
+         / nullif(count(s.schedule_id) FILTER (WHERE s.sent_at IS NOT NULL), 0)
+                                                                  AS event_response_rate,
+       count(*) FILTER (WHERE s.user_rating = 'useful')::numeric
+         / nullif(count(*) FILTER (WHERE s.user_rating IS NOT NULL), 0)
+                                                                  AS usefulness_rate
+  FROM plan_wellness_action w
+  LEFT JOIN wellness_event_schedule s ON s.event_id = w.event_id
+                                    AND s.action_code = w.action_code
+ GROUP BY 1;
+
+-- 커버리지: 야외 노출이 있는 일정 중 WIS가 생성된 비율
+SELECT date_trunc('week', c.created_at) AS week,
+       count(DISTINCT s.event_id)::numeric
+         / nullif(count(DISTINCT c.event_id), 0) AS coverage_rate
+  FROM plan_context c
+  LEFT JOIN plan_wellness_score s ON s.event_id = c.event_id
+ WHERE c.estimated_outdoor_minutes > 0
+ GROUP BY 1;
+```
+
+> 테이블·컬럼 이름은 ERD v3 기준 가안입니다. `notification_log`처럼 아직 확정되지 않은 이름이
+> 섞여 있으니 실제 스키마와 교차 확인이 필요합니다. 벡터(`tests/golden/metrics/*.json`)가 정답이고
+> SQL은 그 정답을 재현해야 합니다.
+
+**집계 조인은 제안 시점을 기준으로 귀속해야 합니다.** 주 경계에서 "지난주에 제안하고 이번 주에
+완료한" 행동을 완료 시점으로 세면 분자가 분모를 넘어 100%를 넘는 완료율이 나옵니다. 위 스케치가
+`date_trunc('week', w.created_at)`로 주차를 나누는 이유이고, 완료 여부는 같은 행에서 읽어야 합니다.
+`WellnessMetricInput`이 분자 ≤ 분모를 모델에서 강제하므로, 조인이 어긋나면 참조 구현과 대조하는
+순간 드러납니다 — 이 가드는 도입 즉시 시뮬레이션의 커버리지 분자 오산을 잡아냈습니다.
+
+### 하루 재생 시뮬레이션 (§17.4)
+
+`tests/simulation/test_day_replay.py`가 가상 시계로 하루를 재생하며 일정 200건을 세 엔진 전부에
+통과시킵니다 — 계획 → 웰니스 → 도착 판정 → RLS → 보정, 그리고 하루 끝에 DWL과 지표까지.
+
+검증하는 것: 웰니스 푸시 ≤ 1/일정 · `stop_today` 이후 당일 0건 · WIS < 70이면 예약 0건 ·
+보정 가드레일과 1회 변화 상한 · 교통 원인은 추정 불변 · 200건 전부 완주 · 같은 스냅샷은 같은 해시 ·
+하루치 DWL과 북극성·웰니스 지표 산출.
+
+**검증하지 않는 것**: 시간 알림 3회 예산, `dedupKey` 중복 0, 상태 입력 후 잔존 예약 0은 스케줄러
+소유입니다. AI 서버에는 알림 예약 상태가 없으므로 여기서 통과시켜도 의미가 없습니다. Spring 쪽
+시뮬레이션에서 확인해야 하고, 이 하네스는 "엔진이 무엇을 예약해도 된다고 말했는지"까지만
+책임집니다.
+
+시드를 고정하므로 재실행하면 같은 하루가 재생됩니다. 재현할 수 없는 실패는 고칠 수 없습니다.
+쏠림을 막기 위해 "`stop_today`가 실제로 발생했는지", "교통 원인 일정이 나왔는지", "지오펜스 판정
+세 구간을 모두 밟았는지", "북극성 성공률이 0도 1도 아닌지"를 함께 단정합니다 — 아무 일도 일어나지
+않은 시뮬레이션은 통과해도 아무것도 증명하지 못합니다.
+
 ## 설정 키
 
 Spring Backend가 `ENGINE_CONFIG`를 읽어 요청으로 전달합니다. AI 서버는 설정을 저장하지 않습니다.
@@ -396,6 +576,17 @@ M3에서 새로 생긴 결정 사항입니다.
 - **관심사 보정 M은 계단 함수** — §7.2의 "최대 1.25"에 등급 규칙이 없어, 관련 관심 항목이 하나라도 있으면 최대값을 적용합니다. 변경 지점은 `normalize.interest_multiplier` 한 곳입니다.
 - **행동 순위는 WIS 기여도 기준** — 강수는 §7.2가 T에 접어 넣었으므로 체감온도와 기여도를 공유하고, 동률이면 `uv > pm > temp > rain > hydration` 순입니다.
 - **병합 키워드 표** — 골든 09의 "선크림 병합"을 만들려면 항목명과 행동을 잇는 표가 필요합니다. 모델 추론이 아니라 승인된 고정 목록(`templates.MERGE_KEYWORDS`)이며, 항목 추가는 콘텐츠 검토 대상입니다.
+
+M4에서 새로 생긴 결정 사항입니다.
+
+- **`inputHash` 정규화 규칙 (김민형)** — §5.5는 넣을 값만 정했고 문자열화 규칙이 없었습니다. 좌표 6자리 **절단(0 방향)**·UTC Z·키 정렬·항목 정렬·음수 0 부호 제거 다섯 가지를 확정했습니다. Java는 `BigDecimal.valueOf(d).setScale(6, RoundingMode.DOWN)`을 써야 하고 `new BigDecimal(double)`은 금지입니다. 구현이 `tests/golden/input_hash/*.json`의 `canonicalJson`을 바이트 단위로 재현해야 합니다.
+- **`inputHash`·신뢰도·지표에 엔드포인트를 두지 않음** — 셋 다 호출 지점이 Spring 안이고, AI 서버를 부르면 §5.5의 "외부 호출 0회"가 무너집니다. 참조 구현과 적합성 벡터만 제공합니다.
+- **지오펜스 계수는 그대로 두고 진리표만 고정** — §9.2 계수(0.5 / 0.20 / 0.15 / 0.15 / −0.30)를 바꾸지 않았습니다. 실기기 실측 후 튜닝할 때 16조합 진리표가 회귀 기준이 됩니다.
+- **`margin`을 모르는 일정은 북극성 실패로 집계** — 도착 시각을 모르는 것을 성공으로 세지 않습니다. 별도 사유 코드 `margin_unknown`으로 구분해 "늦었다"와 섞이지 않게 했습니다.
+- **지표 4종은 분모 0일 때 `None`** — 0%와 측정 불가를 구분합니다. SQL도 `nullif`로 같게 맞춰야 합니다.
+- **SQL 스케치의 테이블·컬럼 이름은 가안** — `notification_log` 등 확정되지 않은 이름이 섞여 있습니다. 벡터가 정답이고 SQL이 그것을 재현해야 합니다.
+- **시뮬레이션 범위** — 알림 예산·`dedupKey`·잔존 예약은 스케줄러 소유라 이 하네스에서 제외했습니다. Spring 쪽 시뮬레이션이 필요합니다.
+- **분류기(§4.6)는 이번 범위에서 제외** — 제목 원문을 AI 서버로 보내야 하는데, M1 인계 지침은 "제목·본문·참석자를 전송하지 않는다"입니다. 알고리즘은 모델이 아니라 결정론적 키워드 표이므로 Spring 안에서 도는 편이 절대 원칙 8에 더 맞습니다. 어디에 둘지 결정이 필요합니다.
 
 ## Spring Backend 인계 주의사항
 

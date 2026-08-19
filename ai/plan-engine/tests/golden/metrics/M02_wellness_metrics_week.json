@@ -1,0 +1,32 @@
+{
+  "caseId": "M02_wellness_metrics_week",
+  "description": "웰니스 보조 4종 — 반응률 분자에 snoozed를 포함한다 (§16.2). 미루기는 무시가 아니라 반응이다",
+  "engine": "wellness",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m4-metrics-1.0.0",
+  "configVersion": "trd-appendix-a2",
+  "input": {
+    "counts": {
+      "proposedActions": 10,
+      "completedActions": 4,
+      "eventsSent": 8,
+      "eventsCompleted": 3,
+      "eventsSnoozed": 2,
+      "ratingsCollected": 4,
+      "ratingsUseful": 3,
+      "outdoorEvents": 20,
+      "wisGeneratedEvents": 15
+    }
+  },
+  "expected": {
+    "actionCompletionRate": 0.4,
+    "eventResponseRate": 0.625,
+    "usefulnessRate": 0.75,
+    "coverageRate": 0.75
+  },
+  "tags": [
+    "conformance",
+    "metrics",
+    "wellness"
+  ]
+}
