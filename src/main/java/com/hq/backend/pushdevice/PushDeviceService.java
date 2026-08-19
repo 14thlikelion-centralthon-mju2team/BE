@@ -25,7 +25,7 @@ public class PushDeviceService {
                         .build());
 
         device.setUserId(userId);
-        device.setCurrentToken(request.token());
+        device.setCurrentToken(request.currentToken());
         device.setPlatform(request.platform().name().toLowerCase());
         device.setTokenStatus("active");
         device.setLastSeenAt(now);
