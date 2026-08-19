@@ -7,6 +7,7 @@ says which rule broke.
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from app.contracts.common import WellnessBand, WellnessTopic
 from app.contracts.config import WellnessEngineConfig
@@ -379,6 +380,40 @@ def _armable_payload(**state: Any) -> WellnessInput:
     )
 
 
+def _two_topic_payload(**state: Any) -> WellnessInput:
+    """자외선과 수분 보충이 모두 후보인 페이로드.
+
+    후보 순위는 기여도 순으로 `uv_reapply` → `pm_recheck` → `hydration_intake`이고,
+    미세먼지 선호가 없으므로 `pm_recheck`는 동의 게이트에서 걸린다. 자외선이 막히면
+    수분 보충이 예약돼야 한다.
+    """
+    event_state: dict[str, Any] = {
+        "wellnessEventEnabled": True,
+        "eventInProgress": True,
+        "outdoorRemainingMinutes": 40,
+    }
+    event_state.update(state)
+    return build(
+        environment={
+            "uvIndex": 9.0,
+            "airGrade": "bad",
+            "feelsLikeCelsius": 31.0,
+            "precipitationProbability": 10,
+        },
+        estimatedOutdoorMinutes=90,
+        userPreferences=[
+            {
+                "wellnessTopic": topic,
+                "isEnabled": True,
+                "remindIntervalMinutes": 120,
+                "dailyEventCap": 1,
+            }
+            for topic in ("uv", "hydration")
+        ],
+        eventState=event_state,
+    )
+
+
 class TestArmingGates:
     def test_all_gates_open(self) -> None:
         result = evaluate_wellness(_armable_payload())
@@ -446,6 +481,101 @@ class TestArmingGates:
         result = evaluate_wellness(build(environment=None))
         assert result.arming_blocked_by == [ArmingGate.NO_CANDIDATE.value]
         assert result.degraded == [WellnessDegraded.ENV_UNAVAILABLE.value]
+
+
+class TestPerTopicGates:
+    """게이트 ④·⑥은 항목별이다 (TRD §7.4).
+
+    ``daily_event_cap``은 ``USER_WELLNESS_PREF``의 topic별 컬럼이고, §7.4는 "일정당
+    상한과 별개다. 하루에 야외 일정이 3건이어도 같은 항목으로 3번 알리지 않는다"로
+    정했다. 스칼라 하나로 판정하면 아침에 받은 자외선 알림이 그날 수분 보충 알림까지
+    막는다.
+    """
+
+    def test_daily_cap_is_per_topic(self) -> None:
+        """자외선 상한 소진이 수분 보충을 막지 않는다."""
+        result = evaluate_wellness(
+            _two_topic_payload(
+                topicStates={
+                    "uv": {"dailyEventCount": 1, "minutesSinceLastEvent": 200},
+                    "hydration": {"dailyEventCount": 0},
+                }
+            )
+        )
+        assert result.event_armed is True
+        assert result.armed_action_code == WellnessActionCode.HYDRATION_INTAKE.value
+
+    def test_interval_is_per_topic(self) -> None:
+        """자외선 주기가 아직 안 됐어도 수분 보충은 나갈 수 있다."""
+        result = evaluate_wellness(
+            _two_topic_payload(
+                topicStates={
+                    "uv": {"dailyEventCount": 0, "minutesSinceLastEvent": 10},
+                    "hydration": {"dailyEventCount": 0, "minutesSinceLastEvent": 300},
+                }
+            )
+        )
+        assert result.event_armed is True
+        assert result.armed_action_code == WellnessActionCode.HYDRATION_INTAKE.value
+
+    def test_stop_today_is_limited_to_the_exact_action_code(self) -> None:
+        """자외선 stop_today가 hydration 후보를 차단하지 않는다."""
+        result = evaluate_wellness(
+            _two_topic_payload(
+                topicStates={
+                    "uv": {"dailyEventCount": 0, "minutesSinceLastEvent": 300},
+                    "hydration": {"dailyEventCount": 0, "minutesSinceLastEvent": 300},
+                },
+                stopTodayActionCodes=["uv_reapply"],
+            )
+        )
+        assert result.event_armed is True
+        assert result.armed_action_code == WellnessActionCode.HYDRATION_INTAKE.value
+
+    def test_all_topics_capped_blocks_everything(self) -> None:
+        result = evaluate_wellness(
+            _two_topic_payload(
+                topicStates={
+                    "uv": {"dailyEventCount": 1},
+                    "hydration": {"dailyEventCount": 1},
+                }
+            )
+        )
+        assert result.event_armed is False
+        # 최상위 후보(자외선)의 게이트를 보고한다 — 사용자가 받았을 알림이 그것이다.
+        assert ArmingGate.DAILY_CAP.value in result.arming_blocked_by
+
+    def test_topic_state_without_interval_means_never_sent(self) -> None:
+        """topic 상태를 줬으면 온전히 준 것으로 본다 — 스칼라로 되돌아가지 않는다."""
+        result = evaluate_wellness(
+            _two_topic_payload(
+                minutesSinceLastEvent=1,  # 스칼라는 주기 미달
+                topicStates={"uv": {"dailyEventCount": 0}},
+            )
+        )
+        assert result.event_armed is True
+        assert result.armed_action_code == WellnessActionCode.UV_REAPPLY.value
+
+    def test_scalar_still_applies_when_topic_state_absent(self) -> None:
+        """M0·M3 페이로드 호환 — topicStates가 없으면 스칼라로 판정한다."""
+        armed = evaluate_wellness(_two_topic_payload(minutesSinceLastEvent=300))
+        blocked = evaluate_wellness(_two_topic_payload(minutesSinceLastEvent=10))
+        assert armed.event_armed is True
+        assert blocked.event_armed is False
+        assert ArmingGate.INTERVAL.value in blocked.arming_blocked_by
+
+    def test_scalar_daily_count_blocks_every_topic(self) -> None:
+        """스칼라만 쓰면 모든 항목이 함께 막힌다 — 이 동작이 per-topic 도입의 근거다."""
+        result = evaluate_wellness(
+            _two_topic_payload(minutesSinceLastEvent=300, dailyEventCount=1)
+        )
+        assert result.event_armed is False
+        assert ArmingGate.DAILY_CAP.value in result.arming_blocked_by
+
+    def test_unknown_topic_key_is_rejected(self) -> None:
+        """정의되지 않은 topic 키는 계약 불일치이므로 통과시키지 않는다."""
+        with pytest.raises(ValidationError):
+            _two_topic_payload(topicStates={"nonsense": {"dailyEventCount": 0}})
 
 
 # ──────────────────────────────────────────────────────────────────────────────

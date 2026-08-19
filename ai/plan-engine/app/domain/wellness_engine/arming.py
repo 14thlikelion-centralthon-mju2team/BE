@@ -13,6 +13,11 @@
 
 기본값이 전부 보수적이라, 게이트 입력을 보내지 않는 호출자는 절대 푸시를 예약하지 못합니다.
 주기는 사용자 설정값이고 서비스가 SPF·피부 타입·제품 성능을 판단하지 않습니다 (PRD §14.7).
+
+**게이트 ④와 ⑥은 항목별입니다.** §7.4가 "일정당 상한과 별개다. 하루에 야외 일정이 3건이어도 같은
+항목으로 3번 알리지 않는다"로 정했고, `daily_event_cap`도 `USER_WELLNESS_PREF`의 topic별
+컬럼입니다. 그래서 상태를 `topic_states`에서 topic별로 읽고, 없으면 최상위 스칼라로 되돌아갑니다.
+스칼라만 쓰면 아침에 받은 자외선 알림이 그날 수분 보충 알림까지 막습니다.
 """
 
 from dataclasses import dataclass
@@ -46,6 +51,21 @@ def _preference_for(
     return None
 
 
+def _topic_progress(
+    topic: WellnessTopic,
+    state: WellnessEventState,
+) -> tuple[int, int | None]:
+    """(오늘 발송 수, 마지막 발송 이후 분) — topic 상태 우선, 없으면 스칼라 폴백.
+
+    topic 상태를 줬다면 온전히 준 것으로 봅니다. 그 안의 ``minutes_since_last_event``가
+    None이면 "이 항목은 오늘 보낸 적 없다"는 뜻이고 스칼라로 되돌아가지 않습니다.
+    """
+    per_topic = state.topic_states.get(topic)
+    if per_topic is None:
+        return state.daily_event_count, state.minutes_since_last_event
+    return per_topic.daily_event_count, per_topic.minutes_since_last_event
+
+
 def _score_threshold(
     code: WellnessActionCode,
     state: WellnessEventState,
@@ -66,7 +86,9 @@ def _gates_for(
     config: WellnessEngineConfig,
 ) -> tuple[ArmingGate, ...]:
     blocked: list[ArmingGate] = []
-    preference = _preference_for(ACTION_TOPICS[code], preferences)
+    topic = ACTION_TOPICS[code]
+    preference = _preference_for(topic, preferences)
+    daily_count, minutes_since_last = _topic_progress(topic, state)
 
     # ① 동의 — both opt-ins, both default false (D4).
     if not state.wellness_event_enabled or preference is None or not preference.is_enabled:
@@ -82,10 +104,11 @@ def _gates_for(
         blocked.append(ArmingGate.EXPOSURE)
 
     # ④ 주기 — 사용자가 주기를 정하지 않았으면 발사하지 않는다 (PRD §14.7).
+    #    경과 시간은 이 항목의 마지막 발송 기준이다.
     interval = preference.remind_interval_minutes if preference is not None else None
     if interval is None:
         blocked.append(ArmingGate.INTERVAL)
-    elif state.minutes_since_last_event is not None and state.minutes_since_last_event < interval:
+    elif minutes_since_last is not None and minutes_since_last < interval:
         blocked.append(ArmingGate.INTERVAL)
 
     # ⑤ 미완료 — completed 또는 stop_today 가 있으면 중단.
@@ -95,9 +118,9 @@ def _gates_for(
     ):
         blocked.append(ArmingGate.ALREADY_HANDLED)
 
-    # ⑥ 일일 상한 — 하루에 야외 일정이 3건이어도 같은 항목으로 3번 알리지 않는다.
+    # ⑥ 일일 상한 — 항목별이다. 자외선 알림을 한 번 받았다고 수분 보충까지 막히면 안 된다.
     cap = preference.daily_event_cap if preference is not None else config.daily_event_cap_default
-    if state.daily_event_count >= cap:
+    if daily_count >= cap:
         blocked.append(ArmingGate.DAILY_CAP)
 
     return tuple(blocked)
