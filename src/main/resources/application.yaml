@@ -40,6 +40,13 @@ oauth:
 plan-engine:
   base-url: ${PLAN_ENGINE_BASE_URL:http://localhost:8000}
 
+openai:
+  # 일정 텍스트 분류 등 외부 AI 기능에 사용한다. 키가 비어 있으면 규칙 기반 폴백으로 동작한다.
+  api-key: ${OPENAI_API_KEY:}
+  model: ${OPENAI_MODEL:gpt-4o-mini}
+  connect-timeout-ms: ${OPENAI_CONNECT_TIMEOUT_MS:5000}
+  read-timeout-ms: ${OPENAI_READ_TIMEOUT_MS:10000}
+
 provider:
   odsay:
     # 서버 플랫폼 키는 ODSAY_API_KEY 환경변수로만 주입한다. 비어 있으면 StubRouteProvider가 사용된다.
