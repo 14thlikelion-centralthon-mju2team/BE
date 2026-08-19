@@ -20,6 +20,9 @@ import com.hq.backend.personalization.UserPrepEstimate;
 import com.hq.backend.personalization.UserPrepEstimateRepository;
 import com.hq.backend.personalization.dto.PersonalizationEngineRequest;
 import com.hq.backend.personalization.dto.PersonalizationEngineResponse;
+import com.hq.backend.wellness.WellnessEngineClient;
+import com.hq.backend.wellness.dto.RushLoadEngineRequest;
+import com.hq.backend.wellness.dto.RushLoadEngineResponse;
 import com.hq.backend.plan.dto.ActionBatchRequest;
 import com.hq.backend.plan.dto.ActionBatchResponse;
 import com.hq.backend.setting.UserSetting;
@@ -73,6 +76,7 @@ public class PlanActionService {
     private final UserPrepEstimateRepository userPrepEstimateRepository;
     private final UserSettingRepository userSettingRepository;
     private final PersonalizationEngineClient personalizationEngineClient;
+    private final WellnessEngineClient wellnessEngineClient;
     private final PlanContextRepository planContextRepository;
     private final PlanService planService;
     private final ProductEventService productEventService;
@@ -163,8 +167,33 @@ public class PlanActionService {
         recordActionMetric(event, item, execution);
 
         if (item.actionType() == ActionType.ARRIVED) {
+            runRushLoadCalculation(revision, execution);
             runPersonalizationAdjustment(event, revision, execution, item);
         }
+    }
+
+    private void runRushLoadCalculation(PlanRevision revision, EventExecution execution) {
+        double prepDelayMinutes = delayMinutes(execution.getActualPrepStartedAt(), revision.getPrepStartAt());
+        double departDelayMinutes = delayMinutes(execution.getActualDepartedAt(), revision.getRecommendedDepartAt());
+        RushLoadEngineRequest request = new RushLoadEngineRequest(
+                execution.getEventId().toString(), prepDelayMinutes, departDelayMinutes, 0,
+                new com.hq.backend.wellness.dto.WellnessEngineRequest.EngineConfig(
+                        0.35, 0.25, 0.20, 0.20, 1.25, 120, 40, 70, "w1"));
+        wellnessEngineClient.computeRushLoad(request).ifPresent(result -> persistRushLoad(execution, result));
+    }
+
+    private double delayMinutes(Instant actual, Instant planned) {
+        return actual == null || planned == null ? 0.0
+                : Duration.between(planned, actual).toSeconds() / 60.0;
+    }
+
+    private void persistRushLoad(EventExecution execution, RushLoadEngineResponse result) {
+        execution.setPrepDelayNorm(BigDecimal.valueOf(result.prepDelayNorm()));
+        execution.setDepartDelayNorm(BigDecimal.valueOf(result.departDelayNorm()));
+        execution.setCriticalAlertNorm(BigDecimal.valueOf(result.criticalAlertNorm()));
+        execution.setRushLoadScore((short) result.rushLoadScore());
+        execution.setUpdatedAt(Instant.now());
+        eventExecutionRepository.save(execution);
     }
 
     private void recordActionMetric(Event event, ActionBatchRequest.ActionItem item, EventExecution execution) {

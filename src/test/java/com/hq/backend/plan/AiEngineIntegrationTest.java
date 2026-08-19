@@ -5,6 +5,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.hq.backend.metrics.ProductEventRepository;
+import com.hq.backend.personalization.EventExecution;
+import com.hq.backend.personalization.EventExecutionRepository;
 import com.hq.backend.personalization.EventDelayReasonRepository;
 import com.hq.backend.personalization.UserPrepEstimate;
 import com.hq.backend.personalization.UserPrepEstimateRepository;
@@ -62,6 +64,9 @@ class AiEngineIntegrationTest {
     private UserPrepEstimateRepository userPrepEstimateRepository;
 
     @Autowired
+    private EventExecutionRepository eventExecutionRepository;
+
+    @Autowired
     private EventDelayReasonRepository eventDelayReasonRepository;
 
     @Autowired
@@ -92,6 +97,11 @@ class AiEngineIntegrationTest {
                  "eventArmed":true,"armedActionCode":"pm_recheck","armingBlockedBy":[],
                  "weightVersion":"m3-wellness-1.0.0","contractVersion":"m0-v1","degraded":[],
                  "futureM3Field":{"safeToIgnore":true}}
+                """));
+        fakeEngine.createContext("/internal/v1/wellness/rush-load", exchange -> respond(exchange, """
+                {"eventId":"ignored-by-test","rushLoadScore":42,
+                 "prepDelayNorm":0.25,"departDelayNorm":0.50,"criticalAlertNorm":0.0,
+                 "weightVersion":"m3-wellness-1.0.0","contractVersion":"m0-v1"}
                 """));
         fakeEngine.createContext("/internal/v1/personalization/adjust", exchange -> respond(exchange, """
                 {"cause":"prep_overrun","adjustedKnob":"prep_estimate",
@@ -181,6 +191,12 @@ class AiEngineIntegrationTest {
         assertThat(eventDelayReasonRepository.findByEventId(created.eventId()))
                 .anyMatch(r -> "traffic".equals(r.getReasonCode())
                         && new BigDecimal("0.333").compareTo(r.getConfidence()) == 0);
+
+        EventExecution execution = eventExecutionRepository.findById(created.eventId()).orElseThrow();
+        assertThat(execution.getRushLoadScore()).isEqualTo((short) 42);
+        assertThat(execution.getPrepDelayNorm()).isEqualByComparingTo("0.25");
+        assertThat(execution.getDepartDelayNorm()).isEqualByComparingTo("0.50");
+        assertThat(execution.getCriticalAlertNorm()).isEqualByComparingTo("0.0");
 
         assertThat(productEventRepository.findAll())
                 .anyMatch(e -> "arrival_result".equals(e.getEventName()) && created.userId().equals(e.getUserId()));

@@ -255,7 +255,8 @@ public class PlanCreationService {
         WellnessEngineRequest.EnvironmentSnapshot environmentSnapshot = computed.environment() == null ? null
                 : new WellnessEngineRequest.EnvironmentSnapshot(
                         computed.environment().precipitationProb(), computed.environment().tempC(),
-                        computed.environment().uvIndex(), computed.environment().pm10(), computed.environment().asOf());
+                        computed.environment().uvIndex(), computed.environment().pm10(),
+                        null, null, null, computed.environment().asOf());
 
         List<WellnessEngineRequest.WellnessPreference> preferences = userWellnessPrefRepository
                 .findByUserId(computed.userId()).stream()
@@ -276,7 +277,8 @@ public class PlanCreationService {
                 prepItems,
                 new WellnessEngineRequest.EngineConfig(
                         WIS_WEIGHT_UV, WIS_WEIGHT_PM, WIS_WEIGHT_TEMP, WIS_WEIGHT_OUTDOOR,
-                        WIS_INTEREST_BOOST_MAX, OUTDOOR_CAP_MINUTES, WIS_BAND_CARD, WIS_BAND_EVENT, WEIGHT_VERSION));
+                        WIS_INTEREST_BOOST_MAX, OUTDOOR_CAP_MINUTES, WIS_BAND_CARD, WIS_BAND_EVENT, WEIGHT_VERSION),
+                WellnessEngineRequest.WellnessEventState.conservative());
 
         Optional<WellnessEngineResponse> response = wellnessEngineClient.evaluate(request);
         if (response.isEmpty() || response.get().wisScore() == null) {
@@ -295,6 +297,7 @@ public class PlanCreationService {
                     .wisScore(output.wisScore().shortValue())
                     .wisBand(output.wisBand())
                     .weightVersion(output.weightVersion())
+                    .armedActionCode(output.eventArmed() ? output.armedActionCode() : null)
                     .calculatedAt(Instant.now())
                     .build());
         }
