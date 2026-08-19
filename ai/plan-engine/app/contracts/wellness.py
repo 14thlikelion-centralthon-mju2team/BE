@@ -63,6 +63,24 @@ class WellnessPreference(ContractModel):
     daily_event_cap: int = Field(default=1, ge=0)
 
 
+class WellnessTopicState(ContractModel):
+    """한 topic의 오늘 상태 — ``USER_WELLNESS_PREF`` 행 하나에 대응 (TRD §7.4).
+
+    게이트 ④ 주기와 ⑥ 일일 상한은 **항목별**입니다. §7.4가 "일정당 상한과 별개다.
+    하루에 야외 일정이 3건이어도 같은 항목으로 3번 알리지 않는다"로 못 박았고,
+    ``daily_event_cap``도 ``USER_WELLNESS_PREF``의 topic별 컬럼입니다.
+
+    이 객체를 주면 같은 topic의 스칼라 필드보다 우선합니다. 여기서
+    ``minutes_since_last_event``가 없으면 "이 항목은 오늘 한 번도 보내지 않았다"는
+    뜻이고, 스칼라로 되돌아가지 않습니다 — topic 상태를 줬다면 온전히 준 것으로 봅니다.
+    """
+
+    #: 오늘 이 topic으로 발송한 이벤트 수.
+    daily_event_count: int = Field(default=0, ge=0)
+    #: 이 topic의 마지막 발송 이후 경과 분.  None이면 발송 이력 없음.
+    minutes_since_last_event: int | None = Field(default=None, ge=0)
+
+
 class WellnessEventState(ContractModel):
     """Runtime state the TR-11 gates need (TRD §7.4).
 
@@ -78,18 +96,23 @@ class WellnessEventState(ContractModel):
     outdoor_remaining_minutes: int | None = Field(default=None, ge=0)
     #: Gate ③ — cancel when an indoor transition is inferred.
     indoor_transition_estimated: bool = False
-    #: Gate ④ — minutes since the last event for this topic.  None means none
-    #: was ever sent, which satisfies the interval.
+    #: Gate ④ — minutes since the last event.  None means none was ever sent,
+    #: which satisfies the interval.  **Per-topic 값이 있으면 그쪽이 우선한다** —
+    #: ``topic_states`` 참고.
     minutes_since_last_event: int | None = Field(default=None, ge=0)
     #: Gate ⑤ — action codes already completed for this event.
     completed_action_codes: list[str] = Field(default_factory=list)
     #: Gate ⑤ · backoff — action codes the user stopped for today.
     stop_today_action_codes: list[str] = Field(default_factory=list)
-    #: Gate ⑥ — events already sent today for this topic.
+    #: Gate ⑥ — events already sent today.  **Per-topic 값이 있으면 그쪽이 우선한다.**
     daily_event_count: int = Field(default=0, ge=0)
     #: D9 — action codes whose WIS threshold was auto-raised to 85 after high
     #: opt-out or not-relevant rates.
     raised_threshold_action_codes: list[str] = Field(default_factory=list)
+
+    # M4 addition — 게이트 ④·⑥이 항목별이라는 사실을 스칼라로는 표현할 수 없었다.
+    #: topic별 오늘 상태.  키가 있는 topic은 스칼라 대신 이 값을 쓴다.
+    topic_states: dict[WellnessTopic, WellnessTopicState] = Field(default_factory=dict)
 
 
 class WellnessInput(ContractModel):

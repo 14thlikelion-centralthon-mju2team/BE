@@ -50,6 +50,10 @@ final class WellnessActionCatalog {
         return TOPICS.get(actionCode);
     }
 
+    static boolean isKnownTopic(String topic) {
+        return TOPICS.containsValue(topic);
+    }
+
     static String bodyFor(String actionCode) {
         return BODIES.getOrDefault(actionCode, "웰니스 행동을 확인해 주세요.");
     }

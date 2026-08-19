@@ -1,0 +1,84 @@
+{
+  "caseId": "M01_north_star_week",
+  "description": "북극성 주간 집계 — 6건 중 1건만 다섯 조건을 모두 통과한다. 실패 사유별 집계까지 고정한다",
+  "engine": "plan",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m4-metrics-1.0.0",
+  "configVersion": "trd-appendix-a1",
+  "input": {
+    "rows": [
+      {
+        "eventId": "e1",
+        "arrivalResult": "on_time",
+        "criticalAlertCount": 1,
+        "departDeltaMinutes": 5.0,
+        "rushAssessment": "appropriate",
+        "marginMinutes": 15.0
+      },
+      {
+        "eventId": "e2",
+        "arrivalResult": "late",
+        "criticalAlertCount": 0,
+        "departDeltaMinutes": 2.0,
+        "rushAssessment": "appropriate",
+        "marginMinutes": 5.0
+      },
+      {
+        "eventId": "e3",
+        "arrivalResult": "on_time",
+        "criticalAlertCount": 0,
+        "departDeltaMinutes": 3.0,
+        "rushAssessment": "appropriate",
+        "marginMinutes": 45.0
+      },
+      {
+        "eventId": "e4",
+        "arrivalResult": "on_time",
+        "criticalAlertCount": 3,
+        "departDeltaMinutes": 20.0,
+        "rushAssessment": "rushed",
+        "marginMinutes": 10.0
+      },
+      {
+        "eventId": "e5",
+        "arrivalResult": "on_time",
+        "criticalAlertCount": 0,
+        "departDeltaMinutes": -12.0,
+        "rushAssessment": null,
+        "marginMinutes": 20.0
+      },
+      {
+        "eventId": "e6",
+        "arrivalResult": "on_time",
+        "criticalAlertCount": 0,
+        "departDeltaMinutes": 0.0,
+        "rushAssessment": null,
+        "marginMinutes": null
+      }
+    ],
+    "config": {
+      "departToleranceMinutes": 10,
+      "earlyMinutes": 30,
+      "maxCriticalAlerts": 1,
+      "okArrivalResult": "on_time"
+    }
+  },
+  "expected": {
+    "totalEvents": 6,
+    "okEvents": 1,
+    "okRatio": 0.1667,
+    "failedByReason": {
+      "arrival_not_on_time": 1,
+      "arrived_too_early": 1,
+      "depart_out_of_tolerance": 2,
+      "margin_unknown": 1,
+      "rushed": 1,
+      "too_many_critical_alerts": 1
+    }
+  },
+  "tags": [
+    "conformance",
+    "metrics",
+    "north-star"
+  ]
+}

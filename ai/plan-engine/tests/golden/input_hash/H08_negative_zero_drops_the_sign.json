@@ -1,0 +1,60 @@
+{
+  "caseId": "H08_negative_zero_drops_the_sign",
+  "description": "그리니치 근처 음수 경도. 절단 결과가 0이면 부호를 버린다 — Java BigDecimal 의 0 은 부호가 없다",
+  "engine": "plan",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m1-plan-engine-1.0.0",
+  "configVersion": "trd-5.5",
+  "input": {
+    "eventStartsAt": "2026-08-20T14:00:00+09:00",
+    "origin": {
+      "latitude": 4e-07,
+      "longitude": -4e-07
+    },
+    "destination": {
+      "latitude": 37.4979,
+      "longitude": 127.0276
+    },
+    "sourceType": "map_search",
+    "estimatedPrepMinutes": 30,
+    "trafficBufferMinutes": 5,
+    "arrivalBufferMinutes": 10,
+    "selectedRoute": {
+      "routeId": "route-1",
+      "totalMinutes": 40,
+      "walkMinutes": 15
+    },
+    "quantizedContext": {
+      "rain": "none",
+      "uv": "high",
+      "pm": "good",
+      "temp": "hot",
+      "tempSwing": false
+    },
+    "activePrepItems": [
+      {
+        "itemId": "item-a",
+        "appliedMinutes": 10
+      },
+      {
+        "itemId": "item-b",
+        "appliedMinutes": 0
+      }
+    ],
+    "calcVersion": "m1-plan-engine-1.0.0",
+    "weightVersion": "m3-wellness-1.0.0"
+  },
+  "expected": {
+    "coordinates": {
+      "originLat": "0.000000",
+      "originLng": "0.000000"
+    },
+    "canonicalJson": "{\"activePrepItems\":[{\"appliedMinutes\":10,\"itemId\":\"item-a\"},{\"appliedMinutes\":0,\"itemId\":\"item-b\"}],\"arrivalBufferMinutes\":10,\"calcVersion\":\"m1-plan-engine-1.0.0\",\"destinationLat\":\"37.497900\",\"destinationLng\":\"127.027600\",\"estimatedPrepMinutes\":30,\"eventStartsAt\":\"2026-08-20T05:00:00Z\",\"originLat\":\"0.000000\",\"originLng\":\"0.000000\",\"quantizedPm\":\"good\",\"quantizedRain\":\"none\",\"quantizedTemp\":\"hot\",\"quantizedTempSwing\":false,\"quantizedUv\":\"high\",\"routeId\":\"route-1\",\"routeTotalMinutes\":40,\"routeWalkMinutes\":15,\"sourceType\":\"map_search\",\"trafficBufferMinutes\":5,\"weightVersion\":\"m3-wellness-1.0.0\"}",
+    "inputHash": "e063fbf42a5e8af48292c501a4f99f6141bfbd8a0ea6d42353b50b5daeb82710"
+  },
+  "tags": [
+    "conformance",
+    "input-hash",
+    "coordinate-policy"
+  ]
+}
