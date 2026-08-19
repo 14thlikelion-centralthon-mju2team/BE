@@ -33,6 +33,9 @@ public class EventExecution {
     private Instant actualPrepStartedAt;
 
     @Setter
+    private Instant actualPrepFinishedAt;
+
+    @Setter
     private Instant actualDepartedAt;
 
     @Setter

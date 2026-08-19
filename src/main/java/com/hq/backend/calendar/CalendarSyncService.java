@@ -168,6 +168,7 @@ public class CalendarSyncService {
             if (timeChanged) {
                 event.setStartsAt(startsAt);
                 event.setEndsAt(endsAt);
+                event.setUpdatedAt(Instant.now());
                 // 시각이 바뀌면 계획 재계산 트리거
                 triggerRecalculate(userId, event);
                 log.info("[CalendarSync] 일정 시각 변경: event_id={}", event.getEventId());
@@ -186,6 +187,7 @@ public class CalendarSyncService {
                     .autoManageExcluded(false)
                     .status("planned")
                     .createdAt(Instant.now())
+                    .updatedAt(Instant.now())
                     .build();
 
             // displayLabel: 외부 일정 제목 원문은 저장하지 않음 (TRD 절대 원칙 8)
