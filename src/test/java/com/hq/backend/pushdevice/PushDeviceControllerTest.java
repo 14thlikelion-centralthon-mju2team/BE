@@ -25,7 +25,7 @@ class PushDeviceControllerTest {
         String accessToken = signupAndLogin();
         String installationId = UUID.randomUUID().toString();
         String body = """
-                {"installationId":"%s","token":"fcm-token-abc","platform":"ANDROID"}
+                {"installationId":"%s","currentToken":"fcm-token-abc","platform":"ANDROID"}
                 """.formatted(installationId);
 
         mockMvc.perform(post("/push-devices")
@@ -43,7 +43,7 @@ class PushDeviceControllerTest {
         String accessToken = signupAndLogin();
         String installationId = UUID.randomUUID().toString();
         String firstBody = """
-                {"installationId":"%s","token":"old-token","platform":"ANDROID"}
+                {"installationId":"%s","currentToken":"old-token","platform":"ANDROID"}
                 """.formatted(installationId);
         String firstResponse = mockMvc.perform(post("/push-devices")
                         .header("Authorization", "Bearer " + accessToken)
@@ -56,7 +56,7 @@ class PushDeviceControllerTest {
         String firstPushDeviceId = JsonPath.read(firstResponse, "$.pushDeviceId");
 
         String secondBody = """
-                {"installationId":"%s","token":"new-token","platform":"IOS"}
+                {"installationId":"%s","currentToken":"new-token","platform":"IOS"}
                 """.formatted(installationId);
 
         mockMvc.perform(post("/push-devices")
@@ -72,7 +72,7 @@ class PushDeviceControllerTest {
     void 존재하지_않는_platform이면_프로젝트_표준_에러_포맷으로_400() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
-                {"installationId":"%s","token":"fcm-token-abc","platform":"FOO"}
+                {"installationId":"%s","currentToken":"fcm-token-abc","platform":"FOO"}
                 """.formatted(UUID.randomUUID());
 
         mockMvc.perform(post("/push-devices")
@@ -86,7 +86,7 @@ class PushDeviceControllerTest {
     @Test
     void 인증_없이_요청하면_401() throws Exception {
         String body = """
-                {"installationId":"%s","token":"fcm-token-abc","platform":"ANDROID"}
+                {"installationId":"%s","currentToken":"fcm-token-abc","platform":"ANDROID"}
                 """.formatted(UUID.randomUUID());
 
         mockMvc.perform(post("/push-devices").contentType(MediaType.APPLICATION_JSON).content(body))
