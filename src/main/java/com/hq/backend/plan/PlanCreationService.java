@@ -72,6 +72,7 @@ public class PlanCreationService {
 
     private final PlanEngineClient planEngineClient;
     private final WellnessEngineClient wellnessEngineClient;
+    private final com.hq.backend.config.WellnessConfigService wellnessConfigService;
     private final ProductEventService productEventService;
     private final PlanRevisionRepository planRevisionRepository;
     private final PlanContextRepository planContextRepository;
@@ -275,9 +276,7 @@ public class PlanCreationService {
                 computed.selectedRoute().outdoorSec() / 60,
                 preferences,
                 prepItems,
-                new WellnessEngineRequest.EngineConfig(
-                        WIS_WEIGHT_UV, WIS_WEIGHT_PM, WIS_WEIGHT_TEMP, WIS_WEIGHT_OUTDOOR,
-                        WIS_INTEREST_BOOST_MAX, OUTDOOR_CAP_MINUTES, WIS_BAND_CARD, WIS_BAND_EVENT, WEIGHT_VERSION),
+                wellnessConfigService.current(),
                 WellnessEngineRequest.WellnessEventState.conservative());
 
         Optional<WellnessEngineResponse> response = wellnessEngineClient.evaluate(request);
