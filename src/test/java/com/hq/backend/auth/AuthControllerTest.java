@@ -45,7 +45,11 @@ class AuthControllerTest {
         mockMvc.perform(post("/auth/email/login").contentType(MediaType.APPLICATION_JSON).content(loginBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").exists())
-                .andExpect(jsonPath("$.expiresIn").value(3600));
+                .andExpect(jsonPath("$.expiresIn").value(3600))
+                .andExpect(jsonPath("$.user.userId").exists())
+                .andExpect(jsonPath("$.user.nickname").value(email.substring(0, email.indexOf('@'))))
+                .andExpect(jsonPath("$.user.timezone").value("Asia/Seoul"))
+                .andExpect(jsonPath("$.user.isNew").value(false));
     }
 
     @Test
@@ -92,9 +96,12 @@ class AuthControllerTest {
         String refreshToken = signupAndLoginForRefresh();
 
         MvcResult result = refresh(refreshToken).andExpect(status().isOk()).andReturn();
-        String rotatedRefreshToken = JsonPath.read(result.getResponse().getContentAsString(), "$.refreshToken");
+        String response = result.getResponse().getContentAsString();
+        String rotatedRefreshToken = JsonPath.read(response, "$.refreshToken");
 
         assertThat(rotatedRefreshToken).isNotEqualTo(refreshToken);
+        assertThat(JsonPath.read(response, "$.user.userId").toString()).isNotBlank();
+        assertThat((Boolean) JsonPath.read(response, "$.user.isNew")).isFalse();
     }
 
     @Test
