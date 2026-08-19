@@ -64,6 +64,10 @@ services:
       SMTP_APP_PASSWORD: ${SMTP_APP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       EMAIL_VERIFICATION_BASE_URL: ${EMAIL_VERIFICATION_BASE_URL:-http://localhost}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_CONNECT_TIMEOUT_MS: ${OPENAI_CONNECT_TIMEOUT_MS:-5000}
+      OPENAI_READ_TIMEOUT_MS: ${OPENAI_READ_TIMEOUT_MS:-10000}
       PLAN_ENGINE_BASE_URL: http://plan-engine:8000
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health >/dev/null"]
