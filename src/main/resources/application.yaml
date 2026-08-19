@@ -66,7 +66,9 @@ app:
     salt: ${ENCRYPTION_SALT:deadbeefdeadbeefdeadbeefdeadbeef}
   email-verification:
     enabled: ${EMAIL_VERIFICATION_ENABLED:true}
-    token-ttl-minutes: ${EMAIL_VERIFICATION_TOKEN_TTL_MINUTES:1440}
+    # 제품 정책: 이메일 소유 인증 링크는 발급 후 30분간만 유효하다.
+    # 변경하려면 API 계약과 FE onboarding 흐름을 함께 검토·승인해야 한다.
+    token-ttl-minutes: ${EMAIL_VERIFICATION_TOKEN_TTL_MINUTES:30}
     resend-cooldown-seconds: ${EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS:60}
     base-url: ${EMAIL_VERIFICATION_BASE_URL:http://localhost:8080}
     smtp:

@@ -54,9 +54,9 @@ class AuthControllerTest {
     }
 
     @Test
-    void 이메일_인증_token_기본_TTL은_명세대로_24시간이다() {
+    void 이메일_인증_token_기본_TTL은_제품_정책대로_30분이다() {
         assertThat(ReflectionTestUtils.getField(emailVerificationService, "tokenTtlMinutes"))
-                .isEqualTo(1440L);
+                .isEqualTo(30L);
     }
 
     @Test

@@ -31,7 +31,7 @@ class EmailVerificationServiceTest {
         User user = User.builder().userId(userId).email("verify@example.com")
                 .nickname("verify").timezone("Asia/Seoul").createdAt(Instant.now()).accountStatus("active").build();
         EmailVerificationService service = new EmailVerificationService(tokenRepository, userRepository, emailSender);
-        ReflectionTestUtils.setField(service, "tokenTtlMinutes", 1440L);
+        ReflectionTestUtils.setField(service, "tokenTtlMinutes", 30L);
         ReflectionTestUtils.setField(service, "resendCooldownSeconds", 60L);
         ReflectionTestUtils.setField(service, "verificationBaseUrl", "https://api.example.test");
         when(emailSender.isAvailable()).thenReturn(true);
@@ -47,7 +47,7 @@ class EmailVerificationServiceTest {
         assertThat(stored.getValue().getTokenHash()).isNotEqualTo(rawToken);
         assertThat(stored.getValue().getTokenHash()).hasSize(64);
         assertThat(Duration.between(stored.getValue().getCreatedAt(), stored.getValue().getExpiresAt()))
-                .isEqualTo(Duration.ofHours(24));
+                .isEqualTo(Duration.ofMinutes(30));
 
         when(tokenRepository.findByTokenHash(any())).thenReturn(Optional.of(stored.getValue()));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
