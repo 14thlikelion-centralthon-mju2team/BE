@@ -55,6 +55,9 @@ class AiEngineIntegrationTest {
     private PlaceCoordinateCodec placeCoordinateCodec;
 
     @Autowired
+    private PlanContextRepository planContextRepository;
+
+    @Autowired
     private PlanWellnessScoreRepository planWellnessScoreRepository;
 
     @Autowired
@@ -143,6 +146,13 @@ class AiEngineIntegrationTest {
         PlanWellnessScore score = planWellnessScoreRepository.findById(created.planId()).orElseThrow();
         assertThat(score.getWisScore()).isEqualTo((short) 72);
         assertThat(score.getWisBand()).isEqualTo("high");
+
+        PlanContext context = planContextRepository.findById(created.planId()).orElseThrow();
+        assertThat(context.getPm25()).isEqualTo(20);
+        assertThat(context.getAirGrade()).isEqualTo("moderate");
+        assertThat(context.getFeelsLikeMin()).isEqualByComparingTo("17.0");
+        assertThat(context.getFeelsLikeMax()).isEqualByComparingTo("27.0");
+        assertThat(context.getAirProvider()).isEqualTo("stub-air");
 
         assertThat(planWellnessActionRepository.findAll())
                 .anyMatch(a -> a.getPlanId().equals(created.planId())

@@ -257,7 +257,8 @@ public class PlanCreationService {
                 : new WellnessEngineRequest.EnvironmentSnapshot(
                         computed.environment().precipitationProb(), computed.environment().tempC(),
                         computed.environment().uvIndex(), computed.environment().pm10(),
-                        null, null, null, computed.environment().asOf());
+                        computed.environment().airGrade(), computed.environment().feelsLikeMinCelsius(),
+                        computed.environment().feelsLikeMaxCelsius(), computed.environment().asOf());
 
         List<WellnessEngineRequest.WellnessPreference> preferences = userWellnessPrefRepository
                 .findByUserId(computed.userId()).stream()
@@ -366,11 +367,19 @@ public class PlanCreationService {
         planContextRepository.save(PlanContext.builder()
                 .planId(revision.getPlanId())
                 .temperature(java.math.BigDecimal.valueOf(snapshot.tempC()))
+                .feelsLike(java.math.BigDecimal.valueOf(snapshot.tempC()))
+                .feelsLikeMin(snapshot.feelsLikeMinCelsius() == null ? null
+                        : java.math.BigDecimal.valueOf(snapshot.feelsLikeMinCelsius()))
+                .feelsLikeMax(snapshot.feelsLikeMaxCelsius() == null ? null
+                        : java.math.BigDecimal.valueOf(snapshot.feelsLikeMaxCelsius()))
                 .precipitationProb(java.math.BigDecimal.valueOf(snapshot.precipitationProb()))
                 .uvIndex((short) Math.round(snapshot.uvIndex()))
                 .pm10(snapshot.pm10())
+                .pm25(snapshot.pm25())
+                .airGrade(snapshot.airGrade())
                 .estimatedOutdoorMinutes(estimatedOutdoorMinutes)
                 .weatherProvider(snapshot.provider())
+                .airProvider(snapshot.airProvider())
                 .observedAt(snapshot.asOf())
                 .build());
     }

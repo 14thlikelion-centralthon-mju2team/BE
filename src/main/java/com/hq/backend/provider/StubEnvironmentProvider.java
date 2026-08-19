@@ -9,6 +9,8 @@ public class StubEnvironmentProvider implements EnvironmentProvider {
 
     @Override
     public EnvironmentSnapshot fetch(GeoPoint point, Instant at) {
-        return new EnvironmentSnapshot(3.0, 40, 22.0, 10, at, "stub");
+        return new EnvironmentSnapshot(
+                3.0, 40, 22.0, 10, at, "stub",
+                20, "moderate", 17.0, 27.0, "stub-air");
     }
 }

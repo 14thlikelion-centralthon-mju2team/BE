@@ -26,10 +26,13 @@ public class PlanContext {
 
     private BigDecimal temperature;
     private BigDecimal feelsLike;
+    private BigDecimal feelsLikeMin;
+    private BigDecimal feelsLikeMax;
     private BigDecimal precipitationProb;
     private Short uvIndex;
     private Integer pm10;
     private Integer pm25;
+    private String airGrade;
     private Integer trafficDelayMinutes;
     private Integer estimatedOutdoorMinutes;
     private String weatherProvider;
