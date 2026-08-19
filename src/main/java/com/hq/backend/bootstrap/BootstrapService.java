@@ -4,6 +4,8 @@ import com.hq.backend.bootstrap.dto.BootstrapResponse;
 import com.hq.backend.bootstrap.dto.EngineConfigSummary;
 import com.hq.backend.bootstrap.dto.PlaceSummary;
 import com.hq.backend.bootstrap.dto.SettingsSummary;
+import com.hq.backend.permission.UserPermissionRepository;
+import com.hq.backend.permission.dto.PermissionResponse;
 import com.hq.backend.place.PlaceCoordinateCodec;
 import com.hq.backend.place.UserPlaceRepository;
 import com.hq.backend.setting.UserSettingRepository;
@@ -27,6 +29,7 @@ public class BootstrapService {
     private final UserPlaceRepository userPlaceRepository;
     private final PlaceCoordinateCodec placeCoordinateCodec;
     private final UserSettingRepository userSettingRepository;
+    private final UserPermissionRepository userPermissionRepository;
 
     public BootstrapResponse bootstrap(UUID userId) {
         SettingsSummary settings = userSettingRepository.findById(userId)
@@ -49,9 +52,13 @@ public class BootstrapService {
                         place.isPrimary()))
                 .toList();
 
+        List<PermissionResponse> permissions = userPermissionRepository.findByIdUserId(userId).stream()
+                .map(PermissionResponse::from)
+                .toList();
+
         return new BootstrapResponse(
                 settings,
-                List.of(),
+                permissions,
                 places,
                 List.of(),
                 null,

@@ -1,16 +1,22 @@
 package com.hq.backend.notification;
 
 import com.hq.backend.common.exception.ApiException;
+import com.hq.backend.event.ActionSource;
+import com.hq.backend.event.ActionType;
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
 import com.hq.backend.notification.dto.NotificationRespondRequest;
 import com.hq.backend.notification.dto.NotificationResponse;
+import com.hq.backend.plan.PlanActionService;
 import com.hq.backend.plan.PlanRevision;
 import com.hq.backend.plan.PlanRevisionRepository;
+import com.hq.backend.plan.dto.ActionBatchRequest;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -18,80 +24,69 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class NotificationQueryService {
-
     private final NotificationRepository notificationRepository;
     private final PlanRevisionRepository planRevisionRepository;
     private final EventRepository eventRepository;
+    private final PlanActionService planActionService;
 
-    public NotificationQueryService(NotificationRepository notificationRepository,
-                                    PlanRevisionRepository planRevisionRepository,
-                                    EventRepository eventRepository) {
+    public NotificationQueryService(NotificationRepository notificationRepository, PlanRevisionRepository planRevisionRepository,
+                                    EventRepository eventRepository, PlanActionService planActionService) {
         this.notificationRepository = notificationRepository;
         this.planRevisionRepository = planRevisionRepository;
         this.eventRepository = eventRepository;
+        this.planActionService = planActionService;
     }
 
-    /** 오늘(KST 기준) 예정·발송된 알림 조회 — 본인 일정만 */
     @Transactional(readOnly = true)
     public List<NotificationResponse> getTodayNotifications(UUID userId) {
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
-        Instant startOfDay = today.atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
-        Instant endOfDay = today.plusDays(1).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
-
-        // 사용자의 활성 계획 plan_id 목록을 구한 뒤 해당 알림만 반환
-        List<UUID> userEventIds = eventRepository.findByUserId(userId)
-                .stream()
-                .map(Event::getEventId)
-                .toList();
-
-        if (userEventIds.isEmpty()) {
-            return List.of();
-        }
-
-        List<UUID> userPlanIds = userEventIds.stream()
-                .flatMap(eventId -> planRevisionRepository.findByEventIdOrderByRevisionNoDesc(eventId).stream())
-                .filter(pr -> "active".equals(pr.getPlanStatus()))
-                .map(PlanRevision::getPlanId)
-                .toList();
-
+        Instant start = today.atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+        Instant end = today.plusDays(1).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+        List<UUID> eventIds = eventRepository.findByUserId(userId).stream().map(Event::getEventId).toList();
+        if (eventIds.isEmpty()) return List.of();
+        List<UUID> planIds = eventIds.stream()
+                .flatMap(id -> planRevisionRepository.findByEventIdOrderByRevisionNoDesc(id).stream())
+                .filter(plan -> "active".equals(plan.getPlanStatus())).map(PlanRevision::getPlanId).toList();
         return notificationRepository.findAll().stream()
-                .filter(n -> userPlanIds.contains(n.getPlanId()))
-                .filter(n -> !n.getScheduledAt().isBefore(startOfDay) && n.getScheduledAt().isBefore(endOfDay))
-                .map(this::toResponse)
-                .toList();
+                .filter(notification -> planIds.contains(notification.getPlanId()))
+                .filter(notification -> !notification.getScheduledAt().isBefore(start) && notification.getScheduledAt().isBefore(end))
+                .map(this::toResponse).toList();
     }
 
-    /** 알림 응답 처리 (원탭 액션) */
     @Transactional
     public void respondToNotification(UUID userId, UUID notificationId, NotificationRespondRequest request) {
         Notification notification = notificationRepository.findById(notificationId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "알림을 찾을 수 없습니다"));
-
-        // 본인 소유 검증: notification → plan → event → userId
         PlanRevision plan = planRevisionRepository.findById(notification.getPlanId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "계획을 찾을 수 없습니다"));
         Event event = eventRepository.findById(plan.getEventId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "일정을 찾을 수 없습니다"));
-
         if (!event.getUserId().equals(userId)) {
             throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "알림을 찾을 수 없습니다");
         }
-
         notification.setDeliveryStatus("delivered");
-        // 향후: reaction에 따른 이벤트 상태 전이, 행동 로그 기록 등 (김민형 영역과 조율 필요)
+        ActionType action = actionFor(request.reaction());
+        if (action == null) return;
+        String reaction = request.reaction().trim().toLowerCase(Locale.ROOT);
+        UUID clientEventId = UUID.nameUUIDFromBytes(("notification:" + notificationId + ":" + reaction)
+                .getBytes(StandardCharsets.UTF_8));
+        planActionService.submit(userId, plan.getPlanId(), new ActionBatchRequest(List.of(
+                new ActionBatchRequest.ActionItem(action, ActionSource.USER, Instant.now(), clientEventId, notificationId, null))));
     }
 
-    private NotificationResponse toResponse(Notification n) {
-        return new NotificationResponse(
-                n.getNotificationId(),
-                n.getPlanId(),
-                n.getNotificationCategory(),
-                n.getNotificationType(),
-                n.getScheduledAt(),
-                n.getSentAt(),
-                n.getDeliveryStatus(),
-                n.getBodyMasked(),
-                n.getTriggerReason()
-        );
+    private ActionType actionFor(String reaction) {
+        return switch (reaction.trim().toLowerCase(Locale.ROOT)) {
+            case "started" -> ActionType.PREP_STARTED;
+            case "snoozed" -> ActionType.SNOOZED;
+            case "departed" -> ActionType.DEPARTED;
+            case "dismissed" -> null;
+            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REACTION", "지원하지 않는 알림 반응입니다");
+        };
+    }
+
+    private NotificationResponse toResponse(Notification notification) {
+        return new NotificationResponse(notification.getNotificationId(), notification.getPlanId(), notification.getNotificationCategory(),
+                notification.getNotificationType(), notification.getScheduledAt(), notification.getSentAt(), notification.getDeliveryStatus(),
+                notification.getBodyMasked(), notification.getTriggerReason());
     }
 }

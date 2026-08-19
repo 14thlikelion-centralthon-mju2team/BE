@@ -19,6 +19,8 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
 
     Optional<Event> findByExternalEventIdAndUserId(String externalEventId, UUID userId);
 
+    Optional<Event> findByCalendarSourceIdAndExternalEventId(UUID calendarSourceId, String externalEventId);
+
     List<Event> findByUserIdAndStartsAtBetweenOrderByStartsAtAsc(UUID userId, Instant from, Instant to);
 
     // /events/next — 취소·건너뛴 일정은 "다음 일정"이 아니다.
