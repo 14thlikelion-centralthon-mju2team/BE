@@ -4,6 +4,10 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.hq.backend.wellness.dto.DailySummaryEngineRequest;
+import com.hq.backend.wellness.dto.DailySummaryEngineResponse;
+import com.hq.backend.wellness.dto.RushLoadEngineRequest;
+import com.hq.backend.wellness.dto.RushLoadEngineResponse;
 import com.hq.backend.wellness.dto.WellnessEngineRequest;
 import com.hq.backend.wellness.dto.WellnessEngineResponse;
 import java.util.Optional;
@@ -48,4 +52,41 @@ public class WellnessEngineClient {
             return Optional.empty();
         }
     }
+
+    public Optional<RushLoadEngineResponse> computeRushLoad(RushLoadEngineRequest request) {
+        try {
+            String requestJson = objectMapper.writeValueAsString(request);
+            String responseJson = planEngineRestClient.post()
+                    .uri("/internal/v1/wellness/rush-load")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(requestJson)
+                    .retrieve()
+                    .body(String.class);
+            return responseJson == null
+                    ? Optional.empty()
+                    : Optional.of(objectMapper.readValue(responseJson, RushLoadEngineResponse.class));
+        } catch (RestClientException | com.fasterxml.jackson.core.JsonProcessingException e) {
+            log.warn("웰니스 RLS 엔진 호출 실패 — RLS 없이 실행 결과를 유지합니다. cause={}", e.toString());
+            return Optional.empty();
+        }
+    }
+
+    public Optional<DailySummaryEngineResponse> summarizeDay(DailySummaryEngineRequest request) {
+        try {
+            String requestJson = objectMapper.writeValueAsString(request);
+            String responseJson = planEngineRestClient.post()
+                    .uri("/internal/v1/wellness/daily-summary")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(requestJson)
+                    .retrieve()
+                    .body(String.class);
+            return responseJson == null
+                    ? Optional.empty()
+                    : Optional.of(objectMapper.readValue(responseJson, DailySummaryEngineResponse.class));
+        } catch (RestClientException | com.fasterxml.jackson.core.JsonProcessingException e) {
+            log.warn("웰니스 DWL 엔진 호출 실패 — 기존 요약 계산을 사용합니다. cause={}", e.toString());
+            return Optional.empty();
+        }
+    }
+
 }

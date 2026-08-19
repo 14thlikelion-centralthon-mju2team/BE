@@ -14,6 +14,8 @@ import com.hq.backend.plan.PlanContext;
 import com.hq.backend.plan.PlanContextRepository;
 import com.hq.backend.plan.PlanRevision;
 import com.hq.backend.plan.PlanRevisionRepository;
+import com.hq.backend.wellness.dto.DailySummaryEngineRequest;
+import com.hq.backend.wellness.dto.DailySummaryEngineResponse;
 import com.hq.backend.wellness.dto.DailySummaryResponse;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -55,6 +57,7 @@ public class DailySummaryService {
     private final PlanContextRepository planContextRepository;
     private final DailyWellnessSummaryRepository dailyWellnessSummaryRepository;
     private final ProductEventRepository productEventRepository;
+    private final WellnessEngineClient wellnessEngineClient;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -123,22 +126,50 @@ public class DailySummaryService {
                 .collect(Collectors.toMap(PlanContext::getPlanId, Function.identity()));
 
         Aggregate agg = aggregate(managedEvents, executionByEvent, latestPlanByEvent, scoreByPlan, contextByPlan);
-        String scenario = pickScenario(managedEvents, executionByEvent, agg);
+        String localScenario = pickScenario(managedEvents, executionByEvent, agg);
+        DailySummaryEngineResponse engine = requestDailySummary(date, managedEvents, executionByEvent,
+                latestPlanByEvent, scoreByPlan, contextByPlan);
+        String scenario = engine == null || engine.cardScenario() == null ? localScenario : engine.cardScenario();
 
         return dailyWellnessSummaryRepository.save(DailyWellnessSummary.builder()
                 .userId(userId)
                 .summaryDate(date)
-                .eventCount(managedEvents.size())
-                .totalOutdoorMinutes(agg.totalOutdoorMinutes)
+                .eventCount(engine == null ? managedEvents.size() : engine.eventCount())
+                .totalOutdoorMinutes(engine == null || engine.totalOutdoorMinutes() == null
+                        ? agg.totalOutdoorMinutes : engine.totalOutdoorMinutes())
                 .outdoorSource(agg.allObserved() ? "observed" : "estimated")
-                .avgWisWeighted(agg.avgWisWeighted)
-                .avgRls(agg.avgRls)
-                .dwlScore(agg.dwlScore)
-                .dwlBand(agg.dwlBand)
+                .avgWisWeighted(engine == null || engine.avgWisWeighted() == null
+                        ? agg.avgWisWeighted : BigDecimal.valueOf(engine.avgWisWeighted()))
+                .avgRls(engine == null || engine.avgRls() == null
+                        ? agg.avgRls : BigDecimal.valueOf(engine.avgRls()))
+                .dwlScore(engine == null || engine.dwlScore() == null
+                        ? agg.dwlScore() : Short.valueOf(engine.dwlScore().shortValue()))
+                .dwlBand(engine == null || engine.dwlBand() == null ? agg.dwlBand : engine.dwlBand())
                 .cardScenario(scenario)
-                .cardMessageSnapshot(messageFor(scenario))
+                .cardMessageSnapshot(engine == null || engine.cardMessage() == null ? messageFor(scenario) : engine.cardMessage())
                 .createdAt(Instant.now())
                 .build());
+    }
+
+    private DailySummaryEngineResponse requestDailySummary(
+            LocalDate date, List<Event> events, Map<UUID, EventExecution> executionByEvent,
+            Map<UUID, PlanRevision> latestPlanByEvent, Map<UUID, PlanWellnessScore> scoreByPlan,
+            Map<UUID, PlanContext> contextByPlan) {
+        List<DailySummaryEngineRequest.EventSummary> summaries = events.stream().map(event -> {
+            PlanRevision plan = latestPlanByEvent.get(event.getEventId());
+            EventExecution execution = executionByEvent.get(event.getEventId());
+            PlanWellnessScore score = plan == null ? null : scoreByPlan.get(plan.getPlanId());
+            PlanContext context = plan == null ? null : contextByPlan.get(plan.getPlanId());
+            Integer outdoor = execution != null && execution.getActualOutdoorMinutes() != null
+                    ? execution.getActualOutdoorMinutes() : context == null ? null : context.getEstimatedOutdoorMinutes();
+            return new DailySummaryEngineRequest.EventSummary(event.getEventId().toString(),
+                    score == null ? null : (int) score.getWisScore(),
+                    execution == null || execution.getRushLoadScore() == null ? null : (int) execution.getRushLoadScore(),
+                    outdoor, execution != null && execution.getActualOutdoorMinutes() != null);
+        }).toList();
+        return wellnessEngineClient.summarizeDay(new DailySummaryEngineRequest(date, summaries, 0, 0, 0,
+                new com.hq.backend.wellness.dto.WellnessEngineRequest.EngineConfig(
+                        .35, .25, .20, .20, 1.25, 120, 40, 70, "w1"))).orElse(null);
     }
 
     private record Aggregate(

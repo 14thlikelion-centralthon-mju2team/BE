@@ -3,18 +3,20 @@ package com.hq.backend.wellness.dto;
 import java.time.Instant;
 import java.util.List;
 
-// ai/plan-engine WellnessInput 계약과 1:1 대응(camelCase, PR #105). TRD §7 WIS 계산·
-// 웰니스 행동 선택 — 환경 스냅샷과 사용자 선호를 넘기면 점수와 행동 후보(최대 3개)를 받는다.
+// ai/plan-engine WellnessInput 계약과 1:1 대응(camelCase). M3의 eventState는
+// 기본값을 보수적으로 두어 scheduler가 명시적으로 상태를 채우기 전에는 push를 arm하지 않는다.
 public record WellnessEngineRequest(
-        EnvironmentSnapshot environment, // 환경 제공자 실패 시 null — degraded로 처리(엔진 쪽)
+        EnvironmentSnapshot environment,
         Integer estimatedOutdoorMinutes,
         List<WellnessPreference> userPreferences,
         List<PrepItemSnapshot> existingPrepItems,
-        EngineConfig config
+        EngineConfig config,
+        WellnessEventState eventState
 ) {
 
     public record EnvironmentSnapshot(
-            Integer precipitationProbability, Double feelsLikeCelsius, Double uvIndex, Integer pm10, Instant observedAt) {
+            Integer precipitationProbability, Double feelsLikeCelsius, Double uvIndex, Integer pm10,
+            String airGrade, Double feelsLikeMinCelsius, Double feelsLikeMaxCelsius, Instant observedAt) {
     }
 
     public record WellnessPreference(
@@ -26,8 +28,17 @@ public record WellnessEngineRequest(
             int appliedMinutes, boolean isSensitive) {
     }
 
-    // WellnessEngineConfig(PR #105) 필드명 그대로 — DB의 wis_weights 단일 JSON과 키 구조가
-    // 다르다는 걸 리뷰에서 지적했으므로(PR #105), 합의 전까지는 Plan과 동일하게 상수로 채운다.
+    public record WellnessEventState(
+            boolean wellnessEventEnabled, boolean eventInProgress, Integer outdoorRemainingMinutes,
+            boolean indoorTransitionEstimated, Integer minutesSinceLastEvent,
+            List<String> completedActionCodes, List<String> stopTodayActionCodes,
+            int dailyEventCount, List<String> raisedThresholdActionCodes) {
+
+        public static WellnessEventState conservative() {
+            return new WellnessEventState(false, false, null, false, null, List.of(), List.of(), 0, List.of());
+        }
+    }
+
     public record EngineConfig(
             double wisWeightUv, double wisWeightPm, double wisWeightTemp, double wisWeightOutdoor,
             double interestBoostMax, int outdoorCapMinutes, int wisBandCard, int wisBandEvent, String weightVersion) {

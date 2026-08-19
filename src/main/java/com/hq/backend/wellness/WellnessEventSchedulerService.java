@@ -31,6 +31,8 @@ public class WellnessEventSchedulerService {
     private final WellnessEventScheduleRepository scheduleRepository;
     private final WellnessNotificationPort notificationPort;
     private final PlanWellnessActionRepository actionRepository;
+    private final PlanWellnessScoreRepository scoreRepository;
+    private final WellnessRuntimeEvaluator runtimeEvaluator;
     private final UserWellnessPrefRepository prefRepository;
     private final com.hq.backend.event.EventRepository eventRepository;
     private final com.hq.backend.plan.PlanRevisionRepository planRevisionRepository;
@@ -39,6 +41,8 @@ public class WellnessEventSchedulerService {
                                          WellnessEventScheduleRepository scheduleRepository,
                                          WellnessNotificationPort notificationPort,
                                          PlanWellnessActionRepository actionRepository,
+                                         PlanWellnessScoreRepository scoreRepository,
+                                         WellnessRuntimeEvaluator runtimeEvaluator,
                                          UserWellnessPrefRepository prefRepository,
                                          com.hq.backend.event.EventRepository eventRepository,
                                          com.hq.backend.plan.PlanRevisionRepository planRevisionRepository) {
@@ -46,6 +50,8 @@ public class WellnessEventSchedulerService {
         this.scheduleRepository = scheduleRepository;
         this.notificationPort = notificationPort;
         this.actionRepository = actionRepository;
+        this.scoreRepository = scoreRepository;
+        this.runtimeEvaluator = runtimeEvaluator;
         this.prefRepository = prefRepository;
         this.eventRepository = eventRepository;
         this.planRevisionRepository = planRevisionRepository;
@@ -60,6 +66,8 @@ public class WellnessEventSchedulerService {
     public void tryFireWellnessEvents(PlanRevision revision, Instant now) {
         UUID planId = revision.getPlanId();
 
+        runtimeEvaluator.refreshArmedAction(revision, now);
+
         // 이미 이 계획에 발송된 웰니스 이벤트가 있으면 스킵 (일정당 1회)
         List<WellnessEventSchedule> existing = scheduleRepository.findByPlanId(planId);
         boolean alreadySent = existing.stream()
@@ -68,15 +76,23 @@ public class WellnessEventSchedulerService {
             return;
         }
 
-        // plan_wellness_action에서 제안된 행동 조회
-        List<PlanWellnessAction> proposedActions = actionRepository.findByPlanId(planId);
-        if (proposedActions.isEmpty()) {
+        // M3는 준비 카드 actions와 일정 중 push 후보를 분리한다. AI가 arm한 후보가 있으면
+        // 그 code만 gate에 넣고, 이전 저장 데이터에는 legacy plan actions fallback을 쓴다.
+        String armedActionCode = scoreRepository.findById(planId)
+                .map(PlanWellnessScore::getArmedActionCode)
+                .filter(code -> code != null && !code.isBlank())
+                .orElse(null);
+        if (armedActionCode != null) {
+            if (gate.evaluate(revision, armedActionCode, now)) {
+                fireEvent(revision, armedActionCode, now);
+            }
             return;
         }
 
+        List<PlanWellnessAction> proposedActions = actionRepository.findByPlanId(planId);
         for (PlanWellnessAction action : proposedActions) {
             if (gate.evaluate(revision, action.getActionCode(), now)) {
-                fireEvent(revision, action, now);
+                fireEvent(revision, action.getActionCode(), now);
                 return; // 일정당 1회
             }
         }
@@ -85,9 +101,8 @@ public class WellnessEventSchedulerService {
     /**
      * 웰니스 이벤트 발사 — notification + wellness_event_schedule 생성.
      */
-    private void fireEvent(PlanRevision revision, PlanWellnessAction action, Instant now) {
+    private void fireEvent(PlanRevision revision, String actionCode, Instant now) {
         UUID planId = revision.getPlanId();
-        String actionCode = action.getActionCode();
         String dedupKey = computeWellnessDedupKey(revision.getEventId(), actionCode, revision.getRevisionNo());
 
         // dedup 확인

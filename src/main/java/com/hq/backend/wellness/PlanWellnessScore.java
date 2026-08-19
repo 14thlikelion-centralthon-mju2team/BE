@@ -11,6 +11,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 // plan_revision과 PK를 공유하는 약한 엔티티. WIS는 알림 우선순위 값일 뿐 건강 점수가
 // 아니다(score_purpose=priority_only, 절대 원칙 3). weightVersion이 바뀌어도 과거 점수는
@@ -49,6 +50,10 @@ public class PlanWellnessScore {
 
     @Column(nullable = false)
     private String weightVersion;
+
+    // M3 일정 중 push 후보. eventArmed=false 또는 gate 차단이면 null이다.
+    @Setter
+    private String armedActionCode;
 
     @Column(nullable = false)
     private Instant calculatedAt;

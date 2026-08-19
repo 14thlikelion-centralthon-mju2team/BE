@@ -25,6 +25,8 @@ class WellnessEventSchedulerServiceTest {
     @Mock private WellnessEventScheduleRepository scheduleRepository;
     @Mock private WellnessNotificationPort notificationPort;
     @Mock private PlanWellnessActionRepository actionRepository;
+    @Mock private PlanWellnessScoreRepository scoreRepository;
+    @Mock private WellnessRuntimeEvaluator runtimeEvaluator;
     @Mock private UserWellnessPrefRepository prefRepository;
     @Mock private EventRepository eventRepository;
     @Mock private PlanRevisionRepository planRevisionRepository;
@@ -43,6 +45,7 @@ class WellnessEventSchedulerServiceTest {
         UUID notificationId = UUID.randomUUID();
 
         when(scheduleRepository.findByPlanId(planId)).thenReturn(List.of());
+        when(scoreRepository.findById(planId)).thenReturn(Optional.empty());
         when(actionRepository.findByPlanId(planId)).thenReturn(List.of(action));
         when(gate.evaluate(revision, "sunscreen", now)).thenReturn(true);
         when(notificationPort.existsByDedupKey(org.mockito.ArgumentMatchers.anyString())).thenReturn(false);
@@ -105,7 +108,7 @@ class WellnessEventSchedulerServiceTest {
 
     private WellnessEventSchedulerService scheduler() {
         return new WellnessEventSchedulerService(
-                gate, scheduleRepository, notificationPort, actionRepository, prefRepository,
+                gate, scheduleRepository, notificationPort, actionRepository, scoreRepository, runtimeEvaluator, prefRepository,
                 eventRepository, planRevisionRepository);
     }
 }
