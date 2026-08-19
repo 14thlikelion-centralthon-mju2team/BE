@@ -7,8 +7,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 // originPlaceId/selectedRouteOptionId/anchorMode/writeToCalendarSourceId는 계획 생성·경로
-// 확정·캘린더 기록 시점에만 쓰이는 API 전용 필드다(§8.1). 계획 엔진(이지호)이 아직 없어
-// 지금은 계약대로 받기만 하고 실제로 쓰지 않는다 — 엔진 연결 시 EventService에서 소비한다.
+// 확정·캘린더 기록 시점에만 쓰이는 API 전용 필드다(§8.1). selectedRouteOptionId는 CAL-05의
+// 사용자 소유 30분 TTL 후보를 가리키며 EventService가 이를 소비해 plan ROUTE_OPTION으로 확정한다.
 public record EventCreateRequest(
         @NotNull Instant startsAt,
         Instant endsAt,
