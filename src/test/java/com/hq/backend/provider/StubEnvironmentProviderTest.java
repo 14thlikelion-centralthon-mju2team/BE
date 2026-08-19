@@ -16,5 +16,10 @@ class StubEnvironmentProviderTest {
 
         assertThat(snapshot.asOf()).isEqualTo(at);
         assertThat(snapshot.provider()).isEqualTo("stub");
+        assertThat(snapshot.pm25()).isEqualTo(20);
+        assertThat(snapshot.airGrade()).isEqualTo("moderate");
+        assertThat(snapshot.feelsLikeMinCelsius()).isEqualTo(17.0);
+        assertThat(snapshot.feelsLikeMaxCelsius()).isEqualTo(27.0);
+        assertThat(snapshot.airProvider()).isEqualTo("stub-air");
     }
 }

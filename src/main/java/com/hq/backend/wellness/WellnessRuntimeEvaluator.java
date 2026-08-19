@@ -73,7 +73,9 @@ public class WellnessRuntimeEvaluator {
                 new WellnessEngineRequest.EnvironmentSnapshot(
                         context.getPrecipitationProb() == null ? null : context.getPrecipitationProb().intValue(),
                         feelsLike,
-                        context.getUvIndex() == null ? null : context.getUvIndex().doubleValue(), context.getPm10(), null, null, null,
+                        context.getUvIndex() == null ? null : context.getUvIndex().doubleValue(), context.getPm10(),
+                        context.getAirGrade(), context.getFeelsLikeMin() == null ? null : context.getFeelsLikeMin().doubleValue(),
+                        context.getFeelsLikeMax() == null ? null : context.getFeelsLikeMax().doubleValue(),
                         context.getObservedAt()),
                 context.getEstimatedOutdoorMinutes(),
                 preferences.stream().map(p -> new WellnessEngineRequest.WellnessPreference(
