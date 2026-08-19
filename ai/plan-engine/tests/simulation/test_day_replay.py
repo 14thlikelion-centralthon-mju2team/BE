@@ -62,11 +62,13 @@ from app.domain.personalization_engine.engine import adjust
 from app.domain.plan_engine.engine import compute_plan
 from app.domain.revision.input_hash import compute_input_hash
 from app.domain.revision.models import RevisionSnapshot
+from app.domain.wellness_engine.actions import ACTION_TOPICS
 from app.domain.wellness_engine.engine import (
     compute_rush_load,
     evaluate_wellness,
     summarize_day,
 )
+from app.domain.wellness_engine.enums import ArmingGate, WellnessActionCode
 from app.schemas.plan import PlanInput
 from app.testing.clock import FixedClock
 
@@ -83,6 +85,13 @@ NORTH_STAR_CONFIG = NorthStarConfig()
 SEED_PREP_MINUTES = 30.0
 FIXED_ROUTINE_MINUTES = 10
 
+#: 시뮬레이션이 켜 두는 관심 항목.  게이트 ④·⑥이 항목별이라 topic 단위로 상태를 센다.
+SIMULATED_TOPICS = ("uv", "pm", "temp", "hydration")
+
+#: 항목별 하루 상한.  기본값 1로 두면 첫 예약 뒤 하루 내내 상한에 걸려 상한 도달 '전후'를
+#: 함께 밟을 수 없다. 2로 올려 재생 한 번에 통과·차단 양쪽을 지나게 한다.
+SIMULATED_DAILY_CAP = 2
+
 
 @dataclass
 class SimulationState:
@@ -90,10 +99,29 @@ class SimulationState:
 
     prep_estimate: float = SEED_PREP_MINUTES
     sample_count: int = 12
-    stop_today: set[str] = field(default_factory=set)
-    daily_event_count: int = 0
-    armed_codes: list[str] = field(default_factory=list)
+    #: action_code → '오늘은 그만'을 누른 일정 index.
+    stop_today: dict[str, int] = field(default_factory=dict)
+    #: topic → 오늘 발송 수.  게이트 ⑥이 항목별이므로 topic별로 센다 (§7.4).
+    topic_counts: dict[str, int] = field(default_factory=dict)
+    #: topic → 마지막 발송 시각.  게이트 ④의 경과 분을 여기서 만든다.
+    topic_last_armed_at: dict[str, datetime] = field(default_factory=dict)
+    #: (일정 index, action_code) 예약 이력.
+    armed: list[tuple[int, str]] = field(default_factory=list)
     estimate_history: list[float] = field(default_factory=lambda: [SEED_PREP_MINUTES])
+
+    def topic_states(self, now: datetime) -> dict[str, dict[str, int]]:
+        """계약의 ``eventState.topicStates`` 로 넘길 항목별 상태.
+
+        경과 분이 없으면 키를 넣지 않는다 — "이 항목은 오늘 보낸 적 없다"는 뜻이다.
+        """
+        states: dict[str, dict[str, int]] = {}
+        for topic in SIMULATED_TOPICS:
+            state: dict[str, int] = {"dailyEventCount": self.topic_counts.get(topic, 0)}
+            last = self.topic_last_armed_at.get(topic)
+            if last is not None:
+                state["minutesSinceLastEvent"] = int((now - last).total_seconds() // 60)
+            states[topic] = state
+        return states
 
 
 @dataclass
@@ -104,6 +132,8 @@ class EventRecord:
     input_hash: str
     wis_score: int | None
     armed_action_code: str | None
+    #: 예약이 막힌 경우 어느 게이트가 막았는지.  "후보가 없었다"와 구분하기 위해 기록한다.
+    arming_blocked_by: tuple[str, ...]
     outdoor_minutes: int
     rush_load_score: int
     arrival_decision: ArrivalDecision
@@ -195,29 +225,34 @@ def _run_one_event(
                         "wellnessTopic": topic,
                         "isEnabled": True,
                         "remindIntervalMinutes": 120,
-                        "dailyEventCap": 1,
+                        "dailyEventCap": SIMULATED_DAILY_CAP,
                     }
-                    for topic in ("uv", "pm", "temp", "hydration")
+                    for topic in SIMULATED_TOPICS
                 ],
                 "existingPrepItems": [],
                 "eventState": {
                     "wellnessEventEnabled": True,
                     "eventInProgress": True,
                     "outdoorRemainingMinutes": max(1, walk_minutes // 2),
-                    "minutesSinceLastEvent": 300,
                     "stopTodayActionCodes": sorted(state.stop_today),
-                    "dailyEventCount": 0,
+                    # 항목별 누적 상태를 실제로 넘긴다.  리터럴 0을 넘기면 상한·주기 게이트가
+                    # 깨져도 재생이 검출하지 못한다.
+                    "topicStates": state.topic_states(now),
                 },
                 "config": WELLNESS_CONFIG.model_dump(by_alias=True),
             }
         )
     )
     if wellness.armed_action_code is not None:
-        state.armed_codes.append(wellness.armed_action_code)
-        state.daily_event_count += 1
+        code = wellness.armed_action_code
+        topic = ACTION_TOPICS[WellnessActionCode(code)].value
+        state.armed.append((index, code))
+        state.topic_counts[topic] = state.topic_counts.get(topic, 0) + 1
+        state.topic_last_armed_at[topic] = now
         # 상태 입력 랜덤 — 사용자가 이따금 "오늘은 그만"을 누른다.
-        if rng.random() < 0.25:
-            state.stop_today.add(wellness.armed_action_code)
+        # 첫 예약은 반드시 중단시켜, 재무장 회귀가 어떤 시드에서도 실행되게 한다.
+        if len(state.armed) == 1 or rng.random() < 0.3:
+            state.stop_today.setdefault(code, index)
 
     # ── 3. inputHash (재계산 멱등성) ───────────────────────────────────────
     snapshot = RevisionSnapshot.model_validate(
@@ -351,6 +386,7 @@ def _run_one_event(
         input_hash=input_hash,
         wis_score=wellness.wis_score,
         armed_action_code=wellness.armed_action_code,
+        arming_blocked_by=tuple(wellness.arming_blocked_by),
         outdoor_minutes=walk_minutes,
         rush_load_score=rush.rush_load_score,
         arrival_decision=geofence.decision,
@@ -408,27 +444,70 @@ def test_replay_is_deterministic() -> None:
 
 
 def test_at_most_one_wellness_push_per_event(replay) -> None:
-    records, _ = replay
-    for record in records:
-        assert record.armed_action_code is None or isinstance(record.armed_action_code, str)
+    records, state = replay
     armed = [record for record in records if record.armed_action_code is not None]
     # 예약은 일정당 0건 또는 1건 — 계약이 코드 하나만 담는다 (ERD uq_wellness_event_once).
-    assert len(armed) == sum(1 for record in records if record.armed_action_code)
+    assert len(armed) == len(state.armed)
+    assert all(isinstance(record.armed_action_code, str) for record in armed)
+
+
+def test_daily_cap_is_respected_per_topic(replay) -> None:
+    """게이트 ⑥ — 항목별 하루 상한을 넘겨 예약되지 않는다 (§7.4)."""
+    _, state = replay
+    assert state.topic_counts, "simulation never armed anything"
+    for topic, count in state.topic_counts.items():
+        assert count <= SIMULATED_DAILY_CAP, f"{topic} armed {count} times"
+
+
+def test_blocked_events_name_the_gate_that_stopped_them(replay) -> None:
+    """예약되지 않은 이유가 항상 기록된다 — '후보가 없었다'와 '게이트가 막았다'를 구분한다."""
+    records, _ = replay
+    for record in records:
+        if record.armed_action_code is None:
+            assert record.arming_blocked_by, record.event_id
+        else:
+            assert record.arming_blocked_by == ()
+
+
+def test_daily_cap_gate_actually_fires_during_the_day(replay) -> None:
+    """상한을 소진한 항목이 실제로 DAILY_CAP 으로 막히는 구간이 있어야 한다.
+
+    이 단정이 없으면 "상한을 넘지 않았다"는 검사가 '애초에 후보가 없어서 예약이 없었다'로도
+    통과한다.
+    """
+    records, _ = replay
+    capped = [
+        record
+        for record in records
+        if ArmingGate.DAILY_CAP.value in record.arming_blocked_by
+    ]
+    assert capped, "no event was blocked by the daily cap"
 
 
 def test_stop_today_silences_the_code_for_the_rest_of_the_day(replay) -> None:
     """§7.4 백오프 — 'stop_today' 이후 당일 해당 action_code는 0건이어야 한다."""
     records, state = replay
-    stopped_at: dict[str, int] = {}
-    for index, record in enumerate(records):
-        code = record.armed_action_code
-        if code is None:
-            continue
-        assert code not in stopped_at, (
-            f"{code} was armed at #{index} after stop_today at #{stopped_at[code]}"
-        )
-    # 재생 중 실제로 중단이 일어났는지 확인한다 — 아무 일도 없었다면 검증이 공허하다.
     assert state.stop_today, "simulation never exercised stop_today"
+
+    for index, code in state.armed:
+        stopped_index = state.stop_today.get(code)
+        if stopped_index is None:
+            continue
+        assert index <= stopped_index, (
+            f"{code} was armed at #{index} after stop_today at #{stopped_index}"
+        )
+
+
+def test_stopped_codes_are_reported_as_already_handled(replay) -> None:
+    """중단한 항목이 최상위 후보였다면 ALREADY_HANDLED 로 막혔다고 보고돼야 한다."""
+    records, state = replay
+    assert state.stop_today
+    handled = [
+        record
+        for record in records
+        if ArmingGate.ALREADY_HANDLED.value in record.arming_blocked_by
+    ]
+    assert handled, "stop_today never surfaced as a gate reason"
 
 
 def test_low_score_never_arms(replay) -> None:
@@ -514,7 +593,7 @@ def test_daily_summary_and_metrics_are_produced(replay) -> None:
                     for record in records
                 ],
                 "proposedActionCount": len(records),
-                "completedActionCount": len(state.armed_codes),
+                "completedActionCount": len(state.armed),
                 "criticalAlertCount": sum(record.critical_alerts for record in records),
                 "config": WELLNESS_CONFIG.model_dump(by_alias=True),
             }
@@ -547,12 +626,12 @@ def test_daily_summary_and_metrics_are_produced(replay) -> None:
     wellness_metrics = compute_wellness_metrics(
         WellnessMetricInput(
             proposed_actions=len(records),
-            completed_actions=len(state.armed_codes),
-            events_sent=len(state.armed_codes),
-            events_completed=len(state.armed_codes) // 2,
+            completed_actions=len(state.armed),
+            events_sent=len(state.armed),
+            events_completed=len(state.armed) // 2,
             events_snoozed=0,
-            ratings_collected=len(state.armed_codes),
-            ratings_useful=len(state.armed_codes) // 2,
+            ratings_collected=len(state.armed),
+            ratings_useful=len(state.armed) // 2,
             outdoor_events=sum(1 for record in records if record.outdoor_minutes > 0),
             wis_generated_events=sum(1 for record in records if record.wis_score is not None),
         )
