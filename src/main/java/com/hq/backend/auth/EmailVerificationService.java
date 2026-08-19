@@ -28,6 +28,9 @@ public class EmailVerificationService {
     private final UserRepository userRepository;
     private final VerificationEmailSender verificationEmailSender;
 
+    @Value("${app.email-verification.enabled:true}")
+    private boolean emailVerificationEnabled;
+
     @Value("${app.email-verification.token-ttl-minutes:30}")
     private long tokenTtlMinutes;
 
@@ -36,6 +39,10 @@ public class EmailVerificationService {
 
     @Value("${app.email-verification.base-url}")
     private String verificationBaseUrl;
+
+    public boolean isEnabled() {
+        return emailVerificationEnabled;
+    }
 
     @Transactional
     public void issueAndSend(User user) {

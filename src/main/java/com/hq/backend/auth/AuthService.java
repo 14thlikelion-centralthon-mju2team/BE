@@ -91,8 +91,13 @@ public class AuthService {
                 .failedAttempts((short) 0)
                 .build());
 
-        emailVerificationService.issueAndSend(user);
-        return new SignupResponse(user.getUserId(), user.getEmail(), false, true);
+        boolean emailVerificationRequired = emailVerificationService.isEnabled();
+        if (emailVerificationRequired) {
+            emailVerificationService.issueAndSend(user);
+        } else {
+            user.setEmailVerifiedAt(now);
+        }
+        return new SignupResponse(user.getUserId(), user.getEmail(), !emailVerificationRequired, emailVerificationRequired);
     }
 
     // users.nickname은 not null이지만 가입 요청에 닉네임 입력을 받지 않으므로 임시값을 채운다.
@@ -131,7 +136,7 @@ public class AuthService {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다.");
         }
 
-        if (user.getEmailVerifiedAt() == null) {
+        if (emailVerificationService.isEnabled() && user.getEmailVerifiedAt() == null) {
             throw new ApiException(HttpStatus.FORBIDDEN, "EMAIL_VERIFICATION_REQUIRED",
                     "이메일 인증을 완료한 뒤 로그인할 수 있습니다.");
         }

@@ -65,6 +65,7 @@ app:
     secret: ${ENCRYPTION_SECRET:dev-only-local-encryption-secret-change-before-deploy}
     salt: ${ENCRYPTION_SALT:deadbeefdeadbeefdeadbeefdeadbeef}
   email-verification:
+    enabled: ${EMAIL_VERIFICATION_ENABLED:true}
     token-ttl-minutes: ${EMAIL_VERIFICATION_TOKEN_TTL_MINUTES:30}
     resend-cooldown-seconds: ${EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS:60}
     base-url: ${EMAIL_VERIFICATION_BASE_URL:http://localhost:8080}

@@ -42,4 +42,5 @@ jobs:
           JWT_SECRET: ci-test-jwt-secret-that-is-at-least-64-bytes-long-for-hmac-sha512-algorithm!!
           ENCRYPTION_SECRET: ci-test-encryption-secret-at-least-32-bytes
           ENCRYPTION_SALT: deadbeefdeadbeefdeadbeefdeadbeef
+          EMAIL_VERIFICATION_ENABLED: false
         run: ./gradlew build
