@@ -1,0 +1,66 @@
+{
+  "caseId": "P10_reverted_sample_never_relearns",
+  "description": "사용자가 되돌린 표본 — 값 복원만으로는 다음 틱에 같은 보정이 재발하므로 영구 제외 (TRD §6.4)",
+  "engine": "personalization",
+  "contractVersion": "m0-v1",
+  "algorithmVersion": "m2-personalization-1.0.0",
+  "configVersion": "trd-appendix-a1",
+  "input": {
+    "eventId": "evt-p10",
+    "planned": {
+      "prepStartAt": "2026-08-20T07:00:00+09:00",
+      "recommendedDepartAt": "2026-08-20T07:40:00+09:00",
+      "targetArriveAt": "2026-08-20T08:30:00+09:00",
+      "estimatedPrepMinutes": 30,
+      "travelMinutes": 40,
+      "trafficBufferMinutes": 5
+    },
+    "actual": {
+      "actualPrepStartedAt": "2026-08-20T07:00:00+09:00",
+      "actualPrepFinishedAt": "2026-08-20T07:50:00+09:00",
+      "actualDepartedAt": "2026-08-20T07:50:00+09:00",
+      "actualArrivedAt": "2026-08-20T08:35:00+09:00",
+      "resultSource": "user"
+    },
+    "outcome": {
+      "arrivalResult": "late",
+      "learningReverted": true
+    },
+    "currentEstimate": {
+      "estimatedMinutes": 30.0,
+      "sampleCount": 12,
+      "confidence": 0.8,
+      "modelVersion": "v1",
+      "seedMinutes": 30.0
+    },
+    "config": {
+      "prepEmaAlpha": 0.3,
+      "lateWeight": 1.5,
+      "earlyWeight": 0.7,
+      "maxStepMinutes": 15,
+      "coldStepMinutes": 20,
+      "prepFloorMinutes": 10,
+      "prepCeilingRatio": 2.0,
+      "seedFallbackMinutes": 30,
+      "coldStartSampleThreshold": 3,
+      "clockSkewToleranceSeconds": 120,
+      "prepOutlierMaxMinutes": 240,
+      "geoMinConfidence": 0.6,
+      "attributionMinSignalMinutes": 3,
+      "modelVersion": "v1"
+    }
+  },
+  "expected": {
+    "cause": "unknown",
+    "adjustedKnob": "none",
+    "previousValue": 30.0,
+    "newValue": null,
+    "causeConfidence": null,
+    "candidates": [],
+    "excludedFromLearning": true,
+    "exclusionReasons": ["learning_reverted"],
+    "degraded": [],
+    "reasonContains": "되돌린 기록이라"
+  },
+  "tags": ["golden", "personalization", "revert"]
+}
