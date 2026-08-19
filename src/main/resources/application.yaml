@@ -13,6 +13,10 @@ spring:
     enabled: true
   jackson:
     # FE와 합의: camelCase (Jackson 기본값) 사용. SNAKE_CASE 설정 제거됨.
+    mapper:
+      # API 명세의 enum wire value는 소문자(too_early)인데 요청 DTO는 Java enum 상수(TOO_EARLY)를
+      # 그대로 받는다 — actions/feedback/resolve 등 enum 필드가 있는 모든 요청 바디에 적용된다.
+      accept-case-insensitive-enums: true
 
 oauth:
   google:
