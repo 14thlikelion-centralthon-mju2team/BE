@@ -286,7 +286,9 @@ temp : cold | mild | hot             + 일교차 플래그
 ```
 
 게이트 입력 기본값이 전부 보수적이라, `eventState`를 보내지 않는 호출자는 절대 푸시를 예약하지
-못합니다. 막힌 경우 `armingBlockedBy`에 어느 게이트가 막았는지 남습니다.
+못합니다. 막힌 경우 `armingBlockedBy`에 어느 게이트가 막았는지 남습니다. 게이트 ④·⑥은
+**topic별**입니다. `eventState.topicStates[topic]`가 있으면 그 topic의 발송 수와 마지막 발송
+경과 시간을 사용하고, 키가 없을 때만 기존 스칼라 필드로 폴백합니다.
 
 ### 일일 마무리 카드
 

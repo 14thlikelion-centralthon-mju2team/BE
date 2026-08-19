@@ -248,11 +248,18 @@ M0 계약으로는 TR-11을 표현할 수 없었다. "일정이 진행 중"이�
 | `eventInProgress` | false | ③ 노출 |
 | `outdoorRemainingMinutes` | null | ③ 노출 |
 | `indoorTransitionEstimated` | false | ③ 노출 (실내 전환 시 취소) |
-| `minutesSinceLastEvent` | null | ④ 주기 |
+| `minutesSinceLastEvent` | null | ④ 주기 — `topicStates`에 해당 topic이 없을 때의 호환용 폴백 |
 | `completedActionCodes` | [] | ⑤ 미완료 |
 | `stopTodayActionCodes` | [] | ⑤ 미완료 · 백오프 |
-| `dailyEventCount` | 0 | ⑥ 일일 상한 |
+| `dailyEventCount` | 0 | ⑥ 일일 상한 — `topicStates`에 해당 topic이 없을 때의 호환용 폴백 |
 | `raisedThresholdActionCodes` | [] | ② 점수 임계 상향 (D9) |
+| `topicStates` | `{ topic: { dailyEventCount, minutesSinceLastEvent } }` | ④ 주기 · ⑥ 일일 상한 |
+
+`topicStates`는 `USER_WELLNESS_PREF`의 topic별 상태다. 키가 있는 topic은 두 스칼라
+필드보다 항상 우선하며, `minutesSinceLastEvent: null`은 해당 topic이 오늘 한 번도 발송되지
+않았음을 뜻한다. 키가 없는 경우에만 기존 스칼라 필드로 폴백하므로, 구 M0/M3 클라이언트와
+호환된다. Backend는 KST 당일·같은 사용자의 일정에 속한 발송 이력만 집계한다. 따라서 UV의
+일일 상한 또는 재알림 주기가 PM·hydration을 차단하지 않는다.
 
 ### 5.2 응답 (200)
 
