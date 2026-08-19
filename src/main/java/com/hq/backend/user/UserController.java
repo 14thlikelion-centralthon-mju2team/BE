@@ -1,6 +1,7 @@
 package com.hq.backend.user;
 
 import com.hq.backend.common.auth.CurrentUserId;
+import com.hq.backend.common.util.TokenHashUtil;
 import com.hq.backend.user.dto.AccountDeletionResponse;
 import com.hq.backend.user.dto.ChangeNicknameRequest;
 import com.hq.backend.user.dto.ChangeNicknameResponse;
@@ -8,10 +9,6 @@ import com.hq.backend.user.dto.ChangePasswordRequest;
 import com.hq.backend.user.dto.EmailChangeConfirmRequest;
 import com.hq.backend.user.dto.EmailChangeRequest;
 import jakarta.validation.Valid;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -43,7 +40,7 @@ public class UserController {
                                @Valid @RequestBody ChangePasswordRequest request,
                                @RequestHeader(value = "X-Refresh-Token", required = false)
                                String refreshToken) {
-        String refreshTokenHash = refreshToken != null ? hashToken(refreshToken) : null;
+        String refreshTokenHash = refreshToken != null ? TokenHashUtil.sha256(refreshToken) : null;
         accountService.changePassword(userId, request.currentPassword(),
                 request.newPassword(), refreshTokenHash);
     }
@@ -58,6 +55,7 @@ public class UserController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void requestEmailChange(@CurrentUserId UUID userId,
                                    @Valid @RequestBody EmailChangeRequest request) {
+        // TODO: rate-limit
         accountService.requestEmailChange(userId, request.newEmail(), request.password());
     }
 
@@ -65,15 +63,5 @@ public class UserController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void confirmEmailChange(@Valid @RequestBody EmailChangeConfirmRequest request) {
         accountService.confirmEmailChange(request.token());
-    }
-
-    private String hashToken(String token) {
-        try {
-            byte[] hash = MessageDigest.getInstance("SHA-256")
-                    .digest(token.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 }

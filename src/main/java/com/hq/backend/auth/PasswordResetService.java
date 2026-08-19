@@ -1,18 +1,15 @@
 package com.hq.backend.auth;
 
 import com.hq.backend.common.exception.ApiException;
+import com.hq.backend.common.util.TokenHashUtil;
 import com.hq.backend.user.User;
 import com.hq.backend.user.UserCredential;
 import com.hq.backend.user.UserCredentialRepository;
 import com.hq.backend.user.UserRepository;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -57,11 +54,14 @@ public class PasswordResetService {
             return;
         }
 
+        // 이전 미소비 토큰 무효화
+        tokenRepository.consumeAllActiveByUserIdAndType(user.getUserId(), "password_reset");
+
         Instant now = Instant.now();
         String rawToken = newToken();
         tokenRepository.save(PasswordResetToken.builder()
                 .userId(user.getUserId())
-                .tokenHash(hash(rawToken))
+                .tokenHash(TokenHashUtil.sha256(rawToken))
                 .type("password_reset")
                 .expiresAt(now.plus(Duration.ofMinutes(TOKEN_TTL_MINUTES)))
                 .createdAt(now)
@@ -80,7 +80,7 @@ public class PasswordResetService {
     public void executeReset(String rawToken, String newPassword) {
         validatePasswordLength(newPassword);
 
-        PasswordResetToken token = tokenRepository.findByTokenHash(hash(rawToken))
+        PasswordResetToken token = tokenRepository.findByTokenHash(TokenHashUtil.sha256(rawToken))
                 .orElseThrow(this::invalidToken);
         Instant now = Instant.now();
         if (token.getConsumedAt() != null || !token.getExpiresAt().isAfter(now)) {
@@ -110,11 +110,14 @@ public class PasswordResetService {
                     "이메일 인증 서비스를 일시적으로 사용할 수 없습니다.");
         }
 
+        // 이전 미소비 토큰 무효화
+        tokenRepository.consumeAllActiveByUserIdAndType(userId, "email_change");
+
         Instant now = Instant.now();
         String rawToken = newToken();
         tokenRepository.save(PasswordResetToken.builder()
                 .userId(userId)
-                .tokenHash(hash(rawToken))
+                .tokenHash(TokenHashUtil.sha256(rawToken))
                 .type("email_change")
                 .newEmail(newEmail)
                 .expiresAt(now.plus(Duration.ofMinutes(TOKEN_TTL_MINUTES)))
@@ -132,7 +135,7 @@ public class PasswordResetService {
      */
     @Transactional
     public EmailChangeResult consumeEmailChangeToken(String rawToken) {
-        PasswordResetToken token = tokenRepository.findByTokenHash(hash(rawToken))
+        PasswordResetToken token = tokenRepository.findByTokenHash(TokenHashUtil.sha256(rawToken))
                 .orElseThrow(this::invalidToken);
         Instant now = Instant.now();
         if (token.getConsumedAt() != null || !token.getExpiresAt().isAfter(now)) {
@@ -164,14 +167,5 @@ public class PasswordResetService {
         byte[] bytes = new byte[32];
         SECURE_RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-    }
-
-    private String hash(String rawToken) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(rawToken.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 is unavailable", ex);
-        }
     }
 }

@@ -90,6 +90,7 @@ public class AuthController {
     @PostMapping("/password/reset-request")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void requestPasswordReset(@Valid @RequestBody PasswordResetRequest request) {
+        // TODO: rate-limit
         passwordResetService.requestReset(request.email());
     }
 
@@ -101,6 +102,7 @@ public class AuthController {
 
     @GetMapping("/check-nickname")
     public CheckNicknameResponse checkNickname(@RequestParam String value) {
+        // TODO: rate-limit
         boolean available = accountService.isNicknameAvailable(value);
         return new CheckNicknameResponse(available);
     }

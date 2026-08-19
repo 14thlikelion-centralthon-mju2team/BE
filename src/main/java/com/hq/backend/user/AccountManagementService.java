@@ -4,17 +4,14 @@ import com.hq.backend.auth.RefreshToken;
 import com.hq.backend.auth.RefreshTokenRepository;
 import com.hq.backend.auth.dto.GoogleUserInfoResponse;
 import com.hq.backend.common.exception.ApiException;
+import com.hq.backend.common.util.TokenHashUtil;
 import com.hq.backend.event.EventActionLogRepository;
 import com.hq.backend.event.EventRepository;
 import com.hq.backend.user.dto.LinkProviderRequest;
 import com.hq.backend.user.dto.ProviderResponse;
 import com.hq.backend.user.dto.SessionResponse;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -110,7 +107,7 @@ public class AccountManagementService {
 
     @Transactional(readOnly = true)
     public List<SessionResponse> listSessions(UUID userId, String refreshToken) {
-        String currentTokenHash = refreshToken != null ? hashToken(refreshToken) : null;
+        String currentTokenHash = refreshToken != null ? TokenHashUtil.sha256(refreshToken) : null;
         List<RefreshToken> tokens = refreshTokenRepository
                 .findAllByUserIdAndRevokedAtIsNullAndExpiresAtAfter(userId, Instant.now());
         return tokens.stream()
@@ -126,7 +123,7 @@ public class AccountManagementService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "SESSION_NOT_FOUND",
                         "세션을 찾을 수 없습니다."));
 
-        String currentTokenHash = refreshToken != null ? hashToken(refreshToken) : null;
+        String currentTokenHash = refreshToken != null ? TokenHashUtil.sha256(refreshToken) : null;
         if (currentTokenHash != null && token.getTokenHash().equals(currentTokenHash)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "CANNOT_REVOKE_CURRENT",
                     "현재 사용 중인 세션은 해제할 수 없습니다.");
@@ -137,7 +134,7 @@ public class AccountManagementService {
 
     @Transactional
     public void revokeOtherSessions(UUID userId, String refreshToken) {
-        String currentTokenHash = refreshToken != null ? hashToken(refreshToken) : "";
+        String currentTokenHash = refreshToken != null ? TokenHashUtil.sha256(refreshToken) : "";
         refreshTokenRepository.revokeAllByUserIdExcept(userId, currentTokenHash);
     }
 
@@ -177,15 +174,5 @@ public class AccountManagementService {
         }
 
         return info.sub();
-    }
-
-    private String hashToken(String token) {
-        try {
-            byte[] hash = MessageDigest.getInstance("SHA-256")
-                    .digest(token.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 }

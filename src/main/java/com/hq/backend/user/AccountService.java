@@ -67,6 +67,11 @@ public class AccountService {
     public ChangeNicknameResponse changeNickname(UUID userId, String nickname) {
         validateNickname(nickname);
 
+        if (userRepository.existsByNickname(nickname)) {
+            throw new ApiException(HttpStatus.CONFLICT, "NICKNAME_EXISTS",
+                    "이미 사용 중인 닉네임입니다.");
+        }
+
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND",
                         "사용자를 찾을 수 없습니다."));

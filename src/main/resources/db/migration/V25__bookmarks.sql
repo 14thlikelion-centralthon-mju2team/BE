@@ -1,6 +1,6 @@
 -- Bookmark: 사용자 장소 즐겨찾기
 CREATE TABLE bookmark (
-    bookmark_id UUID PRIMARY KEY,
+    bookmark_id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id     UUID        NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
     place_name  VARCHAR(255) NOT NULL,
     lat         DECIMAL(9,6) NOT NULL,
