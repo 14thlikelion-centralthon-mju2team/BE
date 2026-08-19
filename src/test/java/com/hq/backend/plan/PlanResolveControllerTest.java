@@ -89,7 +89,7 @@ class PlanResolveControllerTest {
         String planResponse = mockMvc.perform(get("/plans/" + created.planId())
                         .header("Authorization", "Bearer " + created.accessToken()))
                 .andReturn().getResponse().getContentAsString();
-        String planPrepItemId = JsonPath.read(planResponse, "$.checklist[0].plan_prep_item_id");
+        String planPrepItemId = JsonPath.read(planResponse, "$.checklist[0].planPrepItemId");
 
         mockMvc.perform(post("/plans/" + created.planId() + "/prep-items/" + planPrepItemId + "/resolve")
                         .header("Authorization", "Bearer " + created.accessToken())
@@ -106,7 +106,7 @@ class PlanResolveControllerTest {
         String planResponse = mockMvc.perform(get("/plans/" + created.planId())
                         .header("Authorization", "Bearer " + created.accessToken()))
                 .andReturn().getResponse().getContentAsString();
-        String planPrepItemId = JsonPath.read(planResponse, "$.checklist[0].plan_prep_item_id");
+        String planPrepItemId = JsonPath.read(planResponse, "$.checklist[0].planPrepItemId");
         String otherToken = signupAndLogin();
 
         mockMvc.perform(post("/plans/" + created.planId() + "/prep-items/" + planPrepItemId + "/resolve")
@@ -192,8 +192,8 @@ class PlanResolveControllerTest {
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
 
-        UUID eventId = UUID.fromString(JsonPath.read(response, "$.event_id").toString());
-        UUID planId = UUID.fromString(JsonPath.read(response, "$.plan.plan_id").toString());
+        UUID eventId = UUID.fromString(JsonPath.read(response, "$.eventId").toString());
+        UUID planId = UUID.fromString(JsonPath.read(response, "$.plan.planId").toString());
         return new Created(accessToken, eventId, planId);
     }
 
@@ -222,6 +222,6 @@ class PlanResolveControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

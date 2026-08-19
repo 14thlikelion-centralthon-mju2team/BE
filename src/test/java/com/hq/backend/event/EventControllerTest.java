@@ -193,7 +193,7 @@ class EventControllerTest {
                         .param("to", "2026-09-02T00:00:00+09:00"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].event_id").value(insideId));
+                .andExpect(jsonPath("$[0].eventId").value(insideId));
     }
 
     private String createEvent(String accessToken, String startsAt) throws Exception {
@@ -208,7 +208,7 @@ class EventControllerTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        return JsonPath.read(response, "$.event_id");
+        return JsonPath.read(response, "$.eventId");
     }
 
     private String signupAndLogin() throws Exception {
@@ -230,6 +230,6 @@ class EventControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

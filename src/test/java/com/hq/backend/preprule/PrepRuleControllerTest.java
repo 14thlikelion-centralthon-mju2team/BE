@@ -113,11 +113,11 @@ class PrepRuleControllerTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        String prepRuleId = JsonPath.read(createResponse, "$.prep_rule_id");
+        String prepRuleId = JsonPath.read(createResponse, "$.prepRuleId");
 
         mockMvc.perform(get("/prep-items").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].prep_rule_id").value(prepRuleId));
+                .andExpect(jsonPath("$[0].prepRuleId").value(prepRuleId));
 
         mockMvc.perform(patch("/prep-items/" + prepRuleId)
                         .header("Authorization", "Bearer " + accessToken)
@@ -152,7 +152,7 @@ class PrepRuleControllerTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        String prepRuleId = JsonPath.read(createResponse, "$.prep_rule_id");
+        String prepRuleId = JsonPath.read(createResponse, "$.prepRuleId");
 
         mockMvc.perform(patch("/prep-items/" + prepRuleId)
                         .header("Authorization", "Bearer " + accessToken)
@@ -179,7 +179,7 @@ class PrepRuleControllerTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        String prepRuleId = JsonPath.read(createResponse, "$.prep_rule_id");
+        String prepRuleId = JsonPath.read(createResponse, "$.prepRuleId");
 
         mockMvc.perform(patch("/prep-items/" + prepRuleId)
                         .header("Authorization", "Bearer " + accessToken)
@@ -206,7 +206,7 @@ class PrepRuleControllerTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        String prepRuleId = JsonPath.read(createResponse, "$.prep_rule_id");
+        String prepRuleId = JsonPath.read(createResponse, "$.prepRuleId");
         String otherToken = signupAndLogin();
 
         mockMvc.perform(patch("/prep-items/" + prepRuleId)
@@ -242,6 +242,6 @@ class PrepRuleControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

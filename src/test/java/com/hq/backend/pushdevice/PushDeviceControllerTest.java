@@ -53,7 +53,7 @@ class PushDeviceControllerTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        String firstPushDeviceId = JsonPath.read(firstResponse, "$.push_device_id");
+        String firstPushDeviceId = JsonPath.read(firstResponse, "$.pushDeviceId");
 
         String secondBody = """
                 {"installationId":"%s","token":"new-token","platform":"IOS"}
@@ -113,6 +113,6 @@ class PushDeviceControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

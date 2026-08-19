@@ -94,7 +94,7 @@ class DailySummaryControllerTest {
                 .andExpect(jsonPath("$.outdoorSource").value("observed"))
                 .andExpect(jsonPath("$.isViewed").value(false))
                 .andReturn().getResponse().getContentAsString();
-        String summaryId = JsonPath.read(response, "$.summary_id");
+        String summaryId = JsonPath.read(response, "$.summaryId");
 
         mockMvc.perform(post("/summary/daily/" + summaryId + "/viewed")
                         .header("Authorization", "Bearer " + accessToken))
@@ -199,6 +199,6 @@ class DailySummaryControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

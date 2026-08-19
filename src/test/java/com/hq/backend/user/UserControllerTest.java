@@ -62,7 +62,7 @@ class UserControllerTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        String accessToken = JsonPath.read(loginResponse, "$.access_token");
+        String accessToken = JsonPath.read(loginResponse, "$.accessToken");
 
         mockMvc.perform(post("/consents")
                         .header("Authorization", "Bearer " + accessToken)
@@ -109,7 +109,7 @@ class UserControllerTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        String accessToken = JsonPath.read(loginResponse, "$.access_token");
+        String accessToken = JsonPath.read(loginResponse, "$.accessToken");
 
         mockMvc.perform(delete("/me").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk());

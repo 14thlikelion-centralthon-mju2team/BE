@@ -105,7 +105,7 @@ class EventOutcomeControllerTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        return JsonPath.read(response, "$.event_id");
+        return JsonPath.read(response, "$.eventId");
     }
 
     private String signupAndLogin() throws Exception {
@@ -127,6 +127,6 @@ class EventOutcomeControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

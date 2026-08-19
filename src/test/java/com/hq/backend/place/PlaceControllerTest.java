@@ -47,7 +47,7 @@ class PlaceControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        String placeId = JsonPath.read(response, "$.place_id");
+        String placeId = JsonPath.read(response, "$.placeId");
         UserPlace saved = userPlaceRepository.findById(UUID.fromString(placeId)).orElseThrow();
         org.assertj.core.api.Assertions.assertThat(new String(saved.getLatEnc())).doesNotContain("37.5");
     }
@@ -64,7 +64,7 @@ class PlaceControllerTest {
                                 """))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        String firstId = JsonPath.read(first, "$.place_id");
+        String firstId = JsonPath.read(first, "$.placeId");
 
         mockMvc.perform(post("/places")
                         .header("Authorization", "Bearer " + accessToken)
@@ -78,7 +78,7 @@ class PlaceControllerTest {
 
         mockMvc.perform(get("/places").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.place_id=='" + firstId + "')].is_primary").value(org.hamcrest.Matchers.contains(false)));
+                .andExpect(jsonPath("$[?(@.placeId=='" + firstId + "')].isPrimary").value(org.hamcrest.Matchers.contains(false)));
     }
 
     @Test
@@ -107,7 +107,7 @@ class PlaceControllerTest {
                                 """))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        String placeId = JsonPath.read(created, "$.place_id");
+        String placeId = JsonPath.read(created, "$.placeId");
 
         mockMvc.perform(patch("/places/" + placeId)
                         .header("Authorization", "Bearer " + accessToken)
@@ -139,7 +139,7 @@ class PlaceControllerTest {
                                 """))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        String placeId = JsonPath.read(created, "$.place_id");
+        String placeId = JsonPath.read(created, "$.placeId");
 
         String otherToken = signupAndLogin();
         mockMvc.perform(delete("/places/" + placeId).header("Authorization", "Bearer " + otherToken))
@@ -166,6 +166,6 @@ class PlaceControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

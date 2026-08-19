@@ -127,7 +127,7 @@ class PlanCreationIntegrationTest {
                 .getResponse()
                 .getContentAsString();
 
-        String planId = JsonPath.read(response, "$.plan.plan_id");
+        String planId = JsonPath.read(response, "$.plan.planId");
         assertThat(planRevisionRepository.findById(UUID.fromString(planId))).isPresent();
         assertThat(routeOptionRepository.findAll()).isNotEmpty();
         assertThat(planPrepItemRepository.findAll()).anyMatch(item -> "우산".equals(item.getItemNameSnapshot()));
@@ -175,6 +175,6 @@ class PlanCreationIntegrationTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }
