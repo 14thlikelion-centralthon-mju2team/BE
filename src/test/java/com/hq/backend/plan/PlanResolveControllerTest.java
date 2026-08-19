@@ -101,6 +101,22 @@ class PlanResolveControllerTest {
     }
 
     @Test
+    void 소문자_enum_wire_value로도_준비_항목_완료가_수신된다() throws Exception {
+        Created created = createEventWithPlan();
+        String planResponse = mockMvc.perform(get("/plans/" + created.planId())
+                        .header("Authorization", "Bearer " + created.accessToken()))
+                .andReturn().getResponse().getContentAsString();
+        String planPrepItemId = JsonPath.read(planResponse, "$.checklist[0].planPrepItemId");
+
+        mockMvc.perform(post("/plans/" + created.planId() + "/prep-items/" + planPrepItemId + "/resolve")
+                        .header("Authorization", "Bearer " + created.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"completionStatus\":\"completed\",\"clientEventId\":\"" + UUID.randomUUID() + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.completionStatus").value("completed"));
+    }
+
+    @Test
     void 다른_사용자의_준비_항목은_404() throws Exception {
         Created created = createEventWithPlan();
         String planResponse = mockMvc.perform(get("/plans/" + created.planId())

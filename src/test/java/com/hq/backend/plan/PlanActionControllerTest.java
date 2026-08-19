@@ -175,6 +175,26 @@ class PlanActionControllerTest {
                 .andExpect(jsonPath("$.resultSource").value("geo"));
     }
 
+    @Test
+    void 소문자_enum_wire_value로도_도착_액션이_수신된다() throws Exception {
+        Created created = createEventWithPlan();
+
+        String body = """
+                {"actions":[
+                  {"actionType":"arrived","actionSource":"geo",
+                   "deviceTs":"2026-08-20T13:50:00+09:00","clientEventId":"%s","confidence":0.9}
+                ]}
+                """.formatted(UUID.randomUUID());
+
+        mockMvc.perform(post("/plans/" + created.planId() + "/actions")
+                        .header("Authorization", "Bearer " + created.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accepted").value(1))
+                .andExpect(jsonPath("$.eventStatus").value("arrived"));
+    }
+
     private record Created(String accessToken, UUID eventId, UUID planId) {
     }
 

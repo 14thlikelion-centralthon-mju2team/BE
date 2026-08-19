@@ -93,6 +93,21 @@ class EventOutcomeControllerTest {
                 .andExpect(jsonPath("$.arrivalResult").value(nullValue()));
     }
 
+    @Test
+    void 소문자_enum_wire_value로도_피드백이_수신된다() throws Exception {
+        String accessToken = signupAndLogin();
+        String eventId = createEvent(accessToken);
+
+        mockMvc.perform(post("/events/" + eventId + "/feedback")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"prepTimingAssessment":"too_early","arrivalResult":"on_time","rushAssessment":"not_rushed"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.prepTimingAssessment").value("TOO_EARLY"));
+    }
+
     private String createEvent(String accessToken) throws Exception {
         String body = """
                 {"startsAt":"2026-08-20T14:00:00+09:00","locationState":"NOT_REQUIRED","sourceType":"INTERNAL"}
