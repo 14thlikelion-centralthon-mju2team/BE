@@ -75,6 +75,79 @@ class OdsayRouteProviderTest {
     }
 
     @Test
+    void search_excludes_short_walks_adjacent_to_subway_from_outdoor_exposure() {
+        String fixture = """
+                {
+                  "result": {
+                    "path": [
+                      {
+                        "info": {"totalTime": 20, "busTransitCount": 1, "subwayTransitCount": 1},
+                        "subPath": [
+                          {"trafficType": 1, "distance": 7200, "sectionTime": 13},
+                          {"trafficType": 3, "distance": 150, "sectionTime": 2},
+                          {"trafficType": 2, "distance": 1800, "sectionTime": 5}
+                        ]
+                      },
+                      {
+                        "info": {"totalTime": 25, "busTransitCount": 0, "subwayTransitCount": 1},
+                        "subPath": [
+                          {"trafficType": 3, "distance": 300, "sectionTime": 4},
+                          {"trafficType": 3, "distance": 150, "sectionTime": 2},
+                          {"trafficType": 1, "distance": 7200, "sectionTime": 13}
+                        ]
+                      }
+                    ]
+                  }
+                }
+                """;
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(method(HttpMethod.GET)).andRespond(withSuccess(fixture, MediaType.APPLICATION_JSON));
+
+        List<RouteOption> options = provider(builder.build()).search(
+                new GeoPoint(37.5665, 126.9780), new GeoPoint(37.4979, 127.0276), "arriveBy", Instant.now());
+
+        assertThat(options).hasSize(2);
+        assertThat(options).extracting(RouteOption::walkSec).containsExactly(2 * 60, 6 * 60);
+        assertThat(options).extracting(RouteOption::outdoorSec).containsExactly(0, 4 * 60);
+        server.verify();
+    }
+
+    @Test
+    void search_reduces_overlapping_rank_winners_instead_of_emitting_duplicate_fastest() {
+        String fixture = """
+                {
+                  "result": {
+                    "path": [
+                      {
+                        "info": {"totalTime": 10, "busTransitCount": 1, "subwayTransitCount": 0},
+                        "subPath": [{"trafficType": 3, "distance": 500, "sectionTime": 5}]
+                      },
+                      {
+                        "info": {"totalTime": 20, "busTransitCount": 0, "subwayTransitCount": 0},
+                        "subPath": [{"trafficType": 3, "distance": 100, "sectionTime": 1}]
+                      },
+                      {
+                        "info": {"totalTime": 30, "busTransitCount": 2, "subwayTransitCount": 0},
+                        "subPath": [{"trafficType": 3, "distance": 200, "sectionTime": 2}]
+                      }
+                    ]
+                  }
+                }
+                """;
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(method(HttpMethod.GET)).andRespond(withSuccess(fixture, MediaType.APPLICATION_JSON));
+
+        List<RouteOption> options = provider(builder.build()).search(
+                new GeoPoint(37.5665, 126.9780), new GeoPoint(37.4979, 127.0276), "arriveBy", Instant.now());
+
+        assertThat(options).extracting(RouteOption::rank).containsExactly("fastest", "least_walk");
+        assertThat(options).extracting(RouteOption::rank).doesNotHaveDuplicates();
+        server.verify();
+    }
+
+    @Test
     void search_returns_empty_when_odsay_reports_no_routes() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();

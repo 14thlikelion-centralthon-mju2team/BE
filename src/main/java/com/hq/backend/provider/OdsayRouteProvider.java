@@ -120,6 +120,7 @@ public class OdsayRouteProvider implements RouteProvider {
                 walkSec = Math.addExact(walkSec, leg.sec());
             }
         }
+        int outdoorSec = outdoorSeconds(legs);
 
         String rawRef = info.path("mapObj").asText();
         if (rawRef.isBlank()) {
@@ -131,12 +132,38 @@ public class OdsayRouteProvider implements RouteProvider {
                 totalSec,
                 walkSec,
                 transfers,
-                walkSec,
+                outdoorSec,
                 List.copyOf(legs),
                 at,
                 at.plusSeconds(totalSec),
                 "odsay",
                 rawRef);
+    }
+
+    /**
+     * WIS 야외 노출에는 실제 야외 도보만 반영한다. 지하철 바로 전·후의 3분 미만
+     * WALK는 환승 통로로 본다. trafficType이 누락되거나 알 수 없으면 toLeg가 예외를
+     * 발생시켜 전체 응답을 Stub으로 저하하므로, 판별 불가 구간을 야외로 과대 계상하지 않는다.
+     */
+    private int outdoorSeconds(List<Leg> legs) {
+        int outdoorSec = 0;
+        for (int index = 0; index < legs.size(); index++) {
+            Leg leg = legs.get(index);
+            if (!"WALK".equals(leg.mode()) || isIndoorSubwayTransferWalk(legs, index)) {
+                continue;
+            }
+            outdoorSec = Math.addExact(outdoorSec, leg.sec());
+        }
+        return outdoorSec;
+    }
+
+    private boolean isIndoorSubwayTransferWalk(List<Leg> legs, int walkIndex) {
+        Leg walk = legs.get(walkIndex);
+        if (walk.sec() >= 3 * 60) {
+            return false;
+        }
+        return (walkIndex > 0 && "SUBWAY".equals(legs.get(walkIndex - 1).mode()))
+                || (walkIndex + 1 < legs.size() && "SUBWAY".equals(legs.get(walkIndex + 1).mode()));
     }
 
     private Leg toLeg(JsonNode subPath) {
@@ -152,23 +179,37 @@ public class OdsayRouteProvider implements RouteProvider {
         return new Leg(mode, seconds, distanceM);
     }
 
+    /**
+     * 순위는 항상 고유하다. 같은 경로가 여러 최소 지표를 동시에 가지면 우선순위가 높은
+     * fastest → least_walk → least_transfer만 남기고 나머지는 후보에서 축소한다.
+     */
     private List<RouteOption> assignRanks(List<RouteOption> options) {
+        if (options.isEmpty()) {
+            return List.of();
+        }
+
         int fastestIndex = indexOfMin(options, Comparator.comparingInt(RouteOption::totalSec));
         int leastWalkIndex = indexOfMin(options, Comparator.comparingInt(RouteOption::walkSec));
         int leastTransferIndex = indexOfMin(options, Comparator.comparingInt(RouteOption::transfers));
 
+        boolean[] selected = new boolean[options.size()];
         List<RouteOption> ranked = new ArrayList<>();
-        for (int index = 0; index < options.size(); index++) {
-            RouteOption option = options.get(index);
-            String rank = index == fastestIndex ? "fastest"
-                    : index == leastWalkIndex ? "least_walk"
-                    : index == leastTransferIndex ? "least_transfer"
-                    : "fastest";
-            ranked.add(new RouteOption(
-                    option.id(), rank, option.totalSec(), option.walkSec(), option.transfers(), option.outdoorSec(),
-                    option.legs(), option.departAt(), option.etaAt(), option.provider(), option.rawRef()));
-        }
+        addRankedOption(ranked, options, selected, fastestIndex, "fastest");
+        addRankedOption(ranked, options, selected, leastWalkIndex, "least_walk");
+        addRankedOption(ranked, options, selected, leastTransferIndex, "least_transfer");
         return List.copyOf(ranked);
+    }
+
+    private void addRankedOption(
+            List<RouteOption> ranked, List<RouteOption> options, boolean[] selected, int index, String rank) {
+        if (selected[index]) {
+            return;
+        }
+        selected[index] = true;
+        RouteOption option = options.get(index);
+        ranked.add(new RouteOption(
+                option.id(), rank, option.totalSec(), option.walkSec(), option.transfers(), option.outdoorSec(),
+                option.legs(), option.departAt(), option.etaAt(), option.provider(), option.rawRef()));
     }
 
     private int indexOfMin(List<RouteOption> options, Comparator<RouteOption> comparator) {
