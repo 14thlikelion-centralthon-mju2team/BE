@@ -144,7 +144,7 @@ class PersonalizationControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"eventId\":\"" + event.getEventId() + "\"}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("NO_ADJUSTMENT_TO_REVERT"));
+                .andExpect(jsonPath("$.error.code").value("NO_ADJUSTMENT_TO_REVERT"));
     }
 
     private String decode(String jwt) {

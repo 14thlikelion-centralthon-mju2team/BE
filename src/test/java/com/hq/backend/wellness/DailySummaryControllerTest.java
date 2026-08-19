@@ -160,7 +160,7 @@ class DailySummaryControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .param("date", "2026-08-18"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("SUMMARY_NOT_GENERATED"));
+                .andExpect(jsonPath("$.error.code").value("SUMMARY_NOT_GENERATED"));
     }
 
     @Test
@@ -171,7 +171,7 @@ class DailySummaryControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .param("date", "2026-01-01"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("SUMMARY_NOT_GENERATED"));
+                .andExpect(jsonPath("$.error.code").value("SUMMARY_NOT_GENERATED"));
     }
 
     private UUID extractUserId(String accessToken) {

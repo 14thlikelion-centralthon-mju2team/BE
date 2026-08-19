@@ -139,7 +139,7 @@ class PlanActionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("PLAN_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("PLAN_NOT_FOUND"));
     }
 
     @Test

@@ -63,7 +63,7 @@ class PrepRuleControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test
@@ -79,7 +79,7 @@ class PrepRuleControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error").value("SENSITIVE_CHIP_REJECTED"));
+                .andExpect(jsonPath("$.error.code").value("SENSITIVE_CHIP_REJECTED"));
     }
 
     @Test
@@ -188,7 +188,7 @@ class PrepRuleControllerTest {
                                 {"isSensitive":true}
                                 """))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error").value("SENSITIVE_CHIP_REJECTED"));
+                .andExpect(jsonPath("$.error.code").value("SENSITIVE_CHIP_REJECTED"));
     }
 
     @Test
@@ -216,11 +216,11 @@ class PrepRuleControllerTest {
                                 {"ruleName":"장우산"}
                                 """))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("PREP_RULE_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("PREP_RULE_NOT_FOUND"));
 
         mockMvc.perform(delete("/prep-items/" + prepRuleId).header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("PREP_RULE_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("PREP_RULE_NOT_FOUND"));
     }
 
     private String signupAndLogin() throws Exception {
