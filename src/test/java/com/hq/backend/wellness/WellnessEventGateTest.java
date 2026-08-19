@@ -38,6 +38,9 @@ class WellnessEventGateTest {
     private WellnessEventGate wellnessEventGate;
 
     @Autowired
+    private WellnessEventSchedulerService wellnessEventSchedulerService;
+
+    @Autowired
     private EventRepository eventRepository;
 
     @Autowired
@@ -109,6 +112,36 @@ class WellnessEventGateTest {
                 .responseAction("stop_today").sequenceNo((short) 1).build());
 
         assertThat(wellnessEventGate.evaluate(secondPlan, "sunscreen", now)).isFalse();
+    }
+
+    @Test
+    void stop_today_응답은_DB제약을_통과하고_동일_action의_미발송_schedule을_취소한다() throws Exception {
+        UUID userId = extractUserId(signupAndLogin());
+        Instant now = Instant.now();
+        setUpEnrouteEventWithScore(userId, now, 80);
+        setUpEnrouteEventWithScore(userId, now.plusSeconds(1800), 80);
+
+        List<Event> events = eventRepository.findByUserIdAndStartsAtBetweenOrderByStartsAtAsc(
+                userId, now.minusSeconds(60), now.plusSeconds(3600));
+        PlanRevision firstPlan = planRevisionRepository.findByEventIdOrderByRevisionNoDesc(events.get(0).getEventId()).get(0);
+        PlanRevision secondPlan = planRevisionRepository.findByEventIdOrderByRevisionNoDesc(events.get(1).getEventId()).get(0);
+
+        WellnessEventSchedule sent = wellnessEventScheduleRepository.saveAndFlush(WellnessEventSchedule.builder()
+                .planId(firstPlan.getPlanId()).actionCode("uv_reapply").scheduledAt(now).sentAt(now)
+                .sequenceNo((short) 1).build());
+        WellnessEventSchedule future = wellnessEventScheduleRepository.saveAndFlush(WellnessEventSchedule.builder()
+                .planId(secondPlan.getPlanId()).actionCode("uv_reapply").scheduledAt(now.plusSeconds(1800))
+                .sequenceNo((short) 1).build());
+
+        wellnessEventSchedulerService.handleResponse(sent.getWellnessEventId(), "stop_today", userId);
+        wellnessEventScheduleRepository.flush();
+
+        WellnessEventSchedule reloadedSent = wellnessEventScheduleRepository.findById(sent.getWellnessEventId()).orElseThrow();
+        WellnessEventSchedule reloadedFuture = wellnessEventScheduleRepository.findById(future.getWellnessEventId()).orElseThrow();
+        assertThat(reloadedSent.getResponseAction()).isEqualTo("stop_today");
+        assertThat(reloadedSent.getCancelledAt()).isNull();
+        assertThat(reloadedFuture.getCancelledAt()).isNotNull();
+        assertThat(reloadedFuture.getCancelReason()).isEqualTo("user_stop_today");
     }
 
     private void setUpEnrouteEventWithScore(UUID userId, Instant now, int wisScore) {

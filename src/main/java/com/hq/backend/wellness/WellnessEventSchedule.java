@@ -59,5 +59,5 @@ public class WellnessEventSchedule {
     private Instant cancelledAt;
 
     @Setter
-    private String cancelReason; // indoor | plan_changed | user_completed
+    private String cancelReason; // indoor | plan_changed | user_completed | user_stop_today
 }
