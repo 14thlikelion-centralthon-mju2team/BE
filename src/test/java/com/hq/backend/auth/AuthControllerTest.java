@@ -92,7 +92,7 @@ class AuthControllerTest {
         String refreshToken = signupAndLoginForRefresh();
 
         MvcResult result = refresh(refreshToken).andExpect(status().isOk()).andReturn();
-        String rotatedRefreshToken = JsonPath.read(result.getResponse().getContentAsString(), "$.refresh_token");
+        String rotatedRefreshToken = JsonPath.read(result.getResponse().getContentAsString(), "$.refreshToken");
 
         assertThat(rotatedRefreshToken).isNotEqualTo(refreshToken);
     }
@@ -135,12 +135,12 @@ class AuthControllerTest {
                         .content(loginBody))
                 .andExpect(status().isOk())
                 .andReturn();
-        return JsonPath.read(loginResult.getResponse().getContentAsString(), "$.refresh_token");
+        return JsonPath.read(loginResult.getResponse().getContentAsString(), "$.refreshToken");
     }
 
     private org.springframework.test.web.servlet.ResultActions refresh(String refreshToken) throws Exception {
         String body = """
-                {"refresh_token":"%s"}
+                {"refreshToken":"%s"}
                 """.formatted(refreshToken);
         return mockMvc.perform(post("/auth/refresh")
                 .header("Idempotency-Key", UUID.randomUUID())
