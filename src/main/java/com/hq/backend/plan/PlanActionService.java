@@ -9,6 +9,7 @@ import com.hq.backend.event.EventActionLogRepository;
 import com.hq.backend.event.EventRepository;
 import com.hq.backend.event.EventStatus;
 import com.hq.backend.metrics.ProductEventService;
+import com.hq.backend.notification.NotificationRepository;
 import com.hq.backend.personalization.ArrivalResult;
 import com.hq.backend.personalization.EventDelayReason;
 import com.hq.backend.personalization.EventDelayReasonId;
@@ -31,6 +32,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -81,6 +83,7 @@ public class PlanActionService {
     private final PlanContextRepository planContextRepository;
     private final PlanService planService;
     private final ProductEventService productEventService;
+    private final NotificationRepository notificationRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -168,18 +171,34 @@ public class PlanActionService {
         recordActionMetric(event, item, execution);
 
         if (item.actionType() == ActionType.ARRIVED) {
-            runRushLoadCalculation(revision, execution);
+            runRushLoadCalculation(event, revision, execution);
             runPersonalizationAdjustment(event, revision, execution, item);
         }
     }
 
-    private void runRushLoadCalculation(PlanRevision revision, EventExecution execution) {
+    private void runRushLoadCalculation(Event event, PlanRevision revision, EventExecution execution) {
         double prepDelayMinutes = delayMinutes(execution.getActualPrepStartedAt(), revision.getPrepStartAt());
         double departDelayMinutes = delayMinutes(execution.getActualDepartedAt(), revision.getRecommendedDepartAt());
         RushLoadEngineRequest request = new RushLoadEngineRequest(
-                execution.getEventId().toString(), prepDelayMinutes, departDelayMinutes, 0,
-                wellnessConfigService.current());
+                execution.getEventId().toString(), prepDelayMinutes, departDelayMinutes,
+                countSentCriticalAlerts(event.getUserId(), Instant.now()), wellnessConfigService.current());
         wellnessEngineClient.computeRushLoad(request).ifPresent(result -> persistRushLoad(execution, result));
+    }
+
+    private int countSentCriticalAlerts(UUID userId, Instant now) {
+        java.time.ZoneId zone = java.time.ZoneId.of("Asia/Seoul");
+        java.time.LocalDate today = now.atZone(zone).toLocalDate();
+        Instant startOfDay = today.atStartOfDay(zone).toInstant();
+        Instant endOfDay = today.plusDays(1).atStartOfDay(zone).toInstant();
+        List<UUID> eventIds = eventRepository.findByUserIdAndStartsAtBetweenOrderByStartsAtAsc(userId, startOfDay, endOfDay)
+                .stream().map(Event::getEventId).toList();
+        if (eventIds.isEmpty()) {
+            return 0;
+        }
+        List<UUID> planIds = planRevisionRepository.findByEventIdIn(eventIds).stream()
+                .map(PlanRevision::getPlanId).toList();
+        return planIds.isEmpty() ? 0
+                : notificationRepository.countSentCriticalByPlanIdInBetween(planIds, startOfDay, endOfDay);
     }
 
     private double delayMinutes(Instant actual, Instant planned) {

@@ -4,6 +4,7 @@ import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
 import com.hq.backend.plan.PlanRevision;
 import com.hq.backend.pushdevice.PushDevice;
+import com.hq.backend.wellness.WellnessEventScheduleRepository;
 import com.hq.backend.pushdevice.PushDeviceRepository;
 import java.time.Instant;
 import java.util.List;
@@ -30,15 +31,18 @@ public class NotificationService {
     private final EventRepository eventRepository;
     private final PushDeviceRepository pushDeviceRepository;
     private final FcmSender fcmSender;
+    private final WellnessEventScheduleRepository wellnessEventScheduleRepository;
 
     public NotificationService(NotificationRepository notificationRepository,
                                EventRepository eventRepository,
                                PushDeviceRepository pushDeviceRepository,
-                               FcmSender fcmSender) {
+                               FcmSender fcmSender,
+                               WellnessEventScheduleRepository wellnessEventScheduleRepository) {
         this.notificationRepository = notificationRepository;
         this.eventRepository = eventRepository;
         this.pushDeviceRepository = pushDeviceRepository;
         this.fcmSender = fcmSender;
+        this.wellnessEventScheduleRepository = wellnessEventScheduleRepository;
     }
 
     /**
@@ -71,6 +75,8 @@ public class NotificationService {
         if (sent > 0) {
             notification.setDeliveryStatus("sent");
             notification.setSentAt(Instant.now());
+            wellnessEventScheduleRepository.findByNotificationId(notification.getNotificationId())
+                    .ifPresent(schedule -> schedule.setSentAt(notification.getSentAt()));
             log.info("[NotificationService] 발송 완료: notification_id={}", notification.getNotificationId());
         } else {
             notification.setDeliveryStatus("failed");
