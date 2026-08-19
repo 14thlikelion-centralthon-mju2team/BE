@@ -156,7 +156,7 @@ class PlanControllerTest {
 
         mockMvc.perform(get("/plans/" + created.planId).header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("PLAN_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("PLAN_NOT_FOUND"));
     }
 
     private record Created(String accessToken, UUID eventId, UUID planId) {

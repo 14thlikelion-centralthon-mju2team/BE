@@ -36,7 +36,7 @@ class EventOutcomeControllerTest {
 
         mockMvc.perform(get("/events/" + eventId + "/execution").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("EXECUTION_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("EXECUTION_NOT_FOUND"));
     }
 
     @Test

@@ -40,7 +40,7 @@ class BootstrapControllerTest {
     void 인증_없이_요청하면_401() throws Exception {
         mockMvc.perform(get("/me/bootstrap"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error").value("UNAUTHENTICATED"));
+                .andExpect(jsonPath("$.error.code").value("UNAUTHENTICATED"));
     }
 
     private String signupAndLogin() throws Exception {

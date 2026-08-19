@@ -125,7 +125,7 @@ public class AuthService {
             credential.setFailedAttempts((short) 0);
         }
 
-        return issueTokens(user);
+        return issueTokens(user, false);
     }
 
     private void registerFailedAttempt(UserCredential credential) {
@@ -165,9 +165,14 @@ public class AuthService {
         User user = userIdentityRepository.findByProviderAndProviderUid("google", info.sub())
                 .map(identity -> userRepository.findById(identity.getUserId())
                         .orElseThrow(() -> new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "USER_NOT_FOUND", "계정을 찾을 수 없습니다.")))
-                .orElseGet(() -> createGoogleUser(info));
+                .orElse(null);
 
-        return issueTokens(user);
+        boolean isNew = (user == null);
+        if (isNew) {
+            user = createGoogleUser(info);
+        }
+
+        return issueTokens(user, isNew);
     }
 
     private User createGoogleUser(GoogleUserInfoResponse info) {
@@ -196,7 +201,7 @@ public class AuthService {
         }
     }
 
-    private TokenResponse issueTokens(User user) {
+    private TokenResponse issueTokens(User user, boolean isNew) {
         String accessToken = jwtService.generateAccessToken(user.getUserId());
         String refreshToken = jwtService.generateRefreshToken(user.getUserId());
 
@@ -205,7 +210,15 @@ public class AuthService {
         Instant expiresAt = Instant.now().plusMillis(jwtService.getRefreshTokenExpirationMs());
         refreshTokenRepository.save(RefreshToken.create(user.getUserId(), tokenHash, expiresAt));
 
-        return new TokenResponse(accessToken, refreshToken, jwtService.getAccessTokenExpirationSeconds());
+        return new TokenResponse(
+                accessToken,
+                refreshToken,
+                jwtService.getAccessTokenExpirationSeconds(),
+                new TokenResponse.UserInfo(
+                        user.getUserId().toString(),
+                        user.getNickname(),
+                        user.getTimezone(),
+                        isNew));
     }
 
     /**
@@ -227,7 +240,7 @@ public class AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "사용자를 찾을 수 없습니다."));
 
-        return issueTokens(user);
+        return issueTokens(user, false);
     }
 
     /**

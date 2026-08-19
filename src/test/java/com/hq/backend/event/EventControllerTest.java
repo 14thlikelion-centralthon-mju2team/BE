@@ -97,7 +97,7 @@ class EventControllerTest {
 
         mockMvc.perform(get("/events/" + eventId).header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("EVENT_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("EVENT_NOT_FOUND"));
     }
 
     @Test
@@ -112,7 +112,7 @@ class EventControllerTest {
                                 {"destinationLat":37.498}
                                 """))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test
@@ -128,7 +128,7 @@ class EventControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test
@@ -144,7 +144,7 @@ class EventControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test
@@ -157,7 +157,7 @@ class EventControllerTest {
 
         mockMvc.perform(get("/events/next").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("NEXT_EVENT_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("NEXT_EVENT_NOT_FOUND"));
     }
 
     @Test
@@ -178,7 +178,7 @@ class EventControllerTest {
                                 {"questionType":"is_online","userAnswer":"글쎄요"}
                                 """))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test
