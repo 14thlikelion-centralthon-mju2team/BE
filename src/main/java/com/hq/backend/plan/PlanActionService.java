@@ -98,6 +98,7 @@ public class PlanActionService {
             eventActionLogRepository.save(EventActionLog.builder()
                     .eventId(event.getEventId())
                     .planId(planId)
+                    .notificationId(item.notificationId())
                     .actionType(item.actionType().name().toLowerCase())
                     .actionSource(item.actionSource().name().toLowerCase())
                     .actionAt(item.deviceTs())

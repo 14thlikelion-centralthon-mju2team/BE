@@ -51,6 +51,7 @@ public class CalendarService {
             java.util.regex.Pattern.compile("\"sub\"\\s*:\\s*\"([^\"]+)\"");
 
     private final CalendarConnectionRepository calendarConnectionRepository;
+    private final CalendarSourceRepository calendarSourceRepository;
     private final EventRepository eventRepository;
     private final BytesEncryptor calendarTokenEncryptor;
     private final RestClient restClient;
@@ -262,7 +263,20 @@ public class CalendarService {
     }
 
     private CalendarConnectionResponse toResponse(CalendarConnection connection) {
+        ensurePrimarySource(connection);
         return new CalendarConnectionResponse(
                 connection.getProvider(), connection.getExternalAccountId(), connection.getConnectedAt());
+    }
+
+    private void ensurePrimarySource(CalendarConnection connection) {
+        calendarSourceRepository.findByCalendarConnectionIdAndIsDefaultTrueAndDeletedAtIsNull(connection.getCalendarConnectionId())
+                .orElseGet(() -> calendarSourceRepository.save(CalendarSource.builder()
+                        .calendarConnectionId(connection.getCalendarConnectionId())
+                        .externalCalendarId("primary")
+                        .displayName("내 캘린더")
+                        .isWritable(true)
+                        .isDefault(true)
+                        .syncEnabled(true)
+                        .build()));
     }
 }

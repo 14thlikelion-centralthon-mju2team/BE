@@ -1,10 +1,11 @@
 package com.hq.backend.bootstrap.dto;
 
+import com.hq.backend.permission.dto.PermissionResponse;
 import java.util.List;
 
 public record BootstrapResponse(
         SettingsSummary settings,
-        List<Object> permissions,
+        List<PermissionResponse> permissions,
         List<PlaceSummary> places,
         List<Object> prepItems,
         Object todayPlan,
