@@ -6,6 +6,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import com.hq.backend.user.UserRepository;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
@@ -14,18 +16,38 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(AuthControllerTest.EmailVerificationTestConfig.class)
 class AuthControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @TestConfiguration
+    static class EmailVerificationTestConfig {
+        @Bean
+        @Primary
+        VerificationEmailSender verificationEmailSender() {
+            return new VerificationEmailSender() {
+                @Override public boolean isAvailable() { return true; }
+                @Override public void sendVerificationLink(String recipientEmail, String verificationLink) { }
+            };
+        }
+    }
 
     @Test
     void signupThenLoginIssuesToken() throws Exception {
@@ -37,6 +59,7 @@ class AuthControllerTest {
         mockMvc.perform(post("/auth/email/signup").contentType(MediaType.APPLICATION_JSON).content(signupBody))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.email").value(email));
+        markEmailVerified(email);
 
         String loginBody = """
                 {"email":"%s","password":"securePassword123"}
@@ -133,6 +156,7 @@ class AuthControllerTest {
                 """.formatted(email);
         mockMvc.perform(post("/auth/email/signup").contentType(MediaType.APPLICATION_JSON).content(signupBody))
                 .andExpect(status().isCreated());
+        markEmailVerified(email);
 
         String loginBody = """
                 {"email":"%s","password":"securePassword123"}
@@ -143,6 +167,25 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return JsonPath.read(loginResult.getResponse().getContentAsString(), "$.refreshToken");
+    }
+
+    @Test
+    void 미인증_이메일은_올바른_비밀번호여도_로그인할_수_없다() throws Exception {
+        String email = "test-" + UUID.randomUUID() + "@example.com";
+        String body = """
+                {"email":"%s","password":"securePassword123"}
+                """.formatted(email);
+        mockMvc.perform(post("/auth/email/signup").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/auth/email/login").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("EMAIL_VERIFICATION_REQUIRED"));
+    }
+
+    private void markEmailVerified(String email) {
+        var user = userRepository.findByEmail(email).orElseThrow();
+        user.setEmailVerifiedAt(Instant.now());
+        userRepository.save(user);
     }
 
     private org.springframework.test.web.servlet.ResultActions refresh(String refreshToken) throws Exception {

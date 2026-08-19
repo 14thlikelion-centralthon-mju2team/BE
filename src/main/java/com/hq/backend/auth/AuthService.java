@@ -53,6 +53,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final RestClient restClient;
     private final TransactionTemplate transactionTemplate;
+    private final EmailVerificationService emailVerificationService;
 
     @Value("${oauth.google.token-info-url}")
     private String googleTokenInfoUrl;
@@ -90,11 +91,20 @@ public class AuthService {
                 .failedAttempts((short) 0)
                 .build());
 
-        return new SignupResponse(user.getUserId(), user.getEmail(), "email");
+        emailVerificationService.issueAndSend(user);
+        return new SignupResponse(user.getUserId(), user.getEmail(), false, true);
     }
 
     // users.nickname은 not null이지만 가입 요청에 닉네임 입력을 받지 않으므로 임시값을 채운다.
     // 닉네임 설정 기능이 생기면 그때 덮어쓰면 된다.
+    public void verifyEmail(String token) {
+        emailVerificationService.verify(token);
+    }
+
+    public void resendEmailVerification(String email) {
+        emailVerificationService.resend(email);
+    }
+
     private String defaultNickname(String email) {
         return email.substring(0, email.indexOf('@'));
     }
@@ -119,6 +129,11 @@ public class AuthService {
         if (!passwordEncoder.matches(request.password(), credential.getPasswordHash())) {
             registerFailedAttempt(credential);
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다.");
+        }
+
+        if (user.getEmailVerifiedAt() == null) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "EMAIL_VERIFICATION_REQUIRED",
+                    "이메일 인증을 완료한 뒤 로그인할 수 있습니다.");
         }
 
         if (credential.getFailedAttempts() > 0) {
@@ -184,6 +199,7 @@ public class AuthService {
                         .nickname(defaultNickname(info.email()))
                         .timezone("Asia/Seoul")
                         .createdAt(now)
+                        .emailVerifiedAt(now)
                         .accountStatus("active")
                         .build());
 

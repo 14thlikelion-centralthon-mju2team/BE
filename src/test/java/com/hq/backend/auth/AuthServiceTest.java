@@ -43,6 +43,7 @@ class AuthServiceTest {
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private JwtService jwtService;
     @Mock private TransactionTemplate transactionTemplate;
+    @Mock private EmailVerificationService emailVerificationService;
 
     private AuthService authService;
 
@@ -51,7 +52,7 @@ class AuthServiceTest {
     void setUp() {
         authService = new AuthService(
                 userRepository, userIdentityRepository, userCredentialRepository, refreshTokenRepository, pushDeviceRepository, passwordEncoder, jwtService,
-                restClient, transactionTemplate);
+                restClient, transactionTemplate, emailVerificationService);
         ReflectionTestUtils.setField(authService, "googleTokenInfoUrl", "https://oauth2.googleapis.com/tokeninfo");
         ReflectionTestUtils.setField(authService, "googleClientId", "ensom-client-id");
 
