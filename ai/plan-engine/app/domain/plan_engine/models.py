@@ -85,6 +85,8 @@ class EnvironmentSnapshot(CamelModel):
 
     precipitation_probability: int | None = Field(default=None, ge=0, le=100)
     feels_like_celsius: float | None = None
+    uv_index: float | None = Field(default=None, ge=0.0)
+    pm10: int | None = Field(default=None, ge=0)
     observed_at: datetime | None = None
 
     # ── M3 additions (wellness input, TRD §7.2) ──────────────────────────────

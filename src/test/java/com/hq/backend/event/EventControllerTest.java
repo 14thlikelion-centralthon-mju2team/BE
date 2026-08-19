@@ -32,8 +32,8 @@ class EventControllerTest {
     void 일정을_생성하면_201과_displayLabel을_표시명으로_반환한다() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
-                {"starts_at":"2026-08-20T14:00:00+09:00","ends_at":"2026-08-20T15:00:00+09:00",
-                 "location_state":"NOT_REQUIRED","source_type":"INTERNAL","display_label":"강남역 미팅"}
+                {"startsAt":"2026-08-20T14:00:00+09:00","endsAt":"2026-08-20T15:00:00+09:00",
+                 "locationState":"NOT_REQUIRED","sourceType":"INTERNAL","displayLabel":"강남역 미팅"}
                 """;
 
         mockMvc.perform(post("/events")
@@ -41,8 +41,8 @@ class EventControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.display_name").value("강남역 미팅"))
-                .andExpect(jsonPath("$.location_state").value("NOT_REQUIRED"))
+                .andExpect(jsonPath("$.displayName").value("강남역 미팅"))
+                .andExpect(jsonPath("$.locationState").value("NOT_REQUIRED"))
                 .andExpect(jsonPath("$.status").value("PLANNED"))
                 .andExpect(jsonPath("$.plan").value(nullValue()));
     }
@@ -51,8 +51,8 @@ class EventControllerTest {
     void displayLabel이_없으면_destinationName으로_표시명을_대체한다() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
-                {"starts_at":"2026-08-20T14:00:00+09:00","location_state":"REQUIRED_RESOLVED",
-                 "source_type":"MAP_SEARCH","destination_name":"강남역"}
+                {"startsAt":"2026-08-20T14:00:00+09:00","locationState":"REQUIRED_RESOLVED",
+                 "sourceType":"MAP_SEARCH","destinationName":"강남역"}
                 """;
 
         mockMvc.perform(post("/events")
@@ -60,7 +60,7 @@ class EventControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.display_name").value("강남역"));
+                .andExpect(jsonPath("$.displayName").value("강남역"));
     }
 
     @Test
@@ -70,16 +70,16 @@ class EventControllerTest {
 
         mockMvc.perform(get("/events/" + eventId).header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.event_id").value(eventId));
+                .andExpect(jsonPath("$.eventId").value(eventId));
 
         mockMvc.perform(patch("/events/" + eventId)
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"location_state":"REQUIRED_MISSING"}
+                                {"locationState":"REQUIRED_MISSING"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.location_state").value("REQUIRED_MISSING"));
+                .andExpect(jsonPath("$.locationState").value("REQUIRED_MISSING"));
 
         mockMvc.perform(delete("/events/" + eventId).header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isNoContent());
@@ -97,7 +97,7 @@ class EventControllerTest {
 
         mockMvc.perform(get("/events/" + eventId).header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("EVENT_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("EVENT_NOT_FOUND"));
     }
 
     @Test
@@ -109,18 +109,18 @@ class EventControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"destination_lat":37.498}
+                                {"destinationLat":37.498}
                                 """))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test
     void 생성시_destinationLat만_지정하고_Lng를_비우면_422() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
-                {"starts_at":"2026-08-24T10:00:00+09:00","location_state":"NOT_REQUIRED",
-                 "source_type":"INTERNAL","destination_lat":37.498}
+                {"startsAt":"2026-08-24T10:00:00+09:00","locationState":"NOT_REQUIRED",
+                 "sourceType":"INTERNAL","destinationLat":37.498}
                 """;
 
         mockMvc.perform(post("/events")
@@ -128,15 +128,15 @@ class EventControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test
     void endsAt이_startsAt보다_빠르면_422() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
-                {"starts_at":"2026-08-24T14:00:00+09:00","ends_at":"2026-08-24T13:00:00+09:00",
-                 "location_state":"NOT_REQUIRED","source_type":"INTERNAL"}
+                {"startsAt":"2026-08-24T14:00:00+09:00","endsAt":"2026-08-24T13:00:00+09:00",
+                 "locationState":"NOT_REQUIRED","sourceType":"INTERNAL"}
                 """;
 
         mockMvc.perform(post("/events")
@@ -144,7 +144,7 @@ class EventControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test
@@ -157,7 +157,7 @@ class EventControllerTest {
 
         mockMvc.perform(get("/events/next").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("NEXT_EVENT_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("NEXT_EVENT_NOT_FOUND"));
     }
 
     @Test
@@ -175,10 +175,10 @@ class EventControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"question_type":"is_online","user_answer":"글쎄요"}
+                                {"questionType":"is_online","userAnswer":"글쎄요"}
                                 """))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test
@@ -193,12 +193,12 @@ class EventControllerTest {
                         .param("to", "2026-09-02T00:00:00+09:00"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].event_id").value(insideId));
+                .andExpect(jsonPath("$[0].eventId").value(insideId));
     }
 
     private String createEvent(String accessToken, String startsAt) throws Exception {
         String body = """
-                {"starts_at":"%s","location_state":"NOT_REQUIRED","source_type":"INTERNAL"}
+                {"startsAt":"%s","locationState":"NOT_REQUIRED","sourceType":"INTERNAL"}
                 """.formatted(startsAt);
         String response = mockMvc.perform(post("/events")
                         .header("Authorization", "Bearer " + accessToken)
@@ -208,7 +208,7 @@ class EventControllerTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        return JsonPath.read(response, "$.event_id");
+        return JsonPath.read(response, "$.eventId");
     }
 
     private String signupAndLogin() throws Exception {
@@ -230,6 +230,6 @@ class EventControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

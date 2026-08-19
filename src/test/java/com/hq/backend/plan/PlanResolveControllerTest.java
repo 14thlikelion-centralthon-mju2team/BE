@@ -89,15 +89,31 @@ class PlanResolveControllerTest {
         String planResponse = mockMvc.perform(get("/plans/" + created.planId())
                         .header("Authorization", "Bearer " + created.accessToken()))
                 .andReturn().getResponse().getContentAsString();
-        String planPrepItemId = JsonPath.read(planResponse, "$.checklist[0].plan_prep_item_id");
+        String planPrepItemId = JsonPath.read(planResponse, "$.checklist[0].planPrepItemId");
 
         mockMvc.perform(post("/plans/" + created.planId() + "/prep-items/" + planPrepItemId + "/resolve")
                         .header("Authorization", "Bearer " + created.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"completion_status\":\"COMPLETED\",\"client_event_id\":\"" + UUID.randomUUID() + "\"}"))
+                        .content("{\"completionStatus\":\"COMPLETED\",\"clientEventId\":\"" + UUID.randomUUID() + "\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.completion_status").value("completed"))
-                .andExpect(jsonPath("$.completed_at").exists());
+                .andExpect(jsonPath("$.completionStatus").value("completed"))
+                .andExpect(jsonPath("$.completedAt").exists());
+    }
+
+    @Test
+    void 소문자_enum_wire_value로도_준비_항목_완료가_수신된다() throws Exception {
+        Created created = createEventWithPlan();
+        String planResponse = mockMvc.perform(get("/plans/" + created.planId())
+                        .header("Authorization", "Bearer " + created.accessToken()))
+                .andReturn().getResponse().getContentAsString();
+        String planPrepItemId = JsonPath.read(planResponse, "$.checklist[0].planPrepItemId");
+
+        mockMvc.perform(post("/plans/" + created.planId() + "/prep-items/" + planPrepItemId + "/resolve")
+                        .header("Authorization", "Bearer " + created.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"completionStatus\":\"completed\",\"clientEventId\":\"" + UUID.randomUUID() + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.completionStatus").value("completed"));
     }
 
     @Test
@@ -106,15 +122,15 @@ class PlanResolveControllerTest {
         String planResponse = mockMvc.perform(get("/plans/" + created.planId())
                         .header("Authorization", "Bearer " + created.accessToken()))
                 .andReturn().getResponse().getContentAsString();
-        String planPrepItemId = JsonPath.read(planResponse, "$.checklist[0].plan_prep_item_id");
+        String planPrepItemId = JsonPath.read(planResponse, "$.checklist[0].planPrepItemId");
         String otherToken = signupAndLogin();
 
         mockMvc.perform(post("/plans/" + created.planId() + "/prep-items/" + planPrepItemId + "/resolve")
                         .header("Authorization", "Bearer " + otherToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"completion_status\":\"COMPLETED\"}"))
+                        .content("{\"completionStatus\":\"COMPLETED\"}"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("PLAN_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("PLAN_NOT_FOUND"));
     }
 
     @Test
@@ -133,10 +149,10 @@ class PlanResolveControllerTest {
         mockMvc.perform(post("/plans/" + created.planId() + "/wellness-actions/" + action.getWellnessActionId() + "/resolve")
                         .header("Authorization", "Bearer " + created.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"completion_status\":\"DISMISSED\",\"client_event_id\":\"" + UUID.randomUUID() + "\"}"))
+                        .content("{\"completionStatus\":\"DISMISSED\",\"clientEventId\":\"" + UUID.randomUUID() + "\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.completion_status").value("dismissed"))
-                .andExpect(jsonPath("$.responded_at").exists());
+                .andExpect(jsonPath("$.completionStatus").value("dismissed"))
+                .andExpect(jsonPath("$.respondedAt").exists());
     }
 
     @Test
@@ -156,9 +172,9 @@ class PlanResolveControllerTest {
         mockMvc.perform(post("/plans/" + created.planId() + "/wellness-actions/" + action.getWellnessActionId() + "/resolve")
                         .header("Authorization", "Bearer " + otherToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"completion_status\":\"COMPLETED\"}"))
+                        .content("{\"completionStatus\":\"COMPLETED\"}"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("PLAN_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("PLAN_NOT_FOUND"));
     }
 
     private record Created(String accessToken, UUID eventId, UUID planId) {
@@ -179,10 +195,10 @@ class PlanResolveControllerTest {
                 .build());
 
         String body = """
-                {"starts_at":"2026-08-20T14:00:00+09:00","location_state":"REQUIRED_RESOLVED",
-                 "source_type":"MAP_SEARCH","destination_name":"강남역",
-                 "destination_lat":37.498,"destination_lng":127.027,
-                 "origin_place_id":"%s"}
+                {"startsAt":"2026-08-20T14:00:00+09:00","locationState":"REQUIRED_RESOLVED",
+                 "sourceType":"MAP_SEARCH","destinationName":"강남역",
+                 "destinationLat":37.498,"destinationLng":127.027,
+                 "originPlaceId":"%s"}
                 """.formatted(origin.getPlaceId());
 
         String response = mockMvc.perform(post("/events")
@@ -192,8 +208,8 @@ class PlanResolveControllerTest {
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
 
-        UUID eventId = UUID.fromString(JsonPath.read(response, "$.event_id").toString());
-        UUID planId = UUID.fromString(JsonPath.read(response, "$.plan.plan_id").toString());
+        UUID eventId = UUID.fromString(JsonPath.read(response, "$.eventId").toString());
+        UUID planId = UUID.fromString(JsonPath.read(response, "$.plan.planId").toString());
         return new Created(accessToken, eventId, planId);
     }
 
@@ -222,6 +238,6 @@ class PlanResolveControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

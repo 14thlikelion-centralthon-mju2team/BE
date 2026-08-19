@@ -62,14 +62,14 @@ class UserControllerTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        String accessToken = JsonPath.read(loginResponse, "$.access_token");
+        String accessToken = JsonPath.read(loginResponse, "$.accessToken");
 
         mockMvc.perform(post("/consents")
                         .header("Authorization", "Bearer " + accessToken)
                         .header("Idempotency-Key", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"consent_type":"TERMS","agreed":true,"policy_version":"1.0.0"}
+                                {"consentType":"TERMS","agreed":true,"policyVersion":"1.0.0"}
                                 """))
                 .andExpect(status().isCreated());
 
@@ -109,7 +109,7 @@ class UserControllerTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        String accessToken = JsonPath.read(loginResponse, "$.access_token");
+        String accessToken = JsonPath.read(loginResponse, "$.accessToken");
 
         mockMvc.perform(delete("/me").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk());

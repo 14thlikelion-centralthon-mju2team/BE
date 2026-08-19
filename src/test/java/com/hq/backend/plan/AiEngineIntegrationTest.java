@@ -93,7 +93,12 @@ class AiEngineIntegrationTest {
                 {"cause":"prep_overrun","adjustedKnob":"prep_estimate",
                  "previousValue":30.0,"newValue":34.5,
                  "adjustmentReason":"EMA 보정: 실제 준비 시간 47분","excludedFromLearning":false,
-                 "modelVersion":"ema-v1","contractVersion":"m0-v1"}
+                 "modelVersion":"m2-personalization-1.0.0","contractVersion":"m0-v1",
+                 "causeConfidence":0.667,
+                 "candidates":[
+                   {"cause":"prep_overrun","confidence":0.667,"signalMinutes":10.0},
+                   {"cause":"traffic","confidence":0.333,"signalMinutes":5.0}],
+                 "exclusionReasons":[],"degraded":["prep_finish_unknown"]}
                 """));
         fakeEngine.start();
     }
@@ -139,15 +144,15 @@ class AiEngineIntegrationTest {
                 .userId(created.userId())
                 .scopeType("global")
                 .estimatedMinutes(30)
-                .sampleCount(5)
+                .sampleCount(1)
                 .confidence(new BigDecimal("0.60"))
                 .modelVersion("ema-v1")
                 .validFrom(Instant.now().minusSeconds(3600))
                 .build());
 
         String body = """
-                {"actions":[{"action_type":"ARRIVED","action_source":"GEO",
-                  "device_ts":"2026-08-20T13:50:00+09:00","client_event_id":"%s","confidence":0.9}]}
+                {"actions":[{"actionType":"ARRIVED","actionSource":"GEO",
+                  "deviceTs":"2026-08-20T13:50:00+09:00","clientEventId":"%s","confidence":0.9}]}
                 """.formatted(UUID.randomUUID());
 
         mockMvc.perform(post("/plans/" + created.planId() + "/actions")
@@ -160,11 +165,16 @@ class AiEngineIntegrationTest {
                 .findByUserIdAndScopeTypeOrderByValidFromDesc(created.userId(), "global");
         assertThat(history).hasSize(2);
         assertThat(history.get(0).getEstimatedMinutes()).isEqualTo(35); // Math.round(34.5)
+        assertThat(history.get(0).isColdStartAdjusted()).isTrue();
         assertThat(history.get(0).getAdjustmentReason()).contains("EMA 보정");
         assertThat(history.get(1).getValidTo()).isNotNull();
 
         assertThat(eventDelayReasonRepository.findByEventId(created.eventId()))
-                .anyMatch(r -> "prep_overrun".equals(r.getReasonCode()));
+                .anyMatch(r -> "prep_overrun".equals(r.getReasonCode())
+                        && new BigDecimal("0.667").compareTo(r.getConfidence()) == 0);
+        assertThat(eventDelayReasonRepository.findByEventId(created.eventId()))
+                .anyMatch(r -> "traffic".equals(r.getReasonCode())
+                        && new BigDecimal("0.333").compareTo(r.getConfidence()) == 0);
 
         assertThat(productEventRepository.findAll())
                 .anyMatch(e -> "arrival_result".equals(e.getEventName()) && created.userId().equals(e.getUserId()));
@@ -190,10 +200,10 @@ class AiEngineIntegrationTest {
                 .build());
 
         String body = """
-                {"starts_at":"2026-08-20T14:00:00+09:00","location_state":"REQUIRED_RESOLVED",
-                 "source_type":"MAP_SEARCH","destination_name":"강남역",
-                 "destination_lat":37.498,"destination_lng":127.027,
-                 "origin_place_id":"%s"}
+                {"startsAt":"2026-08-20T14:00:00+09:00","locationState":"REQUIRED_RESOLVED",
+                 "sourceType":"MAP_SEARCH","destinationName":"강남역",
+                 "destinationLat":37.498,"destinationLng":127.027,
+                 "originPlaceId":"%s"}
                 """.formatted(origin.getPlaceId());
 
         String response = mockMvc.perform(post("/events")
@@ -203,8 +213,8 @@ class AiEngineIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
 
-        UUID eventId = UUID.fromString(JsonPath.read(response, "$.event_id").toString());
-        UUID planId = UUID.fromString(JsonPath.read(response, "$.plan.plan_id").toString());
+        UUID eventId = UUID.fromString(JsonPath.read(response, "$.eventId").toString());
+        UUID planId = UUID.fromString(JsonPath.read(response, "$.plan.planId").toString());
         return new Created(accessToken, userId, eventId, planId);
     }
 
@@ -233,6 +243,6 @@ class AiEngineIntegrationTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

@@ -25,7 +25,7 @@ class PushDeviceControllerTest {
         String accessToken = signupAndLogin();
         String installationId = UUID.randomUUID().toString();
         String body = """
-                {"installation_id":"%s","token":"fcm-token-abc","platform":"ANDROID"}
+                {"installationId":"%s","token":"fcm-token-abc","platform":"ANDROID"}
                 """.formatted(installationId);
 
         mockMvc.perform(post("/push-devices")
@@ -33,9 +33,9 @@ class PushDeviceControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.installation_id").value(installationId))
+                .andExpect(jsonPath("$.installationId").value(installationId))
                 .andExpect(jsonPath("$.platform").value("android"))
-                .andExpect(jsonPath("$.last_seen_at").exists());
+                .andExpect(jsonPath("$.lastSeenAt").exists());
     }
 
     @Test
@@ -43,7 +43,7 @@ class PushDeviceControllerTest {
         String accessToken = signupAndLogin();
         String installationId = UUID.randomUUID().toString();
         String firstBody = """
-                {"installation_id":"%s","token":"old-token","platform":"ANDROID"}
+                {"installationId":"%s","token":"old-token","platform":"ANDROID"}
                 """.formatted(installationId);
         String firstResponse = mockMvc.perform(post("/push-devices")
                         .header("Authorization", "Bearer " + accessToken)
@@ -53,10 +53,10 @@ class PushDeviceControllerTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        String firstPushDeviceId = JsonPath.read(firstResponse, "$.push_device_id");
+        String firstPushDeviceId = JsonPath.read(firstResponse, "$.pushDeviceId");
 
         String secondBody = """
-                {"installation_id":"%s","token":"new-token","platform":"IOS"}
+                {"installationId":"%s","token":"new-token","platform":"IOS"}
                 """.formatted(installationId);
 
         mockMvc.perform(post("/push-devices")
@@ -64,7 +64,7 @@ class PushDeviceControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(secondBody))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.push_device_id").value(firstPushDeviceId))
+                .andExpect(jsonPath("$.pushDeviceId").value(firstPushDeviceId))
                 .andExpect(jsonPath("$.platform").value("ios"));
     }
 
@@ -72,7 +72,7 @@ class PushDeviceControllerTest {
     void 존재하지_않는_platform이면_프로젝트_표준_에러_포맷으로_400() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
-                {"installation_id":"%s","token":"fcm-token-abc","platform":"FOO"}
+                {"installationId":"%s","token":"fcm-token-abc","platform":"FOO"}
                 """.formatted(UUID.randomUUID());
 
         mockMvc.perform(post("/push-devices")
@@ -80,18 +80,18 @@ class PushDeviceControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
     }
 
     @Test
     void 인증_없이_요청하면_401() throws Exception {
         String body = """
-                {"installation_id":"%s","token":"fcm-token-abc","platform":"ANDROID"}
+                {"installationId":"%s","token":"fcm-token-abc","platform":"ANDROID"}
                 """.formatted(UUID.randomUUID());
 
         mockMvc.perform(post("/push-devices").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error").value("UNAUTHENTICATED"));
+                .andExpect(jsonPath("$.error.code").value("UNAUTHENTICATED"));
     }
 
     private String signupAndLogin() throws Exception {
@@ -113,6 +113,6 @@ class PushDeviceControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

@@ -82,10 +82,10 @@ class PlanActionControllerTest {
 
         String body = """
                 {"actions":[
-                  {"action_type":"PREP_STARTED","action_source":"USER",
-                   "device_ts":"2026-08-20T12:26:00+09:00","client_event_id":"%s"},
-                  {"action_type":"DEPARTED","action_source":"GEO",
-                   "device_ts":"2026-08-20T13:06:00+09:00","client_event_id":"%s","confidence":0.8}
+                  {"actionType":"PREP_STARTED","actionSource":"USER",
+                   "deviceTs":"2026-08-20T12:26:00+09:00","clientEventId":"%s"},
+                  {"actionType":"DEPARTED","actionSource":"GEO",
+                   "deviceTs":"2026-08-20T13:06:00+09:00","clientEventId":"%s","confidence":0.8}
                 ]}
                 """.formatted(UUID.randomUUID(), UUID.randomUUID());
 
@@ -96,8 +96,8 @@ class PlanActionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accepted").value(2))
                 .andExpect(jsonPath("$.duplicated").value(0))
-                .andExpect(jsonPath("$.event_status").value("enroute"))
-                .andExpect(jsonPath("$.plan.plan_id").value(created.planId().toString()));
+                .andExpect(jsonPath("$.eventStatus").value("enroute"))
+                .andExpect(jsonPath("$.plan.planId").value(created.planId().toString()));
     }
 
     @Test
@@ -105,8 +105,8 @@ class PlanActionControllerTest {
         Created created = createEventWithPlan();
         String clientEventId = UUID.randomUUID().toString();
         String body = """
-                {"actions":[{"action_type":"SNOOZED","action_source":"USER",
-                  "device_ts":"2026-08-20T12:26:00+09:00","client_event_id":"%s"}]}
+                {"actions":[{"actionType":"SNOOZED","actionSource":"USER",
+                  "deviceTs":"2026-08-20T12:26:00+09:00","clientEventId":"%s"}]}
                 """.formatted(clientEventId);
 
         mockMvc.perform(post("/plans/" + created.planId() + "/actions")
@@ -130,8 +130,8 @@ class PlanActionControllerTest {
         Created created = createEventWithPlan();
         String otherToken = signupAndLogin();
         String body = """
-                {"actions":[{"action_type":"SNOOZED","action_source":"USER",
-                  "device_ts":"2026-08-20T12:26:00+09:00","client_event_id":"%s"}]}
+                {"actions":[{"actionType":"SNOOZED","actionSource":"USER",
+                  "deviceTs":"2026-08-20T12:26:00+09:00","clientEventId":"%s"}]}
                 """.formatted(UUID.randomUUID());
 
         mockMvc.perform(post("/plans/" + created.planId() + "/actions")
@@ -139,7 +139,7 @@ class PlanActionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("PLAN_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("PLAN_NOT_FOUND"));
     }
 
     @Test
@@ -148,31 +148,54 @@ class PlanActionControllerTest {
 
         String body = """
                 {"actions":[
-                  {"action_type":"PREP_STARTED","action_source":"USER",
-                   "device_ts":"2026-08-20T12:26:00+09:00","client_event_id":"%s"},
-                  {"action_type":"DEPARTED","action_source":"USER",
-                   "device_ts":"2026-08-20T13:06:00+09:00","client_event_id":"%s"},
-                  {"action_type":"ARRIVED","action_source":"GEO",
-                   "device_ts":"2026-08-20T13:50:00+09:00","client_event_id":"%s","confidence":0.9}
+                  {"actionType":"PREP_STARTED","actionSource":"USER",
+                   "deviceTs":"2026-08-20T12:26:00+09:00","clientEventId":"%s"},
+                  {"actionType":"PREP_FINISHED","actionSource":"USER",
+                   "deviceTs":"2026-08-20T12:56:00+09:00","clientEventId":"%s"},
+                  {"actionType":"DEPARTED","actionSource":"USER",
+                   "deviceTs":"2026-08-20T13:06:00+09:00","clientEventId":"%s"},
+                  {"actionType":"ARRIVED","actionSource":"GEO",
+                   "deviceTs":"2026-08-20T13:50:00+09:00","clientEventId":"%s","confidence":0.9}
                 ]}
-                """.formatted(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+                """.formatted(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
 
         mockMvc.perform(post("/plans/" + created.planId() + "/actions")
                         .header("Authorization", "Bearer " + created.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accepted").value(3))
-                .andExpect(jsonPath("$.event_status").value("arrived"));
+                .andExpect(jsonPath("$.accepted").value(4))
+                .andExpect(jsonPath("$.eventStatus").value("arrived"));
 
         mockMvc.perform(get("/events/" + created.eventId() + "/execution")
                         .header("Authorization", "Bearer " + created.accessToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.actual_prep_started_at").value("2026-08-20T03:26:00Z"))
-                .andExpect(jsonPath("$.actual_departed_at").value("2026-08-20T04:06:00Z"))
-                .andExpect(jsonPath("$.actual_arrived_at").value("2026-08-20T04:50:00Z"))
-                .andExpect(jsonPath("$.arrival_result").value("ON_TIME"))
-                .andExpect(jsonPath("$.result_source").value("geo"));
+                .andExpect(jsonPath("$.actualPrepStartedAt").value("2026-08-20T03:26:00Z"))
+                .andExpect(jsonPath("$.actualPrepFinishedAt").value("2026-08-20T03:56:00Z"))
+                .andExpect(jsonPath("$.actualDepartedAt").value("2026-08-20T04:06:00Z"))
+                .andExpect(jsonPath("$.actualArrivedAt").value("2026-08-20T04:50:00Z"))
+                .andExpect(jsonPath("$.arrivalResult").value("ON_TIME"))
+                .andExpect(jsonPath("$.resultSource").value("geo"));
+    }
+
+    @Test
+    void 소문자_enum_wire_value로도_도착_액션이_수신된다() throws Exception {
+        Created created = createEventWithPlan();
+
+        String body = """
+                {"actions":[
+                  {"actionType":"arrived","actionSource":"geo",
+                   "deviceTs":"2026-08-20T13:50:00+09:00","clientEventId":"%s","confidence":0.9}
+                ]}
+                """.formatted(UUID.randomUUID());
+
+        mockMvc.perform(post("/plans/" + created.planId() + "/actions")
+                        .header("Authorization", "Bearer " + created.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accepted").value(1))
+                .andExpect(jsonPath("$.eventStatus").value("arrived"));
     }
 
     private record Created(String accessToken, UUID eventId, UUID planId) {
@@ -193,10 +216,10 @@ class PlanActionControllerTest {
                 .build());
 
         String body = """
-                {"starts_at":"2026-08-20T14:00:00+09:00","location_state":"REQUIRED_RESOLVED",
-                 "source_type":"MAP_SEARCH","destination_name":"강남역",
-                 "destination_lat":37.498,"destination_lng":127.027,
-                 "origin_place_id":"%s"}
+                {"startsAt":"2026-08-20T14:00:00+09:00","locationState":"REQUIRED_RESOLVED",
+                 "sourceType":"MAP_SEARCH","destinationName":"강남역",
+                 "destinationLat":37.498,"destinationLng":127.027,
+                 "originPlaceId":"%s"}
                 """.formatted(origin.getPlaceId());
 
         String response = mockMvc.perform(post("/events")
@@ -206,8 +229,8 @@ class PlanActionControllerTest {
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
 
-        UUID eventId = UUID.fromString(JsonPath.read(response, "$.event_id").toString());
-        UUID planId = UUID.fromString(JsonPath.read(response, "$.plan.plan_id").toString());
+        UUID eventId = UUID.fromString(JsonPath.read(response, "$.eventId").toString());
+        UUID planId = UUID.fromString(JsonPath.read(response, "$.plan.planId").toString());
         return new Created(accessToken, eventId, planId);
     }
 
@@ -236,6 +259,6 @@ class PlanActionControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

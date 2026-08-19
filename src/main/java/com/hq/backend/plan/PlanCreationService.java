@@ -16,6 +16,7 @@ import com.hq.backend.preprule.UserPrepRuleRepository;
 import com.hq.backend.provider.EnvironmentProvider;
 import com.hq.backend.provider.GeoPoint;
 import com.hq.backend.provider.RouteProvider;
+import com.hq.backend.route.SelectedRouteSearch;
 import com.hq.backend.wellness.PlanWellnessAction;
 import com.hq.backend.wellness.PlanWellnessActionRepository;
 import com.hq.backend.wellness.PlanWellnessScore;
@@ -97,6 +98,15 @@ public class PlanCreationService {
                 .map(computed -> persist(computed, 1));
     }
 
+    // CAL-05: GET /routes/search에서 선택한 30분 TTL snapshot을 다시 provider에 질의하지 않고
+    // 그대로 확정한다. 검색 시점과 event 저장 시점 사이에 provider 결과가 바뀌어 선택이 유실되는
+    // 것을 막고, persistRouteOptions가 이 후보들을 plan 소속 ROUTE_OPTION으로 materialize한다.
+    @Transactional
+    public Optional<PlanRevision> createInitialPlan(UUID userId, Event event, SelectedRouteSearch selectedSearch) {
+        return computeFromSelectedSearch(userId, event, selectedSearch)
+                .map(computed -> persist(computed, 1));
+    }
+
     // §9.4 재계산 · §9.5 사용자 수정 · §10.2 경로 재선택의 공용 진입점.
     // routeTypeOverride가 있으면 새로 조회한 후보 중 같은 routeType을 우선 선택한다
     // ("선택은 재계산을 동반한다"). previousInputHash가 새로 계산한 값과 같으면
@@ -158,7 +168,7 @@ public class PlanCreationService {
                 .orElse(routes.get(0));
         com.hq.backend.provider.EnvironmentSnapshot environment = fetchEnvironmentSafely(destPoint, now);
 
-        PlanEngineRequest engineRequest = buildEngineRequest(userId, event, selectedRoute, environment, now);
+        PlanEngineRequest engineRequest = buildEngineRequest(userId, event, selectedRoute, environment, now, ANCHOR_ARRIVE_BY);
         Optional<PlanEngineResponse> engineResponse = planEngineClient.compute(engineRequest);
         if (engineResponse.isEmpty()) {
             return Optional.empty();
@@ -169,6 +179,30 @@ public class PlanCreationService {
         return Optional.of(new ComputedPlan(
                 userId, event.getEventId(), originPlaceId, origin.getPlaceName(), originLat, originLng,
                 routes, selectedRoute, environment, output, inputHash, now));
+    }
+
+    private Optional<ComputedPlan> computeFromSelectedSearch(
+            UUID userId, Event event, SelectedRouteSearch selectedSearch) {
+        if (event.getDestinationLat() == null || event.getDestinationLng() == null
+                || selectedSearch.routes().isEmpty()) {
+            return Optional.empty();
+        }
+        GeoPoint destPoint = new GeoPoint(event.getDestinationLat(), event.getDestinationLng());
+        Instant now = Instant.now();
+        com.hq.backend.provider.EnvironmentSnapshot environment = fetchEnvironmentSafely(destPoint, now);
+        PlanEngineRequest engineRequest = buildEngineRequest(
+                userId, event, selectedSearch.selectedRoute(), environment, now, selectedSearch.anchorMode());
+        Optional<PlanEngineResponse> engineResponse = planEngineClient.compute(engineRequest);
+        if (engineResponse.isEmpty()) {
+            return Optional.empty();
+        }
+        PlanEngineResponse output = engineResponse.get();
+        String inputHash = computeInputHash(
+                event, selectedSearch.originPlaceId(), selectedSearch.selectedRoute(), environment, output);
+        return Optional.of(new ComputedPlan(
+                userId, event.getEventId(), selectedSearch.originPlaceId(), selectedSearch.originName(),
+                selectedSearch.originLat(), selectedSearch.originLng(), selectedSearch.routes(),
+                selectedSearch.selectedRoute(), environment, output, inputHash, now));
     }
 
     private PlanRevision persist(ComputedPlan computed, int revisionNo) {
@@ -200,7 +234,8 @@ public class PlanCreationService {
                 .build());
 
         persistRouteOptions(revision, computed.routes(), computed.selectedRoute());
-        persistEnvironmentContext(revision, computed.environment());
+        persistEnvironmentContext(
+                revision, computed.environment(), computed.selectedRoute().outdoorSec() / 60);
         persistChecklist(revision, output.checklist());
         computeAndPersistWellness(revision, computed);
 
@@ -219,7 +254,8 @@ public class PlanCreationService {
     private void computeAndPersistWellness(PlanRevision revision, ComputedPlan computed) {
         WellnessEngineRequest.EnvironmentSnapshot environmentSnapshot = computed.environment() == null ? null
                 : new WellnessEngineRequest.EnvironmentSnapshot(
-                        computed.environment().precipitationProb(), computed.environment().tempC(), computed.environment().asOf());
+                        computed.environment().precipitationProb(), computed.environment().tempC(),
+                        computed.environment().uvIndex(), computed.environment().pm10(), computed.environment().asOf());
 
         List<WellnessEngineRequest.WellnessPreference> preferences = userWellnessPrefRepository
                 .findByUserId(computed.userId()).stream()
@@ -266,12 +302,13 @@ public class PlanCreationService {
         // uq_wellness_action_rank(plan_id, display_rank) — 엔진이 같은 순위를 중복 반환하면
         // INSERT가 제약 위반으로 실패해 계획 생성 트랜잭션 전체가 롤백된다(TR-11.5 위반:
         // 웰니스 문제가 시간 계획까지 깨뜨리면 안 된다). 중복 순위는 먼저 온 것만 반영한다.
-        Set<Short> seenRanks = new HashSet<>();
+        Set<String> seenActionCodes = new HashSet<>();
+        int persistedActions = 0;
         for (WellnessEngineResponse.WellnessAction action : output.actions()) {
-            short displayRank = (short) action.displayRank();
-            if (!seenRanks.add(displayRank)) {
+            if (persistedActions == 3 || !seenActionCodes.add(action.actionCode())) {
                 continue;
             }
+            short displayRank = (short) (persistedActions + 1);
             planWellnessActionRepository.save(PlanWellnessAction.builder()
                     .planId(revision.getPlanId())
                     .wellnessTopic(action.wellnessTopic())
@@ -281,6 +318,7 @@ public class PlanCreationService {
                     .reasonSnapshot(action.reason())
                     .completionStatus("proposed")
                     .build());
+            persistedActions++;
         }
     }
 
@@ -318,7 +356,8 @@ public class PlanCreationService {
         }
     }
 
-    private void persistEnvironmentContext(PlanRevision revision, com.hq.backend.provider.EnvironmentSnapshot snapshot) {
+    private void persistEnvironmentContext(
+            PlanRevision revision, com.hq.backend.provider.EnvironmentSnapshot snapshot, int estimatedOutdoorMinutes) {
         if (snapshot == null) {
             return;
         }
@@ -328,6 +367,7 @@ public class PlanCreationService {
                 .precipitationProb(java.math.BigDecimal.valueOf(snapshot.precipitationProb()))
                 .uvIndex((short) Math.round(snapshot.uvIndex()))
                 .pm10(snapshot.pm10())
+                .estimatedOutdoorMinutes(estimatedOutdoorMinutes)
                 .weatherProvider(snapshot.provider())
                 .observedAt(snapshot.asOf())
                 .build());
@@ -359,7 +399,7 @@ public class PlanCreationService {
 
     private PlanEngineRequest buildEngineRequest(
             UUID userId, Event event, com.hq.backend.provider.RouteOption selectedRoute,
-            com.hq.backend.provider.EnvironmentSnapshot environment, Instant now) {
+            com.hq.backend.provider.EnvironmentSnapshot environment, Instant now, String anchorMode) {
         PlanEngineRequest.PrepEstimateSnapshot prepEstimate = userPrepEstimateRepository
                 .findByUserIdAndValidToIsNull(userId).stream()
                 .filter(e -> "global".equals(e.getScopeType()))
@@ -380,7 +420,7 @@ public class PlanCreationService {
 
         return new PlanEngineRequest(
                 now,
-                new PlanEngineRequest.EventSnapshot(event.getStartsAt(), ANCHOR_ARRIVE_BY, null),
+                new PlanEngineRequest.EventSnapshot(event.getStartsAt(), anchorMode, null),
                 prepEstimate,
                 ARRIVAL_BUFFER_MINUTES,
                 TRAFFIC_BUFFER_MINUTES,

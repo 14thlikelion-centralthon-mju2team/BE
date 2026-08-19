@@ -56,6 +56,9 @@ public class UserPrepEstimate {
     private String adjustmentReason; // PRD §8.5 "왜 보정됐는지" 문장
 
     @Column(nullable = false)
+    private boolean coldStartAdjusted;
+
+    @Column(nullable = false)
     private Instant validFrom;
 
     @Setter

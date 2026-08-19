@@ -12,7 +12,11 @@ spring:
   flyway:
     enabled: true
   jackson:
-    property-naming-strategy: SNAKE_CASE
+    # FE와 합의: camelCase (Jackson 기본값) 사용. SNAKE_CASE 설정 제거됨.
+    mapper:
+      # API 명세의 enum wire value는 소문자(too_early)인데 요청 DTO는 Java enum 상수(TOO_EARLY)를
+      # 그대로 받는다 — actions/feedback/resolve 등 enum 필드가 있는 모든 요청 바디에 적용된다.
+      accept-case-insensitive-enums: true
 
 oauth:
   google:
@@ -29,6 +33,12 @@ plan-engine:
   base-url: ${PLAN_ENGINE_BASE_URL:http://localhost:8000}
 
 provider:
+  odsay:
+    # 서버 플랫폼 키는 ODSAY_API_KEY 환경변수로만 주입한다. 비어 있으면 StubRouteProvider가 사용된다.
+    api-key: ${ODSAY_API_KEY:}
+    route-url: https://api.odsay.com/v1/api/searchPubTransPathT
+    connect-timeout-ms: ${ODSAY_CONNECT_TIMEOUT_MS:2000}
+    read-timeout-ms: ${ODSAY_READ_TIMEOUT_MS:3000}
   kma:
     # ponytail: 공공데이터포털 인증키 미발급 — 발급 전까지 KmaEnvironmentProvider는 호출 시 실패한다.
     # 아직 @Component가 아니라 StubEnvironmentProvider가 쓰이므로 지금은 실행 경로에 안 걸림.

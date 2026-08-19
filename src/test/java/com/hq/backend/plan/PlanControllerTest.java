@@ -87,17 +87,17 @@ class PlanControllerTest {
 
         mockMvc.perform(get("/plans/" + created.planId).header("Authorization", "Bearer " + created.accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.revision_no").value(1))
-                .andExpect(jsonPath("$.plan_status").value("active"))
-                .andExpect(jsonPath("$.checklist[0].item_name").value("우산"))
+                .andExpect(jsonPath("$.revisionNo").value(1))
+                .andExpect(jsonPath("$.planStatus").value("active"))
+                .andExpect(jsonPath("$.checklist[0].itemName").value("우산"))
                 .andExpect(jsonPath("$.checklist[0].reason").value("강수 확률 높음"))
-                .andExpect(jsonPath("$.context.weather_provider").value("stub"))
+                .andExpect(jsonPath("$.context.weatherProvider").value("stub"))
                 .andExpect(jsonPath("$.degraded").isArray());
 
         mockMvc.perform(get("/events/" + created.eventId + "/plans/latest")
                         .header("Authorization", "Bearer " + created.accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.plan_id").value(created.planId.toString()));
+                .andExpect(jsonPath("$.planId").value(created.planId.toString()));
     }
 
     @Test
@@ -106,21 +106,21 @@ class PlanControllerTest {
         String routesResponse = mockMvc.perform(get("/plans/" + created.planId + "/routes")
                         .header("Authorization", "Bearer " + created.accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].route_option_id").exists())
+                .andExpect(jsonPath("$[0].routeOptionId").exists())
                 .andReturn().getResponse().getContentAsString();
-        String routeOptionId = JsonPath.read(routesResponse, "$[0].route_option_id");
+        String routeOptionId = JsonPath.read(routesResponse, "$[0].routeOptionId");
 
         mockMvc.perform(post("/plans/" + created.planId + "/routes/select")
                         .header("Authorization", "Bearer " + created.accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"route_option_id\":\"" + routeOptionId + "\"}"))
+                        .content("{\"routeOptionId\":\"" + routeOptionId + "\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.revision_no").value(2))
-                .andExpect(jsonPath("$.plan_status").value("active"));
+                .andExpect(jsonPath("$.revisionNo").value(2))
+                .andExpect(jsonPath("$.planStatus").value("active"));
 
         mockMvc.perform(get("/plans/" + created.planId).header("Authorization", "Bearer " + created.accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.plan_status").value("superseded"));
+                .andExpect(jsonPath("$.planStatus").value("superseded"));
     }
 
     @Test
@@ -130,10 +130,10 @@ class PlanControllerTest {
         mockMvc.perform(patch("/plans/" + created.planId)
                         .header("Authorization", "Bearer " + created.accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"prep_start_at\":\"2026-08-20T12:10:00+09:00\"}"))
+                        .content("{\"prepStartAt\":\"2026-08-20T12:10:00+09:00\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.revision_no").value(2))
-                .andExpect(jsonPath("$.prep_start_at").value("2026-08-20T03:10:00Z"));
+                .andExpect(jsonPath("$.revisionNo").value(2))
+                .andExpect(jsonPath("$.prepStartAt").value("2026-08-20T03:10:00Z"));
     }
 
     @Test
@@ -146,7 +146,7 @@ class PlanControllerTest {
                         .content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.changed").value(false))
-                .andExpect(jsonPath("$.revision_no").value(1));
+                .andExpect(jsonPath("$.revisionNo").value(1));
     }
 
     @Test
@@ -156,7 +156,7 @@ class PlanControllerTest {
 
         mockMvc.perform(get("/plans/" + created.planId).header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("PLAN_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("PLAN_NOT_FOUND"));
     }
 
     private record Created(String accessToken, UUID eventId, UUID planId) {
@@ -177,10 +177,10 @@ class PlanControllerTest {
                 .build());
 
         String body = """
-                {"starts_at":"2026-08-20T14:00:00+09:00","location_state":"REQUIRED_RESOLVED",
-                 "source_type":"MAP_SEARCH","destination_name":"강남역",
-                 "destination_lat":37.498,"destination_lng":127.027,
-                 "origin_place_id":"%s"}
+                {"startsAt":"2026-08-20T14:00:00+09:00","locationState":"REQUIRED_RESOLVED",
+                 "sourceType":"MAP_SEARCH","destinationName":"강남역",
+                 "destinationLat":37.498,"destinationLng":127.027,
+                 "originPlaceId":"%s"}
                 """.formatted(origin.getPlaceId());
 
         String response = mockMvc.perform(post("/events")
@@ -190,8 +190,8 @@ class PlanControllerTest {
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
 
-        UUID eventId = UUID.fromString(JsonPath.read(response, "$.event_id").toString());
-        UUID planId = UUID.fromString(JsonPath.read(response, "$.plan.plan_id").toString());
+        UUID eventId = UUID.fromString(JsonPath.read(response, "$.eventId").toString());
+        UUID planId = UUID.fromString(JsonPath.read(response, "$.plan.planId").toString());
         return new Created(accessToken, eventId, planId);
     }
 
@@ -220,6 +220,6 @@ class PlanControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

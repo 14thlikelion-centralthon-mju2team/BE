@@ -38,4 +38,8 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build and test (Flyway migration runs as part of context load)
+        env:
+          JWT_SECRET: ci-test-jwt-secret-that-is-at-least-64-bytes-long-for-hmac-sha512-algorithm!!
+          ENCRYPTION_SECRET: ci-test-encryption-secret-at-least-32-bytes
+          ENCRYPTION_SALT: deadbeefdeadbeefdeadbeefdeadbeef
         run: ./gradlew build

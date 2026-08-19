@@ -47,6 +47,7 @@ class CalendarServiceTest {
     @Mock private RestClient.ResponseSpec responseSpec;
 
     @Mock private CalendarConnectionRepository calendarConnectionRepository;
+    @Mock private CalendarSourceRepository calendarSourceRepository;
     @Mock private EventRepository eventRepository;
     @Mock private BytesEncryptor calendarTokenEncryptor;
     @Mock private TransactionTemplate transactionTemplate;
@@ -57,7 +58,10 @@ class CalendarServiceTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         calendarService = new CalendarService(
-                calendarConnectionRepository, eventRepository, calendarTokenEncryptor, restClient, transactionTemplate);
+                calendarConnectionRepository, calendarSourceRepository, eventRepository,
+                calendarTokenEncryptor, restClient, transactionTemplate);
+        lenient().when(calendarSourceRepository.findByCalendarConnectionIdAndIsDefaultTrueAndDeletedAtIsNull(any()))
+                .thenReturn(Optional.empty());
         lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<Object> callback = invocation.getArgument(0);
             return callback.doInTransaction(null);

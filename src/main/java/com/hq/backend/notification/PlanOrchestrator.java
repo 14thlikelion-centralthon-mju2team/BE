@@ -27,15 +27,18 @@ public class PlanOrchestrator {
     private final NotificationScheduler notificationScheduler;
     private final NotificationRepository notificationRepository;
     private final NotificationService notificationService;
+    private final com.hq.backend.wellness.WellnessEventSchedulerService wellnessEventSchedulerService;
 
     public PlanOrchestrator(PlanEvalRepository planEvalRepository,
                             NotificationScheduler notificationScheduler,
                             NotificationRepository notificationRepository,
-                            NotificationService notificationService) {
+                            NotificationService notificationService,
+                            com.hq.backend.wellness.WellnessEventSchedulerService wellnessEventSchedulerService) {
         this.planEvalRepository = planEvalRepository;
         this.notificationScheduler = notificationScheduler;
         this.notificationRepository = notificationRepository;
         this.notificationService = notificationService;
+        this.wellnessEventSchedulerService = wellnessEventSchedulerService;
     }
 
     /**
@@ -72,10 +75,13 @@ public class PlanOrchestrator {
         // 1. 시간 알림 슬롯 예약 (여유A / 극한B / 돌발C)
         notificationScheduler.scheduleTimeSlots(revision, now);
 
-        // 2. 발송 시각이 도래한 알림을 아웃박스에 투입
+        // 2. ENROUTE + wellness gate 통과 시 일정당 1회 wellness event 예약
+        wellnessEventSchedulerService.tryFireWellnessEvents(revision, now);
+
+        // 3. 발송 시각이 도래한 알림을 아웃박스에 투입
         enqueueDueNotifications(revision, now);
 
-        // 3. next_eval_at 갱신 — 구간별 주기(TRD §8.2)
+        // 4. next_eval_at 갱신 — 구간별 주기(TRD §8.2)
         Instant nextEval = computeNextEvalAt(revision, now);
         revision.setNextEvalAt(nextEval);
 

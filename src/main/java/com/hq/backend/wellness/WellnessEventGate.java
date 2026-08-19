@@ -2,8 +2,10 @@ package com.hq.backend.wellness;
 
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
+import com.hq.backend.plan.PlanContextRepository;
 import com.hq.backend.plan.PlanRevision;
 import com.hq.backend.plan.PlanRevisionRepository;
+import com.hq.backend.setting.UserSettingRepository;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -36,17 +38,23 @@ public class WellnessEventGate {
     private final WellnessEventScheduleRepository scheduleRepository;
     private final EventRepository eventRepository;
     private final PlanRevisionRepository planRevisionRepository;
+    private final PlanContextRepository planContextRepository;
+    private final UserSettingRepository userSettingRepository;
 
     public WellnessEventGate(UserWellnessPrefRepository prefRepository,
                              PlanWellnessScoreRepository scoreRepository,
                              WellnessEventScheduleRepository scheduleRepository,
                              EventRepository eventRepository,
-                             PlanRevisionRepository planRevisionRepository) {
+                             PlanRevisionRepository planRevisionRepository,
+                             PlanContextRepository planContextRepository,
+                             UserSettingRepository userSettingRepository) {
         this.prefRepository = prefRepository;
         this.scoreRepository = scoreRepository;
         this.scheduleRepository = scheduleRepository;
         this.eventRepository = eventRepository;
         this.planRevisionRepository = planRevisionRepository;
+        this.planContextRepository = planContextRepository;
+        this.userSettingRepository = userSettingRepository;
     }
 
     /**
@@ -63,6 +71,17 @@ public class WellnessEventGate {
         }
 
         UUID userId = event.getUserId();
+        if (!userSettingRepository.findById(userId).map(setting -> setting.isWellnessEventEnabled()).orElse(false)) {
+            log.debug("[WellnessGate] global wellness event disabled: user_id={}", userId);
+            return false;
+        }
+        boolean hasOutdoorExposure = planContextRepository.findById(planId)
+                .map(context -> context.getEstimatedOutdoorMinutes() != null && context.getEstimatedOutdoorMinutes() > 0)
+                .orElse(false);
+        if (!hasOutdoorExposure) {
+            log.debug("[WellnessGate] no outdoor exposure: plan_id={}", planId);
+            return false;
+        }
         String topic = actionCodeToTopic(actionCode);
 
         // ① 사용자가 해당 항목과 이벤트 알림을 켬
@@ -99,13 +118,11 @@ public class WellnessEventGate {
             }
         }
 
-        // ⑤ 같은 일정·같은 행동에 completed/stop_today 없음
+        // ⑤ 같은 일정·같은 행동에 completed 없음, stop_today는 사용자·당일 전체 차단
         List<WellnessEventSchedule> existing = scheduleRepository.findByPlanIdAndActionCode(planId, actionCode);
-        boolean hasBlockingResponse = existing.stream()
-                .anyMatch(e -> "completed".equals(e.getResponseAction())
-                        || "stop_today".equals(e.getResponseAction()));
-        if (hasBlockingResponse) {
-            log.debug("[WellnessGate] 게이트⑤ 실패: plan_id={}, action={} 이미 completed/stop_today", planId, actionCode);
+        boolean hasCompleted = existing.stream().anyMatch(e -> "completed".equals(e.getResponseAction()));
+        if (hasCompleted || hasStopTodayForUser(userId, actionCode, now)) {
+            log.debug("[WellnessGate] 게이트⑤ 실패: user_id={}, action={} completed/stop_today", userId, actionCode);
             return false;
         }
 
@@ -156,6 +173,26 @@ public class WellnessEventGate {
                 .filter(s -> s.getSentAt() != null)
                 .filter(s -> !s.getSentAt().isBefore(startOfDay) && s.getSentAt().isBefore(endOfDay))
                 .count();
+    }
+
+    private boolean hasStopTodayForUser(UUID userId, String actionCode, Instant now) {
+        LocalDate today = now.atZone(ZoneId.of("Asia/Seoul")).toLocalDate();
+        Instant startOfDay = today.atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+        Instant endOfDay = today.plusDays(1).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+        List<UUID> eventIds = eventRepository.findByUserIdAndStartsAtBetweenOrderByStartsAtAsc(
+                        userId, startOfDay, endOfDay)
+                .stream()
+                .map(Event::getEventId)
+                .toList();
+        if (eventIds.isEmpty()) {
+            return false;
+        }
+        List<UUID> planIds = planRevisionRepository.findByEventIdIn(eventIds).stream()
+                .map(PlanRevision::getPlanId)
+                .toList();
+        return scheduleRepository.findByPlanIdIn(planIds).stream()
+                .anyMatch(schedule -> actionCode.equals(schedule.getActionCode())
+                        && "stop_today".equals(schedule.getResponseAction()));
     }
 
     /** action_code → wellness_topic 매핑 */

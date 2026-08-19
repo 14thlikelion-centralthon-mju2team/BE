@@ -29,8 +29,8 @@ class WellnessPrefControllerTest {
         mockMvc.perform(get("/me/wellness-prefs").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(5))
-                .andExpect(jsonPath("$[?(@.wellness_topic=='UV')].is_enabled").value(org.hamcrest.Matchers.contains(false)))
-                .andExpect(jsonPath("$[?(@.wellness_topic=='UV')].daily_event_cap").value(org.hamcrest.Matchers.contains(1)));
+                .andExpect(jsonPath("$[?(@.wellnessTopic=='UV')].isEnabled").value(org.hamcrest.Matchers.contains(false)))
+                .andExpect(jsonPath("$[?(@.wellnessTopic=='UV')].dailyEventCap").value(org.hamcrest.Matchers.contains(1)));
     }
 
     @Test
@@ -42,18 +42,18 @@ class WellnessPrefControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"prefs":[
-                                  {"wellness_topic":"UV","is_enabled":true,"remind_interval_minutes":120,"daily_event_cap":1},
-                                  {"wellness_topic":"HYDRATION","is_enabled":false,"remind_interval_minutes":null,"daily_event_cap":1}
+                                  {"wellnessTopic":"UV","isEnabled":true,"remindIntervalMinutes":120,"dailyEventCap":1},
+                                  {"wellnessTopic":"HYDRATION","isEnabled":false,"remindIntervalMinutes":null,"dailyEventCap":1}
                                 ]}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.wellness_topic=='UV')].is_enabled").value(org.hamcrest.Matchers.contains(true)))
-                .andExpect(jsonPath("$[?(@.wellness_topic=='UV')].remind_interval_minutes").value(org.hamcrest.Matchers.contains(120)))
-                .andExpect(jsonPath("$[?(@.wellness_topic=='PM')].is_enabled").value(org.hamcrest.Matchers.contains(false)));
+                .andExpect(jsonPath("$[?(@.wellnessTopic=='UV')].isEnabled").value(org.hamcrest.Matchers.contains(true)))
+                .andExpect(jsonPath("$[?(@.wellnessTopic=='UV')].remindIntervalMinutes").value(org.hamcrest.Matchers.contains(120)))
+                .andExpect(jsonPath("$[?(@.wellnessTopic=='PM')].isEnabled").value(org.hamcrest.Matchers.contains(false)));
 
         mockMvc.perform(get("/me/wellness-prefs").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.wellness_topic=='UV')].is_enabled").value(org.hamcrest.Matchers.contains(true)));
+                .andExpect(jsonPath("$[?(@.wellnessTopic=='UV')].isEnabled").value(org.hamcrest.Matchers.contains(true)));
     }
 
     private String signupAndLogin() throws Exception {
@@ -75,6 +75,6 @@ class WellnessPrefControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }

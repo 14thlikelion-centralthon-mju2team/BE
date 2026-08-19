@@ -44,8 +44,12 @@ class AuthControllerTest {
 
         mockMvc.perform(post("/auth/email/login").contentType(MediaType.APPLICATION_JSON).content(loginBody))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.access_token").exists())
-                .andExpect(jsonPath("$.expires_in").value(3600));
+                .andExpect(jsonPath("$.accessToken").exists())
+                .andExpect(jsonPath("$.expiresIn").value(3600))
+                .andExpect(jsonPath("$.user.userId").exists())
+                .andExpect(jsonPath("$.user.nickname").value(email.substring(0, email.indexOf('@'))))
+                .andExpect(jsonPath("$.user.timezone").value("Asia/Seoul"))
+                .andExpect(jsonPath("$.user.isNew").value(false));
     }
 
     @Test
@@ -59,7 +63,7 @@ class AuthControllerTest {
                 .andExpect(status().isCreated());
         mockMvc.perform(post("/auth/email/signup").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("EMAIL_EXISTS"));
+                .andExpect(jsonPath("$.error.code").value("EMAIL_EXISTS"));
     }
 
     @Test
@@ -84,7 +88,7 @@ class AuthControllerTest {
                 """.formatted(email);
         mockMvc.perform(post("/auth/email/login").contentType(MediaType.APPLICATION_JSON).content(correctLoginBody))
                 .andExpect(status().isLocked())
-                .andExpect(jsonPath("$.error").value("ACCOUNT_LOCKED"));
+                .andExpect(jsonPath("$.error.code").value("ACCOUNT_LOCKED"));
     }
 
     @Test
@@ -92,9 +96,12 @@ class AuthControllerTest {
         String refreshToken = signupAndLoginForRefresh();
 
         MvcResult result = refresh(refreshToken).andExpect(status().isOk()).andReturn();
-        String rotatedRefreshToken = JsonPath.read(result.getResponse().getContentAsString(), "$.refresh_token");
+        String response = result.getResponse().getContentAsString();
+        String rotatedRefreshToken = JsonPath.read(response, "$.refreshToken");
 
         assertThat(rotatedRefreshToken).isNotEqualTo(refreshToken);
+        assertThat(JsonPath.read(response, "$.user.userId").toString()).isNotBlank();
+        assertThat((Boolean) JsonPath.read(response, "$.user.isNew")).isFalse();
     }
 
     @Test
@@ -135,12 +142,12 @@ class AuthControllerTest {
                         .content(loginBody))
                 .andExpect(status().isOk())
                 .andReturn();
-        return JsonPath.read(loginResult.getResponse().getContentAsString(), "$.refresh_token");
+        return JsonPath.read(loginResult.getResponse().getContentAsString(), "$.refreshToken");
     }
 
     private org.springframework.test.web.servlet.ResultActions refresh(String refreshToken) throws Exception {
         String body = """
-                {"refresh_token":"%s"}
+                {"refreshToken":"%s"}
                 """.formatted(refreshToken);
         return mockMvc.perform(post("/auth/refresh")
                 .header("Idempotency-Key", UUID.randomUUID())

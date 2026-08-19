@@ -21,6 +21,7 @@ public record ActionBatchRequest(@NotEmpty @Size(max = 100) @Valid List<ActionIt
             @NotNull ActionSource actionSource,
             @NotNull Instant deviceTs,
             @NotNull UUID clientEventId,
+            UUID notificationId,
             @DecimalMin("0") @DecimalMax("1") BigDecimal confidence
     ) {
     }

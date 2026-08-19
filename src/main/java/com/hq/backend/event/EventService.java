@@ -9,6 +9,8 @@ import com.hq.backend.event.dto.EventUpdateRequest;
 import com.hq.backend.plan.PlanCreationService;
 import com.hq.backend.plan.PlanRevision;
 import com.hq.backend.plan.dto.PlanResponse;
+import com.hq.backend.route.RouteSearchService;
+import com.hq.backend.route.SelectedRouteSearch;
 import com.hq.backend.user.User;
 import com.hq.backend.user.UserRepository;
 import java.time.Instant;
@@ -32,6 +34,7 @@ public class EventService {
     private final EventClassificationReviewRepository classificationReviewRepository;
     private final UserRepository userRepository;
     private final PlanCreationService planCreationService;
+    private final RouteSearchService routeSearchService;
 
     @Transactional(readOnly = true)
     public List<EventResponse> list(UUID userId, Instant from, Instant to) {
@@ -61,6 +64,11 @@ public class EventService {
         validateDestinationPair(request.destinationLat(), request.destinationLng());
         validateTimeOrder(request.startsAt(), request.endsAt());
 
+        SelectedRouteSearch selectedSearch = request.selectedRouteOptionId() == null
+                ? null
+                : routeSearchService.consume(userId, request.selectedRouteOptionId());
+        validateSelectedSearchRequest(request, selectedSearch);
+
         Event saved = eventRepository.save(Event.builder()
                 .userId(userId)
                 .sourceType(request.sourceType().name().toLowerCase())
@@ -77,16 +85,26 @@ public class EventService {
                 .autoManageExcluded(false)
                 .status(EventStatus.PLANNED.name().toLowerCase())
                 .createdAt(Instant.now())
+                .updatedAt(Instant.now())
                 .build());
 
-        // §8.2 — required_resolved면 저장과 동시에 계획을 생성해 응답에 동봉한다. 원점 장소·
-        // 경로·엔진 응답 중 하나라도 없으면 PlanCreationService가 조용히 empty를 반환한다 —
-        // 계획 생성 실패가 일정 생성 자체를 막지 않는다.
         PlanResponse plan = null;
         if (request.locationState() == LocationState.REQUIRED_RESOLVED) {
-            Optional<PlanRevision> revision =
-                    planCreationService.createInitialPlan(userId, saved, request.originPlaceId());
-            plan = revision.map(PlanResponse::from).orElse(null);
+            Optional<PlanRevision> revision = selectedSearch == null
+                    ? planCreationService.createInitialPlan(userId, saved, request.originPlaceId())
+                    : planCreationService.createInitialPlan(userId, saved, selectedSearch);
+            if (selectedSearch != null && revision.isEmpty()) {
+                // selected route를 기본 provider 후보로 조용히 바꾸지 않는다. event 저장도 롤백해
+                // 사용자가 재검색/재시도할 수 있는 일관된 상태를 유지한다.
+                throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "PLAN_CREATION_FAILED",
+                        "선택한 경로로 계획을 생성하지 못했습니다. 다시 시도해 주세요.");
+            }
+            if (revision.isPresent()) {
+                if (selectedSearch != null) {
+                    routeSearchService.bindToPlan(userId, selectedSearch.routeOptionId(), revision.get().getPlanId());
+                }
+                plan = PlanResponse.from(revision.get());
+            }
         }
 
         return EventResponse.from(saved, timezoneOf(userId), plan);
@@ -95,25 +113,32 @@ public class EventService {
     @Transactional
     public EventResponse update(UUID userId, UUID eventId, EventUpdateRequest request) {
         Event event = findOwned(userId, eventId);
+        boolean planInputChanged = false;
 
         if (request.startsAt() != null) {
             event.setStartsAt(request.startsAt());
+            planInputChanged = true;
         }
         if (request.endsAt() != null) {
             event.setEndsAt(request.endsAt());
+            planInputChanged = true;
         }
         if (request.locationState() != null) {
             // 사용자 지정값은 항상 자동 분류·캘린더 동기화보다 우선한다 (절대 원칙 5)
             event.setLocationState(request.locationState().name().toLowerCase());
+            planInputChanged = true;
         }
         if (request.destinationName() != null) {
             event.setDestinationName(request.destinationName());
+            planInputChanged = true;
         }
         if (request.destinationLat() != null) {
             event.setDestinationLat(request.destinationLat());
+            planInputChanged = true;
         }
         if (request.destinationLng() != null) {
             event.setDestinationLng(request.destinationLng());
+            planInputChanged = true;
         }
         validateDestinationPair(event.getDestinationLat(), event.getDestinationLng());
         validateTimeOrder(event.getStartsAt(), event.getEndsAt());
@@ -128,6 +153,9 @@ public class EventService {
         }
         if (request.autoManageExcluded() != null) {
             event.setAutoManageExcluded(request.autoManageExcluded());
+        }
+        if (planInputChanged) {
+            event.setUpdatedAt(Instant.now());
         }
 
         return EventResponse.from(event, timezoneOf(userId));
@@ -173,6 +201,32 @@ public class EventService {
         event.setLocationState(resolved.name().toLowerCase());
 
         return new EventReviewResponse(eventId, resolved, true);
+    }
+
+    private void validateSelectedSearchRequest(EventCreateRequest request, SelectedRouteSearch selectedSearch) {
+        if (selectedSearch == null) {
+            return;
+        }
+        if (request.locationState() != LocationState.REQUIRED_RESOLVED) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR",
+                    "selectedRouteOptionId는 required_resolved 일정에서만 사용할 수 있습니다.");
+        }
+        if (request.destinationLat() == null || request.destinationLng() == null
+                || Double.compare(request.destinationLat(), selectedSearch.destinationLat()) != 0
+                || Double.compare(request.destinationLng(), selectedSearch.destinationLng()) != 0) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR",
+                    "선택한 경로 후보와 일정 목적지가 일치하지 않습니다.");
+        }
+        if (request.originPlaceId() != null && !request.originPlaceId().equals(selectedSearch.originPlaceId())) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR",
+                    "선택한 경로 후보와 일정 출발 장소가 일치하지 않습니다.");
+        }
+        String requestAnchor = request.anchorMode() == null || request.anchorMode().isBlank()
+                ? "arrive_by" : request.anchorMode();
+        if (!requestAnchor.equals(selectedSearch.anchorMode())) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR",
+                    "선택한 경로 후보와 anchorMode가 일치하지 않습니다.");
+        }
     }
 
     private Event findOwned(UUID userId, UUID eventId) {

@@ -37,6 +37,7 @@ public class CalendarSyncService {
     private static final Logger log = LoggerFactory.getLogger(CalendarSyncService.class);
 
     private final CalendarConnectionRepository connectionRepository;
+    private final CalendarSourceRepository calendarSourceRepository;
     private final EventRepository eventRepository;
     private final PlanCreationService planCreationService;
     private final PlanRevisionRepository planRevisionRepository;
@@ -56,12 +57,14 @@ public class CalendarSyncService {
     private String googleCalendarEventsUrl;
 
     public CalendarSyncService(CalendarConnectionRepository connectionRepository,
+                               CalendarSourceRepository calendarSourceRepository,
                                EventRepository eventRepository,
                                PlanCreationService planCreationService,
                                PlanRevisionRepository planRevisionRepository,
                                BytesEncryptor calendarTokenEncryptor,
                                RestClient restClient) {
         this.connectionRepository = connectionRepository;
+        this.calendarSourceRepository = calendarSourceRepository;
         this.eventRepository = eventRepository;
         this.planCreationService = planCreationService;
         this.planRevisionRepository = planRevisionRepository;
@@ -106,7 +109,7 @@ public class CalendarSyncService {
             }
 
             for (GoogleCalendarEvent gcEvent : response.items()) {
-                processEvent(connection.getUserId(), connection.getCalendarConnectionId(), gcEvent);
+                processEvent(connection, gcEvent);
             }
 
             // syncToken 갱신 (다음 동기화에서 변경분만 조회)
@@ -121,15 +124,27 @@ public class CalendarSyncService {
         }
     }
 
-    private void processEvent(UUID userId, UUID connectionId, GoogleCalendarEvent gcEvent) {
+    private void processEvent(CalendarConnection connection, GoogleCalendarEvent gcEvent) {
         if (gcEvent.id() == null) return;
+        UUID userId = connection.getUserId();
+        CalendarSource source = calendarSourceRepository
+                .findByCalendarConnectionIdAndIsDefaultTrueAndDeletedAtIsNull(connection.getCalendarConnectionId())
+                .orElseGet(() -> calendarSourceRepository.save(CalendarSource.builder()
+                        .calendarConnectionId(connection.getCalendarConnectionId())
+                        .externalCalendarId("primary")
+                        .displayName("내 캘린더")
+                        .isWritable(true)
+                        .isDefault(true)
+                        .syncEnabled(true)
+                        .build()));
 
         // 시간 정보가 없는 이벤트(종일 이벤트 중 dateTime이 없는 것)는 스킵
         if (gcEvent.start() == null || gcEvent.start().dateTime() == null) {
             return;
         }
 
-        Optional<Event> existingOpt = eventRepository.findByExternalEventIdAndUserId(gcEvent.id(), userId);
+        Optional<Event> existingOpt = eventRepository.findByCalendarSourceIdAndExternalEventId(
+                source.getCalendarSourceId(), gcEvent.id());
 
         if ("cancelled".equals(gcEvent.status())) {
             // 삭제된 일정 → cancelled 처리
@@ -153,6 +168,7 @@ public class CalendarSyncService {
             if (timeChanged) {
                 event.setStartsAt(startsAt);
                 event.setEndsAt(endsAt);
+                event.setUpdatedAt(Instant.now());
                 // 시각이 바뀌면 계획 재계산 트리거
                 triggerRecalculate(userId, event);
                 log.info("[CalendarSync] 일정 시각 변경: event_id={}", event.getEventId());
@@ -161,7 +177,7 @@ public class CalendarSyncService {
             // 새 일정 생성
             Event newEvent = Event.builder()
                     .userId(userId)
-                    .calendarSourceId(connectionId)
+                    .calendarSourceId(source.getCalendarSourceId())
                     .externalEventId(gcEvent.id())
                     .sourceType("external")
                     .startsAt(startsAt)
@@ -171,6 +187,7 @@ public class CalendarSyncService {
                     .autoManageExcluded(false)
                     .status("planned")
                     .createdAt(Instant.now())
+                    .updatedAt(Instant.now())
                     .build();
 
             // displayLabel: 외부 일정 제목 원문은 저장하지 않음 (TRD 절대 원칙 8)

@@ -108,10 +108,10 @@ class PlanCreationIntegrationTest {
                 .build());
 
         String body = """
-                {"starts_at":"2026-08-20T14:00:00+09:00","location_state":"REQUIRED_RESOLVED",
-                 "source_type":"MAP_SEARCH","destination_name":"강남역",
-                 "destination_lat":37.498,"destination_lng":127.027,
-                 "origin_place_id":"%s"}
+                {"startsAt":"2026-08-20T14:00:00+09:00","locationState":"REQUIRED_RESOLVED",
+                 "sourceType":"MAP_SEARCH","destinationName":"강남역",
+                 "destinationLat":37.498,"destinationLng":127.027,
+                 "originPlaceId":"%s"}
                 """.formatted(origin.getPlaceId());
 
         String response = mockMvc.perform(post("/events")
@@ -120,14 +120,14 @@ class PlanCreationIntegrationTest {
                         .content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.plan.feasible").value(true))
-                .andExpect(jsonPath("$.plan.prediction_confidence").value("high"))
-                .andExpect(jsonPath("$.plan.breakdown.travel_minutes").value(20))
-                .andExpect(jsonPath("$.plan.calc_version").value("test-engine-1.0.0"))
+                .andExpect(jsonPath("$.plan.predictionConfidence").value("high"))
+                .andExpect(jsonPath("$.plan.breakdown.travelMinutes").value(20))
+                .andExpect(jsonPath("$.plan.calcVersion").value("test-engine-1.0.0"))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
-        String planId = JsonPath.read(response, "$.plan.plan_id");
+        String planId = JsonPath.read(response, "$.plan.planId");
         assertThat(planRevisionRepository.findById(UUID.fromString(planId))).isPresent();
         assertThat(routeOptionRepository.findAll()).isNotEmpty();
         assertThat(planPrepItemRepository.findAll()).anyMatch(item -> "우산".equals(item.getItemNameSnapshot()));
@@ -137,9 +137,9 @@ class PlanCreationIntegrationTest {
     void 원점_장소가_없으면_계획_없이_일정만_생성된다() throws Exception {
         String accessToken = signupAndLogin();
         String body = """
-                {"starts_at":"2026-08-21T14:00:00+09:00","location_state":"REQUIRED_RESOLVED",
-                 "source_type":"MAP_SEARCH","destination_name":"강남역",
-                 "destination_lat":37.498,"destination_lng":127.027}
+                {"startsAt":"2026-08-21T14:00:00+09:00","locationState":"REQUIRED_RESOLVED",
+                 "sourceType":"MAP_SEARCH","destinationName":"강남역",
+                 "destinationLat":37.498,"destinationLng":127.027}
                 """;
 
         mockMvc.perform(post("/events")
@@ -175,6 +175,6 @@ class PlanCreationIntegrationTest {
                 .getResponse()
                 .getContentAsString();
 
-        return JsonPath.read(response, "$.access_token");
+        return JsonPath.read(response, "$.accessToken");
     }
 }
