@@ -22,6 +22,9 @@ import com.hq.backend.personalization.dto.PersonalizationEngineRequest;
 import com.hq.backend.personalization.dto.PersonalizationEngineResponse;
 import com.hq.backend.plan.dto.ActionBatchRequest;
 import com.hq.backend.plan.dto.ActionBatchResponse;
+import com.hq.backend.setting.UserSetting;
+import com.hq.backend.setting.UserSettingRepository;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
@@ -57,7 +60,6 @@ public class PlanActionService {
     private static final int PREP_FLOOR_MINUTES = 10;
     private static final double PREP_CEILING_RATIO = 2.0;
     private static final String MODEL_VERSION = "ema-v1";
-    private static final String DELAY_CAUSE_UNKNOWN = "unknown"; // ck_delay_reason_code엔 없는 값 — 저장 제외
 
     private static final Set<ActionType> EXECUTION_RELEVANT_ACTIONS =
             EnumSet.of(ActionType.PREP_STARTED, ActionType.DEPARTED, ActionType.ARRIVED);
@@ -68,6 +70,7 @@ public class PlanActionService {
     private final EventExecutionRepository eventExecutionRepository;
     private final EventDelayReasonRepository eventDelayReasonRepository;
     private final UserPrepEstimateRepository userPrepEstimateRepository;
+    private final UserSettingRepository userSettingRepository;
     private final PersonalizationEngineClient personalizationEngineClient;
     private final PlanContextRepository planContextRepository;
     private final PlanService planService;
@@ -188,6 +191,10 @@ public class PlanActionService {
 
         Instant now = Instant.now();
         int clockSkewSeconds = (int) Duration.between(item.deviceTs(), now).abs().getSeconds();
+        Double seedMinutes = userSettingRepository.findById(event.getUserId())
+                .map(UserSetting::getInitialPrepMinutes)
+                .map(Integer::doubleValue)
+                .orElse(null);
 
         PersonalizationEngineRequest request = new PersonalizationEngineRequest(
                 event.getEventId().toString(),
@@ -196,13 +203,18 @@ public class PlanActionService {
                         revision.getEstimatedPrepMinutes(), revision.getTravelMinutes(), revision.getTrafficBufferMinutes()),
                 new PersonalizationEngineRequest.ActualExecutionSnapshot(
                         execution.getActualPrepStartedAt(), execution.getActualDepartedAt(), execution.getActualArrivedAt(),
-                        execution.getResultSource(), clockSkewSeconds),
+                        execution.getResultSource(), clockSkewSeconds,
+                        // 현재 action 계약에는 PREP_FINISHED가 없어 엔진이 prep_finish_unknown으로
+                        // degraded 처리한다. 별도 data-capture 이슈에서 실제 시각을 추가한다.
+                        null, item.confidence() == null ? null : item.confidence().doubleValue()),
                 new PersonalizationEngineRequest.EventOutcome(
-                        execution.getArrivalResult(), null, event.isAutoManageExcluded()),
+                        execution.getArrivalResult(), null, event.isAutoManageExcluded(),
+                        // revert는 event.excludedFromLearning gate에서 엔진 호출 자체를 막는다.
+                        false, false),
                 new PersonalizationEngineRequest.CurrentPrepEstimate(
                         current.getEstimatedMinutes(), current.getSampleCount(),
                         current.getConfidence() != null ? current.getConfidence().doubleValue() : null,
-                        current.getModelVersion()),
+                        current.getModelVersion(), seedMinutes, false),
                 new PersonalizationEngineRequest.EngineConfig(
                         PREP_EMA_ALPHA, LATE_WEIGHT, EARLY_WEIGHT, MAX_STEP_MINUTES, COLD_STEP_MINUTES,
                         PREP_FLOOR_MINUTES, PREP_CEILING_RATIO, MODEL_VERSION));
@@ -212,20 +224,8 @@ public class PlanActionService {
             return;
         }
         PersonalizationEngineResponse response = responseOpt.get();
-
-        // event_delay_reason PK는 (event_id, reason_code) — 지오펜스 재확인이나 클라이언트
-        // 재시도로 같은 일정에 arrived가 두 번 들어오면(각각 다른 clientEventId라 위의 중복
-        // 흡수를 통과함) 같은 사유로 다시 저장하려다 PK 충돌로 배치 전체가 깨질 수 있다.
         String cause = response.cause();
-        if (!DELAY_CAUSE_UNKNOWN.equals(cause)
-                && !eventDelayReasonRepository.existsById(new EventDelayReasonId(event.getEventId(), cause))) {
-            eventDelayReasonRepository.save(EventDelayReason.builder()
-                    .eventId(event.getEventId())
-                    .reasonCode(cause)
-                    .reasonSource("inferred")
-                    .createdAt(now)
-                    .build());
-        }
+        persistDelayReasons(event, response, now);
 
         if (response.excludedFromLearning() || !"prep_estimate".equals(response.adjustedKnob()) || response.newValue() == null) {
             return;
@@ -243,6 +243,43 @@ public class PlanActionService {
                 .build());
         productEventService.record(event.getUserId(), "personalization_adjusted", Map.of(
                 "eventId", event.getEventId().toString(), "cause", cause));
+    }
+
+    private void persistDelayReasons(Event event, PersonalizationEngineResponse response, Instant now) {
+        if (response.excludedFromLearning()) {
+            return;
+        }
+        if (response.candidates() == null || response.candidates().isEmpty()) {
+            persistDelayReason(event.getEventId(), response.cause(), response.causeConfidence(), now);
+            return;
+        }
+        for (PersonalizationEngineResponse.CauseCandidate candidate : response.candidates()) {
+            persistDelayReason(event.getEventId(), candidate.cause(), candidate.confidence(), now);
+        }
+    }
+
+    // EVENT_DELAY_REASON의 PK는 (event_id, reason_code)다. arrived 재전송처럼 같은 관측이
+    // 다시 도착해도 이미 저장된 원인을 덮어쓰지 않아 최초 모델 판단의 재현성을 보존한다.
+    private void persistDelayReason(UUID eventId, String cause, Double confidence, Instant now) {
+        if (!isPersistableDelayCause(cause)
+                || eventDelayReasonRepository.existsById(new EventDelayReasonId(eventId, cause))) {
+            return;
+        }
+        eventDelayReasonRepository.save(EventDelayReason.builder()
+                .eventId(eventId)
+                .reasonCode(cause)
+                .reasonSource("inferred")
+                .confidence(confidence == null ? null : BigDecimal.valueOf(confidence))
+                .createdAt(now)
+                .build());
+    }
+
+    private boolean isPersistableDelayCause(String cause) {
+        return "prep_late".equals(cause)
+                || "prep_overrun".equals(cause)
+                || "depart_late".equals(cause)
+                || "traffic".equals(cause)
+                || "external".equals(cause);
     }
 
     private String toResultSource(ActionSource actionSource) {

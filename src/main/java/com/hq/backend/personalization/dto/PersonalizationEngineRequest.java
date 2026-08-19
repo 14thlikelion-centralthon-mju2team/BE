@@ -20,13 +20,18 @@ public record PersonalizationEngineRequest(
 
     public record ActualExecutionSnapshot(
             Instant actualPrepStartedAt, Instant actualDepartedAt, Instant actualArrivedAt,
-            String resultSource, Integer clockSkewSeconds) {
+            String resultSource, Integer clockSkewSeconds,
+            Instant actualPrepFinishedAt, Double resultConfidence) {
     }
 
-    public record EventOutcome(String arrivalResult, String rushAssessment, boolean autoManageExcluded) {
+    public record EventOutcome(
+            String arrivalResult, String rushAssessment, boolean autoManageExcluded,
+            boolean learningReverted, boolean eventModifiedAfterPlan) {
     }
 
-    public record CurrentPrepEstimate(double estimatedMinutes, int sampleCount, Double confidence, String modelVersion) {
+    public record CurrentPrepEstimate(
+            double estimatedMinutes, int sampleCount, Double confidence, String modelVersion,
+            Double seedMinutes, boolean coldStartAdjusted) {
     }
 
     // PersonalizationEngineConfig(PR #105) 필드명 그대로 — DB ENGINE_CONFIG 키 매핑은

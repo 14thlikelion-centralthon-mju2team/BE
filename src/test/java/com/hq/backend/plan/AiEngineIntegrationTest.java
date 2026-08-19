@@ -93,7 +93,12 @@ class AiEngineIntegrationTest {
                 {"cause":"prep_overrun","adjustedKnob":"prep_estimate",
                  "previousValue":30.0,"newValue":34.5,
                  "adjustmentReason":"EMA 보정: 실제 준비 시간 47분","excludedFromLearning":false,
-                 "modelVersion":"ema-v1","contractVersion":"m0-v1"}
+                 "modelVersion":"m2-personalization-1.0.0","contractVersion":"m0-v1",
+                 "causeConfidence":0.667,
+                 "candidates":[
+                   {"cause":"prep_overrun","confidence":0.667,"signalMinutes":10.0},
+                   {"cause":"traffic","confidence":0.333,"signalMinutes":5.0}],
+                 "exclusionReasons":[],"degraded":["prep_finish_unknown"]}
                 """));
         fakeEngine.start();
     }
@@ -164,7 +169,11 @@ class AiEngineIntegrationTest {
         assertThat(history.get(1).getValidTo()).isNotNull();
 
         assertThat(eventDelayReasonRepository.findByEventId(created.eventId()))
-                .anyMatch(r -> "prep_overrun".equals(r.getReasonCode()));
+                .anyMatch(r -> "prep_overrun".equals(r.getReasonCode())
+                        && new BigDecimal("0.667").compareTo(r.getConfidence()) == 0);
+        assertThat(eventDelayReasonRepository.findByEventId(created.eventId()))
+                .anyMatch(r -> "traffic".equals(r.getReasonCode())
+                        && new BigDecimal("0.333").compareTo(r.getConfidence()) == 0);
 
         assertThat(productEventRepository.findAll())
                 .anyMatch(e -> "arrival_result".equals(e.getEventName()) && created.userId().equals(e.getUserId()));
