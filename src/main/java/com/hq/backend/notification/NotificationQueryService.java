@@ -28,13 +28,18 @@ public class NotificationQueryService {
     private final PlanRevisionRepository planRevisionRepository;
     private final EventRepository eventRepository;
     private final PlanActionService planActionService;
+    private final com.hq.backend.wellness.WellnessEventSchedulerService wellnessEventSchedulerService;
 
-    public NotificationQueryService(NotificationRepository notificationRepository, PlanRevisionRepository planRevisionRepository,
-                                    EventRepository eventRepository, PlanActionService planActionService) {
+    public NotificationQueryService(NotificationRepository notificationRepository,
+                                    PlanRevisionRepository planRevisionRepository,
+                                    EventRepository eventRepository,
+                                    PlanActionService planActionService,
+                                    com.hq.backend.wellness.WellnessEventSchedulerService wellnessEventSchedulerService) {
         this.notificationRepository = notificationRepository;
         this.planRevisionRepository = planRevisionRepository;
         this.eventRepository = eventRepository;
         this.planActionService = planActionService;
+        this.wellnessEventSchedulerService = wellnessEventSchedulerService;
     }
 
     @Transactional(readOnly = true)
@@ -64,14 +69,25 @@ public class NotificationQueryService {
         if (!event.getUserId().equals(userId)) {
             throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "알림을 찾을 수 없습니다");
         }
+        if ("wellness".equals(notification.getNotificationCategory())) {
+            try {
+                wellnessEventSchedulerService.handleNotificationResponse(
+                        notificationId, request.reaction(), userId);
+            } catch (IllegalArgumentException exception) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REACTION", exception.getMessage());
+            }
+        } else {
+            ActionType action = actionFor(request.reaction());
+            if (action != null) {
+                String reaction = request.reaction().trim().toLowerCase(Locale.ROOT);
+                UUID clientEventId = UUID.nameUUIDFromBytes(("notification:" + notificationId + ":" + reaction)
+                        .getBytes(StandardCharsets.UTF_8));
+                planActionService.submit(userId, plan.getPlanId(), new ActionBatchRequest(List.of(
+                        new ActionBatchRequest.ActionItem(
+                                action, ActionSource.USER, Instant.now(), clientEventId, notificationId, null))));
+            }
+        }
         notification.setDeliveryStatus("delivered");
-        ActionType action = actionFor(request.reaction());
-        if (action == null) return;
-        String reaction = request.reaction().trim().toLowerCase(Locale.ROOT);
-        UUID clientEventId = UUID.nameUUIDFromBytes(("notification:" + notificationId + ":" + reaction)
-                .getBytes(StandardCharsets.UTF_8));
-        planActionService.submit(userId, plan.getPlanId(), new ActionBatchRequest(List.of(
-                new ActionBatchRequest.ActionItem(action, ActionSource.USER, Instant.now(), clientEventId, notificationId, null))));
     }
 
     private ActionType actionFor(String reaction) {

@@ -200,7 +200,8 @@ public class PlanCreationService {
                 .build());
 
         persistRouteOptions(revision, computed.routes(), computed.selectedRoute());
-        persistEnvironmentContext(revision, computed.environment());
+        persistEnvironmentContext(
+                revision, computed.environment(), computed.selectedRoute().outdoorSec() / 60);
         persistChecklist(revision, output.checklist());
         computeAndPersistWellness(revision, computed);
 
@@ -219,7 +220,8 @@ public class PlanCreationService {
     private void computeAndPersistWellness(PlanRevision revision, ComputedPlan computed) {
         WellnessEngineRequest.EnvironmentSnapshot environmentSnapshot = computed.environment() == null ? null
                 : new WellnessEngineRequest.EnvironmentSnapshot(
-                        computed.environment().precipitationProb(), computed.environment().tempC(), computed.environment().asOf());
+                        computed.environment().precipitationProb(), computed.environment().tempC(),
+                        computed.environment().uvIndex(), computed.environment().pm10(), computed.environment().asOf());
 
         List<WellnessEngineRequest.WellnessPreference> preferences = userWellnessPrefRepository
                 .findByUserId(computed.userId()).stream()
@@ -266,12 +268,13 @@ public class PlanCreationService {
         // uq_wellness_action_rank(plan_id, display_rank) — 엔진이 같은 순위를 중복 반환하면
         // INSERT가 제약 위반으로 실패해 계획 생성 트랜잭션 전체가 롤백된다(TR-11.5 위반:
         // 웰니스 문제가 시간 계획까지 깨뜨리면 안 된다). 중복 순위는 먼저 온 것만 반영한다.
-        Set<Short> seenRanks = new HashSet<>();
+        Set<String> seenActionCodes = new HashSet<>();
+        int persistedActions = 0;
         for (WellnessEngineResponse.WellnessAction action : output.actions()) {
-            short displayRank = (short) action.displayRank();
-            if (!seenRanks.add(displayRank)) {
+            if (persistedActions == 3 || !seenActionCodes.add(action.actionCode())) {
                 continue;
             }
+            short displayRank = (short) (persistedActions + 1);
             planWellnessActionRepository.save(PlanWellnessAction.builder()
                     .planId(revision.getPlanId())
                     .wellnessTopic(action.wellnessTopic())
@@ -281,6 +284,7 @@ public class PlanCreationService {
                     .reasonSnapshot(action.reason())
                     .completionStatus("proposed")
                     .build());
+            persistedActions++;
         }
     }
 
@@ -318,7 +322,8 @@ public class PlanCreationService {
         }
     }
 
-    private void persistEnvironmentContext(PlanRevision revision, com.hq.backend.provider.EnvironmentSnapshot snapshot) {
+    private void persistEnvironmentContext(
+            PlanRevision revision, com.hq.backend.provider.EnvironmentSnapshot snapshot, int estimatedOutdoorMinutes) {
         if (snapshot == null) {
             return;
         }
@@ -328,6 +333,7 @@ public class PlanCreationService {
                 .precipitationProb(java.math.BigDecimal.valueOf(snapshot.precipitationProb()))
                 .uvIndex((short) Math.round(snapshot.uvIndex()))
                 .pm10(snapshot.pm10())
+                .estimatedOutdoorMinutes(estimatedOutdoorMinutes)
                 .weatherProvider(snapshot.provider())
                 .observedAt(snapshot.asOf())
                 .build());

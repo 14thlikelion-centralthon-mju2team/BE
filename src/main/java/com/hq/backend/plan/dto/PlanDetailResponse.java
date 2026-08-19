@@ -22,8 +22,8 @@ public record PlanDetailResponse(
         Breakdown breakdown,
         List<ReasonItem> reasons,
         List<ChecklistItem> checklist,
-        List<Object> wellnessActions,
-        Object wellness,
+        List<WellnessActionItem> wellnessActions,
+        WellnessScoreItem wellness,
         ContextItem context,
         UUID selectedRouteOptionId,
         List<String> degraded
@@ -40,6 +40,15 @@ public record PlanDetailResponse(
     public record ChecklistItem(
             UUID planPrepItemId, String itemName, String actionType, String sourceType,
             String completionStatus, boolean isSensitive, int appliedMinutes, String reason) {
+    }
+
+    public record WellnessActionItem(
+            UUID wellnessActionId, String wellnessTopic, String actionCode, String actionLabel,
+            short displayRank, String reason, String completionStatus, Instant respondedAt) {
+    }
+
+    public record WellnessScoreItem(
+            short wisScore, String wisBand, String weightVersion, Instant calculatedAt) {
     }
 
     public record ContextItem(

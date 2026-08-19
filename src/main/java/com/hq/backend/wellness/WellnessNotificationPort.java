@@ -18,4 +18,7 @@ public interface WellnessNotificationPort {
     UUID createWellnessNotification(UUID planId, Instant scheduledAt,
                                     String bodyMasked, String triggerReason,
                                     String dedupKey);
+
+    /** 아직 발송되지 않은 wellness notification을 취소한다. */
+    void cancelWellnessNotification(UUID notificationId);
 }
