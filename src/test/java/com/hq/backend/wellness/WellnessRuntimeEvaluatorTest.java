@@ -106,8 +106,12 @@ class WellnessRuntimeEvaluatorTest {
     }
 
     private WellnessRuntimeEvaluator evaluator() {
+        com.hq.backend.config.WellnessConfigService wellnessConfigService =
+                mock(com.hq.backend.config.WellnessConfigService.class);
+        when(wellnessConfigService.current()).thenReturn(new WellnessEngineRequest.EngineConfig(
+                .35, .25, .20, .20, 1.25, 120, 40, 70, "test-w1"));
         return new WellnessRuntimeEvaluator(engineClient, eventRepository, revisionRepository, contextRepository,
-                prefRepository, settingRepository, scheduleRepository, scoreRepository);
+                prefRepository, settingRepository, scheduleRepository, scoreRepository, wellnessConfigService);
     }
 
     private UserWellnessPref preference(UUID userId, String topic) {
