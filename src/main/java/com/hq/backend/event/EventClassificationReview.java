@@ -43,7 +43,20 @@ public class EventClassificationReview {
     @Setter
     private String userAnswer;
 
+    @Column(updatable = false)
+    private String provider;
+
+    @Column(updatable = false)
     private String modelVersion;
+
+    @Column(updatable = false)
+    private String classifierVersion;
+
+    @Column(updatable = false)
+    private String promptVersion;
+
+    @Column(updatable = false)
+    private String schemaVersion;
 
     private BigDecimal classificationConfidence;
 

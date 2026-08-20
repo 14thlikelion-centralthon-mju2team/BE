@@ -12,7 +12,11 @@
 ## Checklist
 
 - [x] Task 0: 실행 기준선과 작업 추적 생성
-- [ ] Task 1: 리뷰 무결성과 provenance 스키마 고정
+- [x] Task 1: 리뷰 무결성과 provenance 스키마 고정
+  - [x] Write repository integration tests for pending-review uniqueness and provenance round-trip
+  - [x] Capture expected RED against the pre-V27 schema
+  - [x] Add V27 schema safety migration and JPA/repository contracts
+  - [x] Run focused and EventController regressions; self-review and commit
 - [ ] Task 2: Google 조회 DTO와 다페이지 수집 분리
 - [ ] Task 3: 캘린더 쓰기 트랜잭션과 sync token CAS
 - [ ] Task 4: 분류 계약, 입력 정규화, 동의·롤아웃 게이트
@@ -28,3 +32,4 @@
 - Draft PR: https://github.com/14thlikelion-centralthon-mju2team/BE/pull/204
 - Self-review: https://github.com/14thlikelion-centralthon-mju2team/BE/pull/204#issuecomment-5355635832
 - Baseline: JDK 21 + PostgreSQL 16에서 `./gradlew test` 138 tests, 0 failures.
+- Task 1: V27 partial unique index and provenance constraints, immutable entity mapping, locking APIs, and PostgreSQL repository tests verified before commit.

@@ -1,10 +1,12 @@
 package com.hq.backend.event;
 
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 
 public interface EventRepository extends JpaRepository<Event, UUID> {
@@ -17,6 +19,14 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
             UUID userId, Instant rangeEnd, Instant rangeStart);
 
     Optional<Event> findByEventIdAndUserId(UUID eventId, UUID userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select e from Event e where e.eventId = :eventId and e.userId = :userId")
+    Optional<Event> findOwnedForUpdate(UUID eventId, UUID userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select e from Event e where e.eventId = :eventId")
+    Optional<Event> findByIdForUpdate(UUID eventId);
 
     Optional<Event> findByExternalEventIdAndUserId(String externalEventId, UUID userId);
 
