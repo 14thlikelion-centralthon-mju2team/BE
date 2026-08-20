@@ -373,8 +373,8 @@ public class PlanCreationService {
                 .feelsLikeMax(snapshot.feelsLikeMaxCelsius() == null ? null
                         : java.math.BigDecimal.valueOf(snapshot.feelsLikeMaxCelsius()))
                 .precipitationProb(java.math.BigDecimal.valueOf(snapshot.precipitationProb()))
-                .uvIndex((short) Math.round(snapshot.uvIndex()))
-                .pm10(snapshot.pm10())
+                .uvIndex(snapshot.uvIndex() < 0 ? null : (short) Math.round(snapshot.uvIndex()))
+                .pm10(snapshot.pm10() < 0 ? null : snapshot.pm10())
                 .pm25(snapshot.pm25())
                 .airGrade(snapshot.airGrade())
                 .estimatedOutdoorMinutes(estimatedOutdoorMinutes)
