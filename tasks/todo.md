@@ -18,7 +18,12 @@
   - [x] Add V27 schema safety migration and JPA/repository contracts
   - [x] Run focused and EventController regressions; self-review and commit
 - [x] Task 2: Google 조회 DTO와 다페이지 수집 분리
-- [ ] Task 3: 캘린더 쓰기 트랜잭션과 sync token CAS (in progress)
+- [x] Task 3: 캘린더 쓰기 트랜잭션과 sync token CAS
+  - [x] Add RED tests for Event writer source/event concurrency and token CAS
+  - [x] Add REQUIRES_NEW event/state writers and conflict facade
+  - [x] Add RED orchestration tests for mutex, 410 recovery, token ordering, manual no-AI
+  - [x] Refactor sync orchestration outside transactions and verify focused/PostgreSQL/full regressions
+  - [x] Self-review, diff check, report, and commit
 - [ ] Task 4: 분류 계약, 입력 정규화, 동의·롤아웃 게이트
 - [ ] Task 5: OpenAI Responses API strict client
 - [ ] Task 6: 신규 일정 분류와 review 저장 orchestration
@@ -35,3 +40,4 @@
 - Task 1: V27 partial unique index and provenance constraints, immutable entity mapping, locking APIs, and PostgreSQL repository tests verified before commit.
 - Task 1 independent review: APPROVED (Critical 0, Important 0). Minor follow-up is covered by the later end-to-end creation/update integration tests.
 - Task 2 independent review: two pagination findings fixed with TDD; scoped re-review APPROVED (Critical 0, Important 0).
+- Task 3: Event/source writes and sync-token CAS now use isolated `REQUIRES_NEW` writers; focused PostgreSQL tests and the full Gradle suite passed before commit.

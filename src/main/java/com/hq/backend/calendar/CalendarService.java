@@ -291,14 +291,7 @@ public class CalendarService {
     }
 
     private void ensurePrimarySource(CalendarConnection connection) {
-        calendarSourceRepository.findByCalendarConnectionIdAndIsDefaultTrueAndDeletedAtIsNull(connection.getCalendarConnectionId())
-                .orElseGet(() -> calendarSourceRepository.save(CalendarSource.builder()
-                        .calendarConnectionId(connection.getCalendarConnectionId())
-                        .externalCalendarId("primary")
-                        .displayName("내 캘린더")
-                        .isWritable(true)
-                        .isDefault(true)
-                        .syncEnabled(true)
-                        .build()));
+        calendarSourceRepository.insertDefaultSourceIfAbsent(
+                connection.getCalendarConnectionId(), "primary", "내 캘린더");
     }
 }

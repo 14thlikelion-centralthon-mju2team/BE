@@ -1,0 +1,215 @@
+package com.hq.backend.calendar;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.hq.backend.calendar.dto.GoogleCalendarSyncEvent;
+import com.hq.backend.calendar.dto.GoogleEventDateTime;
+import com.hq.backend.event.EventRepository;
+import com.hq.backend.plan.PlanCreationService;
+import com.hq.backend.plan.PlanRevisionRepository;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.encrypt.BytesEncryptor;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.client.RestClient;
+
+@ExtendWith(MockitoExtension.class)
+class CalendarSyncServiceTest {
+
+    @Mock private CalendarConnectionRepository connectionRepository;
+    @Mock private CalendarEventWriter calendarEventWriter;
+    @Mock private CalendarSyncStateWriter syncStateWriter;
+    @Mock private EventRepository eventRepository;
+    @Mock private PlanCreationService planCreationService;
+    @Mock private PlanRevisionRepository planRevisionRepository;
+    @Mock private BytesEncryptor encryptor;
+    @Mock private RestClient restClient;
+    @Mock private RestClient.RequestBodyUriSpec requestBodyUriSpec;
+    @Mock private RestClient.RequestBodySpec requestBodySpec;
+    @Mock private RestClient.ResponseSpec responseSpec;
+
+    private CalendarSyncService service;
+
+    @BeforeEach
+    @SuppressWarnings("unchecked")
+    void setUp() {
+        service = new CalendarSyncService(connectionRepository, calendarEventWriter, syncStateWriter,
+                eventRepository, planCreationService, planRevisionRepository, encryptor, restClient,
+                (accessToken, syncToken, now) -> Optional.of(new GoogleSyncBatch(List.of(), "next")));
+        ReflectionTestUtils.setField(service, "googleTokenUrl", "https://oauth.example/token");
+        ReflectionTestUtils.setField(service, "googleClientId", "client");
+        ReflectionTestUtils.setField(service, "googleClientSecret", "secret");
+        when(encryptor.decrypt(any())).thenReturn("refresh".getBytes());
+        when(restClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(any(String.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.contentType(any())).thenReturn(requestBodySpec);
+        when(requestBodySpec.body(any(Object.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(com.hq.backend.calendar.dto.GoogleTokenResponse.class))
+                .thenReturn(new com.hq.backend.calendar.dto.GoogleTokenResponse("access", null, null, 3600L));
+    }
+
+    @Test
+    void 같은_connection의_동시_실행은_첫번째만_fetch하고_두번째는_skip한다() throws Exception {
+        CalendarConnection connection = connection(null);
+        CountDownLatch fetchEntered = new CountDownLatch(1);
+        CountDownLatch releaseFetch = new CountDownLatch(1);
+        CalendarSyncService blockingService = new CalendarSyncService(connectionRepository, calendarEventWriter,
+                syncStateWriter, eventRepository, planCreationService, planRevisionRepository, encryptor, restClient,
+                (accessToken, syncToken, now) -> {
+                    assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                    fetchEntered.countDown();
+                    try {
+                        releaseFetch.await();
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(interrupted);
+                    }
+                    return Optional.of(new GoogleSyncBatch(List.of(), "next"));
+                });
+        ReflectionTestUtils.setField(blockingService, "googleTokenUrl", "https://oauth.example/token");
+        ReflectionTestUtils.setField(blockingService, "googleClientId", "client");
+        ReflectionTestUtils.setField(blockingService, "googleClientSecret", "secret");
+        when(connectionRepository.findById(connection.getCalendarConnectionId())).thenReturn(Optional.of(connection));
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> first = executor.submit(() -> blockingService.syncConnection(connection.getCalendarConnectionId(), true));
+            fetchEntered.await();
+            Future<?> second = executor.submit(() -> blockingService.syncConnection(connection.getCalendarConnectionId(), true));
+            second.get();
+            releaseFetch.countDown();
+            first.get();
+        } finally {
+            releaseFetch.countDown();
+            executor.shutdownNow();
+        }
+
+        verify(connectionRepository, times(1)).findById(connection.getCalendarConnectionId());
+    }
+
+    @Test
+    void 만료된_토큰은_CAS_clear_성공시에만_full_sync를_한번_재시도한다() {
+        CalendarConnection connection = connection("old");
+        GoogleCalendarSyncClient client = new GoogleCalendarSyncClient() {
+            int calls;
+            @Override public Optional<GoogleSyncBatch> fetchAll(String accessToken, String token, Instant now) {
+                if (calls++ == 0) throw new GoogleSyncTokenExpiredException();
+                return Optional.of(new GoogleSyncBatch(List.of(), "full-token"));
+            }
+        };
+        service = service(client);
+        when(connectionRepository.findById(connection.getCalendarConnectionId())).thenReturn(Optional.of(connection));
+        when(syncStateWriter.clearExpiredSyncToken(connection.getCalendarConnectionId(), "old")).thenReturn(true);
+        when(syncStateWriter.advanceSyncToken(connection.getCalendarConnectionId(), null, "full-token")).thenReturn(true);
+
+        service.syncConnection(connection.getCalendarConnectionId(), true);
+
+        verify(syncStateWriter).clearExpiredSyncToken(connection.getCalendarConnectionId(), "old");
+        verify(syncStateWriter).advanceSyncToken(connection.getCalendarConnectionId(), null, "full-token");
+    }
+
+    @Test
+    void 만료된_토큰_clear_CAS가_stale이면_full_sync와_token_advance를_하지_않는다() {
+        CalendarConnection connection = connection("old");
+        service = service((accessToken, token, now) -> { throw new GoogleSyncTokenExpiredException(); });
+        when(connectionRepository.findById(connection.getCalendarConnectionId())).thenReturn(Optional.of(connection));
+        when(syncStateWriter.clearExpiredSyncToken(connection.getCalendarConnectionId(), "old")).thenReturn(false);
+
+        service.syncConnection(connection.getCalendarConnectionId(), true);
+
+        verify(syncStateWriter).clearExpiredSyncToken(connection.getCalendarConnectionId(), "old");
+        verify(syncStateWriter, never()).advanceSyncToken(any(), any(), any());
+    }
+
+    @Test
+    void full_sync도_410이면_두번째_재시도나_token_advance를_하지_않는다() {
+        CalendarConnection connection = connection("old");
+        GoogleCalendarSyncClient client = new GoogleCalendarSyncClient() {
+            int calls;
+            @Override public Optional<GoogleSyncBatch> fetchAll(String accessToken, String token, Instant now) {
+                calls++;
+                throw new GoogleSyncTokenExpiredException();
+            }
+        };
+        service = service(client);
+        when(connectionRepository.findById(connection.getCalendarConnectionId())).thenReturn(Optional.of(connection));
+        when(syncStateWriter.clearExpiredSyncToken(connection.getCalendarConnectionId(), "old")).thenReturn(true);
+
+        service.syncConnection(connection.getCalendarConnectionId(), true);
+
+        verify(syncStateWriter).clearExpiredSyncToken(connection.getCalendarConnectionId(), "old");
+        verify(syncStateWriter, never()).advanceSyncToken(any(), any(), any());
+    }
+
+    @Test
+    void event_writer_실패면_token을_전진시키지_않는다() {
+        CalendarConnection connection = connection("old");
+        service = service((accessToken, token, now) -> Optional.of(new GoogleSyncBatch(List.of(event()), "next")));
+        when(connectionRepository.findById(connection.getCalendarConnectionId())).thenReturn(Optional.of(connection));
+        when(calendarEventWriter.upsert(any(), any(), any())).thenThrow(new IllegalStateException("db failure"));
+
+        service.syncConnection(connection.getCalendarConnectionId(), true);
+
+        verify(syncStateWriter, never()).advanceSyncToken(any(), any(), any());
+    }
+
+    @Test
+    void 최종_sync_token이_없으면_전진시키지_않고_수동_sync도_외부_호출_트랜잭션_밖에서_수행한다() {
+        CalendarConnection connection = connection(null);
+        service = service((accessToken, token, now) -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            return Optional.of(new GoogleSyncBatch(List.of(event()), null));
+        });
+        when(connectionRepository.findByUserIdAndProvider(connection.getUserId(), "google")).thenReturn(Optional.of(connection));
+        when(connectionRepository.findById(connection.getCalendarConnectionId())).thenReturn(Optional.of(connection));
+        service.syncForUser(connection.getUserId());
+
+        verify(syncStateWriter, never()).advanceSyncToken(any(), any(), any());
+    }
+
+    private CalendarSyncService service(GoogleCalendarSyncClient client) {
+        CalendarSyncService replacement = new CalendarSyncService(connectionRepository, calendarEventWriter, syncStateWriter,
+                eventRepository, planCreationService, planRevisionRepository, encryptor, restClient, client);
+        ReflectionTestUtils.setField(replacement, "googleTokenUrl", "https://oauth.example/token");
+        ReflectionTestUtils.setField(replacement, "googleClientId", "client");
+        ReflectionTestUtils.setField(replacement, "googleClientSecret", "secret");
+        return replacement;
+    }
+
+    private CalendarConnection connection(String syncToken) {
+        CalendarConnection connection = CalendarConnection.builder()
+                .calendarConnectionId(UUID.randomUUID())
+                .userId(UUID.randomUUID())
+                .provider("google")
+                .externalAccountId("account")
+                .refreshTokenEnc(new byte[] {1})
+                .connectedAt(Instant.now())
+                .syncToken(syncToken)
+                .build();
+        return connection;
+    }
+
+    private GoogleCalendarSyncEvent event() {
+        Instant start = Instant.parse("2026-08-20T01:00:00Z");
+        return new GoogleCalendarSyncEvent("one", "confirmed", "title", new GoogleEventDateTime(start),
+                new GoogleEventDateTime(start.plusSeconds(3600)));
+    }
+}
