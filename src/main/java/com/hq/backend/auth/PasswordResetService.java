@@ -75,29 +75,31 @@ public class PasswordResetService {
 
     /**
      * 토큰 검증 → 비밀번호 변경 → 전 기기 세션 무효화 → 토큰 소비.
+     * 원자적 UPDATE로 토큰을 소비하므로 동시 요청 시 하나만 성공한다.
      */
     @Transactional
     public void executeReset(String rawToken, String newPassword) {
         validatePasswordLength(newPassword);
 
-        PasswordResetToken token = tokenRepository.findByTokenHash(TokenHashUtil.sha256(rawToken))
-                .orElseThrow(this::invalidToken);
-        Instant now = Instant.now();
-        if (token.getConsumedAt() != null || !token.getExpiresAt().isAfter(now)) {
+        String tokenHash = TokenHashUtil.sha256(rawToken);
+
+        // 원자적 소비: 동시 요청 중 하나만 affected=1
+        int consumed = tokenRepository.consumeByTokenHash(tokenHash);
+        if (consumed == 0) {
             throw invalidToken();
         }
+
+        PasswordResetToken token = tokenRepository.findByTokenHash(tokenHash)
+                .orElseThrow(this::invalidToken);
 
         UserCredential credential = userCredentialRepository.findById(token.getUserId())
                 .orElseThrow(this::invalidToken);
 
         credential.setPasswordHash(passwordEncoder.encode(newPassword));
-        credential.setPasswordUpdatedAt(now);
+        credential.setPasswordUpdatedAt(Instant.now());
 
         // 전 기기 세션 무효화
         refreshTokenRepository.revokeAllByUserId(token.getUserId());
-
-        // 토큰 소비
-        token.setConsumedAt(now);
     }
 
     /**
@@ -131,20 +133,22 @@ public class PasswordResetService {
     }
 
     /**
-     * 이메일 변경 확인. 토큰 검증 → 소비. 토큰에 저장된 정보를 반환.
+     * 이메일 변경 확인. 원자적 토큰 소비 → 정보 반환.
      */
     @Transactional
     public EmailChangeResult consumeEmailChangeToken(String rawToken) {
-        PasswordResetToken token = tokenRepository.findByTokenHash(TokenHashUtil.sha256(rawToken))
-                .orElseThrow(this::invalidToken);
-        Instant now = Instant.now();
-        if (token.getConsumedAt() != null || !token.getExpiresAt().isAfter(now)) {
+        String tokenHash = TokenHashUtil.sha256(rawToken);
+
+        int consumed = tokenRepository.consumeByTokenHash(tokenHash);
+        if (consumed == 0) {
             throw invalidToken();
         }
+
+        PasswordResetToken token = tokenRepository.findByTokenHash(tokenHash)
+                .orElseThrow(this::invalidToken);
         if (!"email_change".equals(token.getType())) {
             throw invalidToken();
         }
-        token.setConsumedAt(now);
         return new EmailChangeResult(token.getUserId(), token.getNewEmail());
     }
 
