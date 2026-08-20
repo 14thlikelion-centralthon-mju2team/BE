@@ -23,18 +23,16 @@ class EnvironmentControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
+    // 테스트 환경은 기상청 인증키가 없어 StubEnvironmentProvider가 응답한다. 그 고정값을
+    // 진짜 날씨처럼 내보내면 안 되므로 404여야 한다 — 이 테스트가 그 경계를 지킨다.
     @Test
-    void 대표_장소가_있으면_한국어_표시값으로_현재_환경을_내려준다() throws Exception {
+    void 관측값이_아닌_stub_스냅샷은_화면에_내보내지_않는다() throws Exception {
         String accessToken = signupAndLogin();
         registerPrimaryPlace(accessToken);
 
         mockMvc.perform(get("/environment/current").header("Authorization", "Bearer " + accessToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.temperature").value(22))
-                .andExpect(jsonPath("$.sky").value("구름많음"))
-                .andExpect(jsonPath("$.pm10Grade").value("보통"))
-                .andExpect(jsonPath("$.pm25Grade").value("보통"))
-                .andExpect(jsonPath("$.uvIndex").value(3));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("ENVIRONMENT_UNAVAILABLE"));
     }
 
     @Test

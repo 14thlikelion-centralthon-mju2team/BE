@@ -7,6 +7,7 @@ import com.hq.backend.place.PlaceCoordinateCodec;
 import com.hq.backend.place.UserPlace;
 import com.hq.backend.place.UserPlaceRepository;
 import com.hq.backend.provider.EnvironmentProvider;
+import com.hq.backend.provider.EnvironmentSnapshot;
 import com.hq.backend.provider.GeoPoint;
 import java.time.Instant;
 import java.util.UUID;
@@ -36,6 +37,20 @@ public class EnvironmentController {
         GeoPoint point = new GeoPoint(
                 placeCoordinateCodec.decode(place.getLatEnc()),
                 placeCoordinateCodec.decode(place.getLngEnc()));
-        return EnvironmentResponse.from(environmentProvider.fetch(point, Instant.now()));
+        EnvironmentSnapshot snapshot = environmentProvider.fetch(point, Instant.now());
+
+        // 관측값이 아닌 스냅샷은 화면에 내보내지 않는다. stub(인증키 미설정)과
+        // kma_fallback(API 호출 실패)은 22도·구름많음 같은 고정값이라, 그대로 내려주면
+        // 사용자에게 지어낸 날씨를 보여주게 된다. 계획 엔진은 degraded 입력으로 계속
+        // 쓰지만 그건 내부 계산이고 이 API는 사람이 읽는 값이다.
+        if (!isObserved(snapshot.provider())) {
+            throw new ApiException(
+                    HttpStatus.NOT_FOUND, "ENVIRONMENT_UNAVAILABLE", "현재 환경 정보를 가져올 수 없습니다.");
+        }
+        return EnvironmentResponse.from(snapshot);
+    }
+
+    private boolean isObserved(String provider) {
+        return provider != null && !"stub".equals(provider) && !provider.endsWith("_fallback");
     }
 }
