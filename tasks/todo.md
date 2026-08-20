@@ -41,12 +41,12 @@
   - [x] RED: scheduled CREATED-only integration and token-CAS ordering
   - [x] GREEN: isolated writer, nonblocking guard, orchestration, sync integration
   - [x] Verify focused PostgreSQL/orchestrator/sync, full suite, diff, review, report, commit
-- [ ] Task 7: pending 조회와 stale-safe 답변 API (in progress)
+- [x] Task 7: pending 조회와 stale-safe 답변 API
   - [x] RED: pending projection ownership/range/privacy and stale-safe answer/PATCH controller contracts
   - [x] GREEN: Event-first lock workflow, review closure, and validation boundaries
   - [x] RED/GREEN: PostgreSQL double-answer and PATCH-first races
-  - [ ] Verify focused, adjacent Task 6, full suite, diff check; self-review, report, and commit
-- [ ] Task 8: 24시간 방어 purge와 90일 review 삭제
+  - [x] Verify focused, adjacent Task 6, full suite, diff check; self-review, report, and commit
+- [ ] Task 8: 24시간 방어 purge와 90일 review 삭제 (in progress)
 - [ ] Task 9: 저카디널리티 관측성과 배포 설정
 - [ ] Task 10: 골든셋, 통합 회귀, 출시 증거
 
@@ -68,3 +68,4 @@
 - Task 5 final scoped review: APPROVED (Critical 0, Important 0).
 - Task 6: review-only orchestration, atomic title-free review insert, scheduled-only gating, and provider-call budgeting verified with PostgreSQL and the complete 214-test suite.
 - Task 6 independent review: APPROVED (Critical 0, Important 0, Minor 0).
+- Task 7 independent review: APPROVED (Spec Critical/Important/Minor 0; Quality Critical/Important 0, Minor 3). Bounded concurrency waits and full tie-break coverage are deferred to Task 10 final regressions.

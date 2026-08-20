@@ -24,3 +24,4 @@
 
 - Initial independent review reported three Important findings: missing stale eligibility filters in the projection, review-request validation status mismatch, and an unlocked delete/answer race.
 - All three were corrected with focused regression coverage. The unresponsive scoped reviewer was stopped; root scheduled a fresh post-commit independent review.
+- Fresh root independent review: production/spec Critical 0, Important 0, Minor 0; quality Critical 0, Important 0, Minor 3. Non-blocking test hardening items are tracked for Task 10.
