@@ -80,10 +80,13 @@ public class PasswordResetService {
     public void executeReset(String rawToken, String newPassword) {
         validatePasswordLength(newPassword);
 
-        PasswordResetToken token = tokenRepository.findByTokenHash(TokenHashUtil.sha256(rawToken))
+        PasswordResetToken token = tokenRepository.findByTokenHashForUpdate(TokenHashUtil.sha256(rawToken))
                 .orElseThrow(this::invalidToken);
         Instant now = Instant.now();
         if (token.getConsumedAt() != null || !token.getExpiresAt().isAfter(now)) {
+            throw invalidToken();
+        }
+        if (!"password_reset".equals(token.getType())) {
             throw invalidToken();
         }
 
@@ -135,7 +138,7 @@ public class PasswordResetService {
      */
     @Transactional
     public EmailChangeResult consumeEmailChangeToken(String rawToken) {
-        PasswordResetToken token = tokenRepository.findByTokenHash(TokenHashUtil.sha256(rawToken))
+        PasswordResetToken token = tokenRepository.findByTokenHashForUpdate(TokenHashUtil.sha256(rawToken))
                 .orElseThrow(this::invalidToken);
         Instant now = Instant.now();
         if (token.getConsumedAt() != null || !token.getExpiresAt().isAfter(now)) {
