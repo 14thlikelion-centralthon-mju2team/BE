@@ -4,14 +4,18 @@ import com.hq.backend.bootstrap.dto.BootstrapResponse;
 import com.hq.backend.bootstrap.dto.EngineConfigSummary;
 import com.hq.backend.bootstrap.dto.PlaceSummary;
 import com.hq.backend.bootstrap.dto.SettingsSummary;
+import com.hq.backend.bootstrap.dto.UserSummary;
+import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.permission.UserPermissionRepository;
 import com.hq.backend.permission.dto.PermissionResponse;
 import com.hq.backend.place.PlaceCoordinateCodec;
 import com.hq.backend.place.UserPlaceRepository;
 import com.hq.backend.setting.UserSettingRepository;
+import com.hq.backend.user.UserRepository;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 // M0 최소 범위 — places/settings는 실제 저장 데이터를 읽고, engineConfig는 아직 없는
@@ -29,9 +33,19 @@ public class BootstrapService {
     private final UserPlaceRepository userPlaceRepository;
     private final PlaceCoordinateCodec placeCoordinateCodec;
     private final UserSettingRepository userSettingRepository;
+    private final UserRepository userRepository;
     private final UserPermissionRepository userPermissionRepository;
 
     public BootstrapResponse bootstrap(UUID userId) {
+        UserSummary user = userRepository.findById(userId)
+                .map(found -> new UserSummary(
+                        found.getUserId().toString(),
+                        found.getNickname(),
+                        found.getTimezone(),
+                        found.getAccountStatus()))
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "사용자를 찾을 수 없습니다."));
+
         SettingsSummary settings = userSettingRepository.findById(userId)
                 .map(s -> new SettingsSummary(
                         s.getInitialPrepMinutes(),
@@ -57,6 +71,7 @@ public class BootstrapService {
                 .toList();
 
         return new BootstrapResponse(
+                user,
                 settings,
                 permissions,
                 places,

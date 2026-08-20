@@ -27,6 +27,10 @@ class BootstrapControllerTest {
 
         mockMvc.perform(get("/me/bootstrap").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.user.userId").exists())
+                .andExpect(jsonPath("$.user.nickname").isNotEmpty())
+                .andExpect(jsonPath("$.user.timezone").value("Asia/Seoul"))
+                .andExpect(jsonPath("$.user.accountStatus").value("active"))
                 .andExpect(jsonPath("$.settings.arrivalBufferMinutes").value(10))
                 .andExpect(jsonPath("$.settings.notificationSensitivity").value("normal"))
                 .andExpect(jsonPath("$.permissions").isEmpty())
