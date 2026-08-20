@@ -375,7 +375,7 @@ public class PlanCreationService {
                 .precipitationProb(java.math.BigDecimal.valueOf(snapshot.precipitationProb()))
                 .uvIndex(snapshot.uvIndex() < 0 ? null : (short) Math.round(snapshot.uvIndex()))
                 .pm10(snapshot.pm10() < 0 ? null : snapshot.pm10())
-                .pm25(snapshot.pm25())
+                .pm25(snapshot.pm25() != null && snapshot.pm25() < 0 ? null : snapshot.pm25())
                 .airGrade(snapshot.airGrade())
                 .estimatedOutdoorMinutes(estimatedOutdoorMinutes)
                 .weatherProvider(snapshot.provider())
