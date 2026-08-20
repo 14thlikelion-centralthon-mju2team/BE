@@ -859,7 +859,7 @@ void 요청은_store_false이고_tools를_포함하지_않는다() {
 // Task 6 — EventClassificationReviewWriterTest
 @Test
 void eligible_Event에는_원문없는_review만_생성한다() {
-    assertThat(writer.createIfEligible(eventId, validResult, askedAt))
+    assertThat(writer.createIfEligible(eventId, expectedEventRevision, validResult, askedAt))
             .isEqualTo(CreateReviewOutcome.CREATED);
     EventClassificationReview saved = reviewRepository.findAll().getFirst();
     assertThat(saved.getTitleSnapshot()).isNull();

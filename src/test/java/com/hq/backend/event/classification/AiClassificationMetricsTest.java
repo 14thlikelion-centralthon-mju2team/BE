@@ -90,7 +90,7 @@ class AiClassificationMetricsTest {
         AiClassificationProperties enabled = properties();
         AiClassificationGate consentGate = new AiClassificationGate(Mockito.mock(com.hq.backend.consent.UserConsentRepository.class), enabled, metrics);
         AiClassificationGate rolloutGate = new AiClassificationGate(Mockito.mock(com.hq.backend.consent.UserConsentRepository.class),
-                new AiClassificationProperties(URI.create("https://openai.test/v1"), "test-api-key", "gpt-4o-mini-2024-07-18", 3000, 10000,
+                new AiClassificationProperties(URI.create("https://api.openai.com/v1"), "test-api-key", "gpt-4o-mini-2024-07-18", 3000, 10000,
                         new AiClassificationProperties.Classification(true, 0, 5, 2, "privacy-v1", "classifier-v1", "prompt-v1", "schema-v1")), metrics);
 
         assertThat(consentGate.evaluate(java.util.UUID.randomUUID())).isEqualTo(AiGateOutcome.SKIPPED_CONSENT);
@@ -190,7 +190,7 @@ class AiClassificationMetricsTest {
 
     private AiClassificationProperties properties() {
         return new AiClassificationProperties(
-                URI.create("https://openai.test/v1"), "test-api-key", "gpt-4o-mini-2024-07-18", 3000, 10000,
+                URI.create("https://api.openai.com/v1"), "test-api-key", "gpt-4o-mini-2024-07-18", 3000, 10000,
                 new AiClassificationProperties.Classification(
                         true, 100, 5, 2, "privacy-v1", "classifier-v1", "prompt-v1", "schema-v1"));
     }
