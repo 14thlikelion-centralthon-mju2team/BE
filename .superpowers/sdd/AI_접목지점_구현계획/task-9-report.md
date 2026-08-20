@@ -23,3 +23,4 @@
 - Writer review outcomes use the existing `AFTER_COMMIT` event listener, including a failed writer transaction regression.
 - Removed calendar sync identifiers from failure logs and added an output-capture privacy regression.
 - Expanded the forced-tracked runbook with provider approval and exact rollout, rollback, and cost controls.
+- Final scoped re-review: APPROVED (Critical 0, Important 0).

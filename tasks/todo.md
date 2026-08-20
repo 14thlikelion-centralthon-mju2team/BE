@@ -58,7 +58,7 @@
   - [x] Publish review outcomes only after commit; verify rollback remains uncounted
   - [x] Align YAML, environment examples, Compose, and private-scrape runbook
   - [x] Run focused/adjacent/full verification, compose render, diff check, report, and commit
-- [ ] Task 10: 골든셋, 통합 회귀, 출시 증거
+- [ ] Task 10: 골든셋, 통합 회귀, 출시 증거 (in progress)
 
 ## Review
 
@@ -83,3 +83,4 @@
 - Task 8 independent review: APPROVED (Spec Critical/Important/Minor 0; Quality Critical/Important 0, Minor 3). Deterministic concurrency and exact-500 test hardening are deferred to Task 10.
 - Task 9: Added only low-cardinality AI classification counters/timers, transaction-after-commit review metrics, safe rollout configuration, and a private-scrape operating runbook. Focused, adjacent, full Gradle, and both Compose render checks passed before commit.
 - Task 9 review follow-up: fixed JDK timeout/incomplete outcome mapping, real backlog lag and partial-batch retention accounting, writer AFTER_COMMIT metrics, identifier-free sync failure logs, and the operating controls required for staged rollout/rollback.
+- Task 9 final scoped review: APPROVED (Critical 0, Important 0).
