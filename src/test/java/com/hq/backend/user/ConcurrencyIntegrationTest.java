@@ -5,15 +5,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.hq.backend.auth.PasswordResetService;
 import com.hq.backend.auth.PasswordResetToken;
 import com.hq.backend.auth.PasswordResetTokenRepository;
+import com.hq.backend.auth.RefreshToken;
+import com.hq.backend.auth.RefreshTokenRepository;
+import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.common.util.TokenHashUtil;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -21,12 +24,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.annotation.DirtiesContext;
 
 /**
- * 동시성 회귀 테스트 — PESSIMISTIC_WRITE 락이 race condition을 방지하는지 검증.
- * CI의 PostgreSQL services에서 실행된다.
+ * 동시성 회귀 테스트 — PESSIMISTIC_WRITE 락과 트랜잭션의 최종 상태를 PostgreSQL에서 검증한다.
  */
 @SpringBootTest
 @DirtiesContext
 class ConcurrencyIntegrationTest {
+
+    private static final String SUCCESS = "SUCCESS";
 
     @Autowired
     private UserIdentityRepository userIdentityRepository;
@@ -41,6 +45,9 @@ class ConcurrencyIntegrationTest {
     private PasswordResetTokenRepository tokenRepository;
 
     @Autowired
+    private RefreshTokenRepository refreshTokenRepository;
+
+    @Autowired
     private PasswordResetService passwordResetService;
 
     @Autowired
@@ -50,95 +57,95 @@ class ConcurrencyIntegrationTest {
     private PasswordEncoder passwordEncoder;
 
     /**
-     * #190: 두 요청이 동시에 각각의 provider를 해제하면 하나는 실패해야 한다.
+     * #190: 두 요청이 동시에 각각의 provider를 해제해도 마지막 identity는 보존해야 한다.
      */
     @Test
     void 동시에_두_provider를_해제하면_하나는_LAST_IDENTITY로_실패한다() throws Exception {
-        // Given: 사용자 + email identity + google identity
-        UUID userId = createTestUser("concurrency-provider-" + UUID.randomUUID().toString().substring(0, 8) + "@test.com");
-        UUID emailIdentityId = createIdentity(userId, "email", "concurrency-provider@test.com");
-        UUID googleIdentityId = createIdentity(userId, "google", "google-uid-concurrent");
+        String email = "concurrency-provider-" + UUID.randomUUID() + "@test.com";
+        UUID userId = createTestUser(email);
+        UUID emailIdentityId = createIdentity(userId, "email", email);
+        UUID googleIdentityId = createIdentity(userId, "google", "google-" + UUID.randomUUID());
 
-        // When: 동시에 두 identity를 해제
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicInteger successCount = new AtomicInteger(0);
-        AtomicInteger failCount = new AtomicInteger(0);
+        List<String> results = runConcurrently(List.of(
+                () -> accountManagementService.unlinkProvider(userId, emailIdentityId),
+                () -> accountManagementService.unlinkProvider(userId, googleIdentityId)));
 
-        Future<?> f1 = executor.submit(() -> {
-            try {
-                latch.await();
-                accountManagementService.unlinkProvider(userId, emailIdentityId);
-                successCount.incrementAndGet();
-            } catch (Exception e) {
-                failCount.incrementAndGet();
-            }
-        });
-
-        Future<?> f2 = executor.submit(() -> {
-            try {
-                latch.await();
-                accountManagementService.unlinkProvider(userId, googleIdentityId);
-                successCount.incrementAndGet();
-            } catch (Exception e) {
-                failCount.incrementAndGet();
-            }
-        });
-
-        latch.countDown(); // 동시 실행
-        f1.get();
-        f2.get();
-        executor.shutdown();
-
-        // Then: 하나만 성공, 하나는 실패 (최소 1개 identity 유지)
-        assertThat(successCount.get()).isEqualTo(1);
-        assertThat(failCount.get()).isEqualTo(1);
-
-        List<UserIdentity> remaining = userIdentityRepository.findAllByUserIdAndRevokedAtIsNull(userId);
-        assertThat(remaining).hasSize(1);
+        assertThat(results).containsExactlyInAnyOrder(SUCCESS, "LAST_IDENTITY");
+        assertThat(userIdentityRepository.findAllByUserIdAndRevokedAtIsNull(userId)).hasSize(1);
+        assertThat(userIdentityRepository.findAllById(List.of(emailIdentityId, googleIdentityId)))
+                .hasSize(2)
+                .filteredOn(identity -> identity.getRevokedAt() != null)
+                .hasSize(1);
     }
 
     /**
-     * #193: 같은 reset 토큰으로 동시에 비밀번호를 변경하면 하나만 성공해야 한다.
+     * #193: 같은 reset 토큰은 한 트랜잭션만 소비하고 비밀번호 변경과 세션 폐기를 함께 커밋해야 한다.
      */
     @Test
     void 동시에_같은_토큰으로_비밀번호_재설정하면_하나만_성공한다() throws Exception {
-        // Given: 사용자 + credential + reset token
-        UUID userId = createTestUser("concurrency-reset-" + UUID.randomUUID().toString().substring(0, 8) + "@test.com");
-        createCredential(userId, "OldPassword123!");
+        UUID userId = createTestUser("concurrency-reset-" + UUID.randomUUID() + "@test.com");
+        String oldPassword = "OldPassword123!";
+        String firstPassword = "NewPassword0!!";
+        String secondPassword = "NewPassword1!!";
+        createCredential(userId, oldPassword);
+
+        RefreshToken firstSession = createRefreshToken(userId);
+        RefreshToken secondSession = createRefreshToken(userId);
         String rawToken = UUID.randomUUID().toString();
         createResetToken(userId, rawToken);
 
-        // When: 동시에 같은 토큰으로 재설정
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicInteger successCount = new AtomicInteger(0);
-        AtomicInteger failCount = new AtomicInteger(0);
+        List<String> results = runConcurrently(List.of(
+                () -> passwordResetService.executeReset(rawToken, firstPassword),
+                () -> passwordResetService.executeReset(rawToken, secondPassword)));
 
-        List<Future<?>> futures = new java.util.ArrayList<>();
-        for (int i = 0; i < 2; i++) {
-            final String newPassword = "NewPassword" + i + "!!";
-            futures.add(executor.submit(() -> {
-                try {
-                    latch.await();
-                    passwordResetService.executeReset(rawToken, newPassword);
-                    successCount.incrementAndGet();
-                } catch (Exception e) {
-                    failCount.incrementAndGet();
-                }
-            }));
-        }
+        assertThat(results).containsExactlyInAnyOrder(SUCCESS, "INVALID_TOKEN");
 
-        latch.countDown();
-        for (Future<?> f : futures) { f.get(); }
-        executor.shutdown();
+        PasswordResetToken consumedToken = tokenRepository.findByTokenHash(TokenHashUtil.sha256(rawToken))
+                .orElseThrow();
+        assertThat(consumedToken.getConsumedAt()).isNotNull();
 
-        // Then: 하나만 성공
-        assertThat(successCount.get()).isEqualTo(1);
-        assertThat(failCount.get()).isEqualTo(1);
+        UserCredential credential = userCredentialRepository.findById(userId).orElseThrow();
+        assertThat(passwordEncoder.matches(oldPassword, credential.getPasswordHash())).isFalse();
+        assertThat(passwordEncoder.matches(firstPassword, credential.getPasswordHash())
+                ^ passwordEncoder.matches(secondPassword, credential.getPasswordHash())).isTrue();
+
+        assertThat(refreshTokenRepository.findAllById(List.of(firstSession.getId(), secondSession.getId())))
+                .allSatisfy(session -> assertThat(session.getRevokedAt()).isNotNull());
     }
 
-    // ─── Helpers ───
+    private List<String> runConcurrently(List<ThrowingAction> actions) throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(actions.size());
+        CountDownLatch ready = new CountDownLatch(actions.size());
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<String>> futures = new ArrayList<>();
+
+        try {
+            for (ThrowingAction action : actions) {
+                futures.add(executor.submit(() -> {
+                    ready.countDown();
+                    start.await();
+                    try {
+                        action.run();
+                        return SUCCESS;
+                    } catch (ApiException exception) {
+                        return exception.getCode();
+                    }
+                }));
+            }
+
+            ready.await();
+            start.countDown();
+
+            List<String> results = new ArrayList<>();
+            for (Future<String> future : futures) {
+                results.add(future.get());
+            }
+            return results;
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+        }
+    }
 
     private UUID createTestUser(String email) {
         User user = userRepository.save(User.builder()
@@ -166,18 +173,32 @@ class ConcurrencyIntegrationTest {
         userCredentialRepository.save(UserCredential.builder()
                 .userId(userId)
                 .passwordHash(passwordEncoder.encode(password))
-                .passwordAlgo("bcrypt")
+                .passwordAlgo("argon2id")
                 .passwordUpdatedAt(Instant.now())
                 .failedAttempts((short) 0)
                 .build());
     }
 
     private void createResetToken(UUID userId, String rawToken) {
+        Instant now = Instant.now();
         tokenRepository.save(PasswordResetToken.builder()
                 .userId(userId)
                 .tokenHash(TokenHashUtil.sha256(rawToken))
                 .type("password_reset")
-                .expiresAt(Instant.now().plusSeconds(1800))
+                .expiresAt(now.plusSeconds(1800))
+                .createdAt(now)
                 .build());
+    }
+
+    private RefreshToken createRefreshToken(UUID userId) {
+        return refreshTokenRepository.save(RefreshToken.create(
+                userId,
+                TokenHashUtil.sha256(UUID.randomUUID().toString()),
+                Instant.now().plusSeconds(3600)));
+    }
+
+    @FunctionalInterface
+    private interface ThrowingAction {
+        void run();
     }
 }

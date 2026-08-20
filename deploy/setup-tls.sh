@@ -7,17 +7,56 @@
 set -euo pipefail
 
 DOMAIN=${1:?"사용법: $0 <도메인명> (예: api.ensom.app)"}
+CERTBOT_EMAIL=${CERTBOT_EMAIL:-admin@ensom.app}
+PROJECT_DIR=$(pwd -P)
+COMPOSE_FILE="$PROJECT_DIR/docker-compose.yml"
+NGINX_CONFIG="$PROJECT_DIR/nginx/default.conf"
+ACME_WEBROOT=/var/www/certbot
+
+if [[ ! "$DOMAIN" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$ ]]; then
+    echo "오류: 유효한 DNS 도메인명을 입력하세요: $DOMAIN" >&2
+    exit 2
+fi
+
+if [[ ! -f "$COMPOSE_FILE" || ! -f "$NGINX_CONFIG" ]]; then
+    echo "오류: 프로젝트 루트에서 실행해야 합니다." >&2
+    exit 2
+fi
+
+BACKUP_CONFIG=$(mktemp)
+GENERATED_CONFIG=$(mktemp)
+CONFIG_REPLACED=false
+cleanup() {
+    status=$?
+    if [[ $status -ne 0 && "$CONFIG_REPLACED" == true ]]; then
+        echo "TLS 설정 적용 실패 — 기존 nginx 설정을 복구합니다." >&2
+        cp "$BACKUP_CONFIG" "$NGINX_CONFIG"
+        docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -s reload 2>/dev/null || true
+    fi
+    rm -f "$BACKUP_CONFIG" "$GENERATED_CONFIG"
+    exit "$status"
+}
+trap cleanup EXIT
 
 echo "=== 1. certbot 설치 ==="
 apt-get update -qq
 apt-get install -y certbot
+mkdir -p "$ACME_WEBROOT"
 
-echo "=== 2. 인증서 발급 (standalone — nginx 중지 필요) ==="
-docker compose -f docker-compose.yml down nginx 2>/dev/null || true
-certbot certonly --standalone -d "$DOMAIN" --non-interactive --agree-tos --email admin@ensom.app
+echo "=== 2. HTTP nginx 시작 및 webroot 인증서 발급 ==="
+# nginx는 중지하지 않는다. 기본 HTTP 설정의 ACME location이 challenge 파일을 제공한다.
+docker compose -f "$COMPOSE_FILE" up -d nginx
+certbot certonly \
+    --webroot \
+    --webroot-path "$ACME_WEBROOT" \
+    -d "$DOMAIN" \
+    --non-interactive \
+    --agree-tos \
+    --keep-until-expiring \
+    --email "$CERTBOT_EMAIL"
 
-echo "=== 3. nginx TLS 설정 생성 ==="
-cat > nginx/default.conf <<NGINX
+echo "=== 3. nginx TLS 설정 생성 및 검증 ==="
+cat > "$GENERATED_CONFIG" <<NGINX
 limit_req_zone \$binary_remote_addr zone=api:10m rate=30r/s;
 
 upstream api {
@@ -27,13 +66,12 @@ upstream api {
 server {
     listen 80;
     server_name $DOMAIN;
+    server_tokens off;
 
-    # ACME challenge (인증서 갱신용)
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
 
-    # 나머지는 HTTPS로 리다이렉트
     location / {
         return 301 https://\$host\$request_uri;
     }
@@ -42,6 +80,7 @@ server {
 server {
     listen 443 ssl;
     server_name $DOMAIN;
+    server_tokens off;
 
     ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
@@ -55,6 +94,8 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
+    # 현재 배포 계약은 CDN/LB 없는 단독 서버 직접 접속이다.
+    # 프록시 도입 전에는 신뢰할 CIDR과 real_ip_header를 별도로 구성해야 한다.
     location / {
         limit_req zone=api burst=60 nodelay;
         proxy_pass http://api;
@@ -84,26 +125,31 @@ server {
 }
 NGINX
 
-echo "=== 4. docker-compose.yml nginx 포트 수정 ==="
-# 443 포트 추가가 필요하면 수동으로 docker-compose.yml 수정
-echo "⚠️ docker-compose.yml의 nginx ports에 443:443을 추가하고,"
-echo "   volumes에 인증서 경로를 마운트해야 합니다:"
-echo ""
-echo "  nginx:"
-echo "    ports:"
-echo "      - \"80:80\""
-echo "      - \"443:443\""
-echo "    volumes:"
-echo "      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro"
-echo "      - /etc/letsencrypt:/etc/letsencrypt:ro"
-echo "      - /var/www/certbot:/var/www/certbot:ro"
+cp "$NGINX_CONFIG" "$BACKUP_CONFIG"
+cp "$GENERATED_CONFIG" "$NGINX_CONFIG"
+CONFIG_REPLACED=true
 
-echo ""
-echo "=== 5. 재시작 ==="
-echo "docker compose up -d 실행하세요."
-echo ""
-echo "=== 6. 인증서 자동 갱신 cron 등록 ==="
-echo "0 3 * * * certbot renew --quiet && docker compose restart nginx"
-echo "위 줄을 crontab -e로 추가하세요."
-echo ""
-echo "✅ TLS 설정 완료. https://$DOMAIN 으로 접속 가능합니다."
+docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -t
+docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -s reload
+CONFIG_REPLACED=false
+
+echo "=== 4. 자동 갱신 deploy hook 설치 ==="
+HOOK_DIR=/etc/letsencrypt/renewal-hooks/deploy
+HOOK_FILE="$HOOK_DIR/reload-ensom-nginx.sh"
+mkdir -p "$HOOK_DIR"
+printf '#!/bin/bash\nset -euo pipefail\ncd %q\ndocker compose -f docker-compose.yml exec -T nginx nginx -s reload\n' \
+    "$PROJECT_DIR" > "$HOOK_FILE"
+chmod 700 "$HOOK_FILE"
+
+if command -v systemctl >/dev/null 2>&1 && systemctl enable --now certbot.timer; then
+    echo "certbot systemd timer를 활성화했습니다."
+else
+    echo '17 3 * * * root /usr/bin/certbot renew --quiet' > /etc/cron.d/ensom-certbot-renew
+    chmod 644 /etc/cron.d/ensom-certbot-renew
+    echo "certbot 갱신 cron을 등록했습니다."
+fi
+
+echo "=== 5. 갱신 dry-run ==="
+certbot renew --dry-run
+
+echo "TLS 설정 완료: https://$DOMAIN"

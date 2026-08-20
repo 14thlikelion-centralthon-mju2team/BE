@@ -106,7 +106,7 @@ class AuthServiceTest {
         when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
         GoogleUserInfoResponse info = new GoogleUserInfoResponse("google-sub-1", "new@example.com", "ensom-client-id");
         when(responseSpec.body(GoogleUserInfoResponse.class)).thenReturn(info);
-        when(userIdentityRepository.findByProviderAndProviderUidAndRevokedAtIsNull("google", "google-sub-1")).thenReturn(Optional.empty());
+        when(userIdentityRepository.findByProviderAndProviderUid("google", "google-sub-1")).thenReturn(Optional.empty());
         when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<User> callback = invocation.getArgument(0);
             return callback.doInTransaction(null);
