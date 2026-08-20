@@ -40,7 +40,9 @@
 | `JAVA_HOME=...openjdk@21... ./gradlew build --console=plain` | exit 0 | 기본 테스트는 live eval 제외 |
 | `docker compose -f docker-compose.yml config -q` | exit 0 | CI compose |
 | `docker compose -f docker-compose.local.yml config -q` | exit 0 | local compose |
-| `cd ai/plan-engine && uv run pytest -q && uv run ruff check . && uv run mypy app` | blocked before pytest | 시스템 Python 3.14가 `pydantic-core 2.33.2`/PyO3 최대 3.13을 초과해 wheel build 실패. Task 10 diff에는 `ai/plan-engine` 변경이 없음. |
+| `cd ai/plan-engine && uv run --no-project --python 3.13 ... pytest -q` | exit 0 | pytest 전체 통과 (명시적 CPython 3.13 환경) |
+| `cd ai/plan-engine && uv run --no-project --python 3.13 ... ruff check .` | exit 0 | `All checks passed!` |
+| `cd ai/plan-engine && uv run --no-project --python 3.13 ... mypy app` | exit 0 | `Success: no issues found in 61 source files` |
 | `git diff --check` | exit 0 | 최종 재실행 전에도 공백 오류 없음 |
 
 테스트 수, 각 exit code, 최종 SHA, 미실행 사유는 최종 검증 완료 시 이 표와 Task 10 report에 동기화한다.

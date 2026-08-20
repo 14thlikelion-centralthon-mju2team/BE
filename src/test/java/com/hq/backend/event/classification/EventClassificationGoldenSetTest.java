@@ -18,6 +18,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class EventClassificationGoldenSetTest {
 
@@ -68,8 +71,25 @@ class EventClassificationGoldenSetTest {
 
         assertThat(schemaValidResponses / (double) providerCalls).isGreaterThanOrEqualTo(0.99);
         assertThat(serverAcceptedResponses).isEqualTo(providerCalls);
-        assertThat(providerCalls - cases.stream().filter(GoldenCase::validInput).count()).isZero();
         server.verify();
+    }
+
+    @Test
+    void invalid_golden_inputs_are_rejected_at_the_orchestrator_boundary_without_provider_calls() throws Exception {
+        EventClassifier provider = mock(EventClassifier.class);
+        AiClassificationGate gate = mock(AiClassificationGate.class);
+        when(gate.evaluate(org.mockito.ArgumentMatchers.any())).thenReturn(AiGateOutcome.ALLOWED);
+        EventClassificationOrchestrator orchestrator = new EventClassificationOrchestrator(gate,
+                new CalendarTitleNormalizer(), new AiClassificationConcurrencyGuard(testProperties()), provider,
+                mock(EventClassificationReviewWriter.class), new AiClassificationMetrics(new SimpleMeterRegistry()));
+
+        for (GoldenCase goldenCase : loadGoldenCases()) {
+            if (!goldenCase.validInput()) {
+                assertThat(orchestrator.classifyCreated(java.util.UUID.randomUUID(), java.util.UUID.randomUUID(),
+                        goldenCase.title(), 1)).isEqualTo(ClassificationAttemptOutcome.SKIPPED_INVALID_INPUT);
+            }
+        }
+        verifyNoInteractions(provider);
     }
 
     private List<GoldenCase> loadGoldenCases() throws Exception {
@@ -113,11 +133,15 @@ class EventClassificationGoldenSetTest {
     }
 
     private OpenAiEventClassifier classifier(RestClient restClient) {
-        return new OpenAiEventClassifier(restClient, OBJECT_MAPPER, new AiClassificationProperties(
+        return new OpenAiEventClassifier(restClient, OBJECT_MAPPER, testProperties(),
+                new AiClassificationMetrics(new SimpleMeterRegistry()));
+    }
+
+    private AiClassificationProperties testProperties() {
+        return new AiClassificationProperties(
                 URI.create("https://openai.fixture/v1"), "fixture-api-key", AiClassificationGate.PINNED_MODEL,
                 3_000, 10_000, new AiClassificationProperties.Classification(true, 100, 200, 2,
-                "privacy-v1", "classifier-v1", "prompt-v1", "schema-v1")),
-                new AiClassificationMetrics(new SimpleMeterRegistry()));
+                "privacy-v1", "classifier-v1", "prompt-v1", "schema-v1"));
     }
 
     private String completedResponse(String expected) {

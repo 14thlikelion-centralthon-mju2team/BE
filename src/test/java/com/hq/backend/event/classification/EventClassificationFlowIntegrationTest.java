@@ -248,7 +248,7 @@ class EventClassificationFlowIntegrationTest {
                 List.of(googleEvent("canary-failure", "일정 " + canary, 2)));
         expectClassifier("online");
         openAiServer.expect(requestTo("https://openai.fixture/v1/responses"))
-                .andRespond(withSuccess(completedResponseText(canary), MediaType.APPLICATION_JSON));
+                .andRespond(request -> { throw new java.net.SocketTimeoutException(canary + " provider-body"); });
 
         sync(connection, true);
 
@@ -260,7 +260,7 @@ class EventClassificationFlowIntegrationTest {
                 .allSatisfy(review -> assertThat(java.util.stream.Stream.of(review.getTitleSnapshot(), review.getUserAnswer(), review.getSuggestedValue(),
                         review.getModelVersion(), review.getClassifierVersion(), review.getPromptVersion(), review.getSchemaVersion()).toList())
                         .noneMatch(value -> value != null && value.contains(canary)));
-        assertThat(output).doesNotContain(canary, "task10 timeout canary", "task10-fixture-key");
+        assertThat(output).doesNotContain(canary, "provider-body", "task10-fixture-key");
         openAiServer.verify();
     }
 

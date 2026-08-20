@@ -19,7 +19,7 @@
 - `./gradlew clean test --console=plain`: exit 0, 257 tests, 0 failures, JDK 21/PostgreSQL 16.
 - `./gradlew build --console=plain`: exit 0.
 - Both Compose render commands: exit 0.
-- Python plan-engine verification is blocked before pytest: current `uv` selects CPython 3.14, while `pydantic-core 2.33.2` / PyO3 supports through Python 3.13. `git diff --name-only bc3609c -- ai/plan-engine` is empty.
+- Python plan-engine verification used explicit `uv --no-project --python 3.13` with pinned dependencies: pytest all passed, Ruff reported `All checks passed!`, and mypy reported `Success: no issues found in 61 source files`. `git diff --name-only bc3609c -- ai/plan-engine` is empty.
 
 ## Honest release boundary
 
