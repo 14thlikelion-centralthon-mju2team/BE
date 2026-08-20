@@ -117,7 +117,10 @@ class WellnessEventGateTest {
     @Test
     void stop_today_응답은_DB제약을_통과하고_동일_action의_미발송_schedule을_취소한다() throws Exception {
         UUID userId = extractUserId(signupAndLogin());
-        Instant now = Instant.now();
+        Instant now = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))
+                .atTime(12, 0)
+                .atZone(java.time.ZoneId.of("Asia/Seoul"))
+                .toInstant();
         setUpEnrouteEventWithScore(userId, now, 80);
         setUpEnrouteEventWithScore(userId, now.plusSeconds(1800), 80);
 
