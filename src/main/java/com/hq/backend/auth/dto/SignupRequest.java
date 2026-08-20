@@ -8,6 +8,6 @@ import jakarta.validation.constraints.Size;
 // age_confirmed_at 컬럼 자체가 없다(V5, "Ensom 범위에 없음").
 public record SignupRequest(
         @NotBlank @Email String email,
-        @NotBlank @Size(min = 8) String password
+        @NotBlank @Size(min = 10, message = "비밀번호는 10자 이상이어야 합니다.") String password
 ) {
 }
