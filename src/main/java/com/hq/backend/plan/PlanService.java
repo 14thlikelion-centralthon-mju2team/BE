@@ -62,7 +62,7 @@ public class PlanService {
     @Transactional
     public PlanRecalculateResponse recalculate(UUID userId, UUID eventId) {
         Event event = findOwnedEvent(userId, eventId);
-        PlanRevision active = findActive(eventId);
+        PlanRevision active = findActiveForUpdate(eventId);
 
         // uq_active_plan_per_event(부분 유니크)가 event_id당 active 리비전 1개만 허용한다.
         // Hibernate는 같은 플러시에서 INSERT를 UPDATE보다 먼저 내보내므로, 새 리비전을 만들기
@@ -94,7 +94,7 @@ public class PlanService {
     // §9.5 — 사용자 직접 수정은 항상 새 리비전을 만든다(inputHash 비교 없음).
     @Transactional
     public PlanDetailResponse patch(UUID userId, UUID planId, PlanPatchRequest request) {
-        PlanRevision active = findOwnedActive(userId, planId);
+        PlanRevision active = findOwnedActiveForUpdate(userId, planId);
         Event event = eventRepository.findById(active.getEventId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PLAN_NOT_FOUND", "계획을 찾을 수 없습니다."));
 
@@ -120,7 +120,7 @@ public class PlanService {
     // §10.2 — 후보를 다시 조회해 같은 routeType을 우선 선택하고 새 리비전을 만든다.
     @Transactional
     public PlanDetailResponse selectRoute(UUID userId, UUID planId, UUID routeOptionId) {
-        PlanRevision active = findOwnedActive(userId, planId);
+        PlanRevision active = findOwnedActiveForUpdate(userId, planId);
         RouteOption chosen = routeOptionRepository.findById(routeOptionId)
                 .filter(r -> r.getPlanId().equals(active.getPlanId()))
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "ROUTE_OPTION_NOT_FOUND", "경로 후보를 찾을 수 없습니다."));
@@ -154,8 +154,15 @@ public class PlanService {
         return revision;
     }
 
-    private PlanRevision findOwnedActive(UUID userId, UUID planId) {
-        PlanRevision revision = findOwned(userId, planId);
+    /**
+     * PATCH와 route 선택은 같은 active revision을 잠근 뒤 상태를 확인한다.
+     * 선행 요청이 새 revision을 확정했다면 대기한 요청은 PLAN_NOT_ACTIVE로 종료한다.
+     */
+    private PlanRevision findOwnedActiveForUpdate(UUID userId, UUID planId) {
+        PlanRevision revision = planRevisionRepository.findByIdForUpdate(planId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PLAN_NOT_FOUND", "계획을 찾을 수 없습니다."));
+        eventRepository.findByEventIdAndUserId(revision.getEventId(), userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PLAN_NOT_FOUND", "계획을 찾을 수 없습니다."));
         if (!"active".equals(revision.getPlanStatus())) {
             throw new ApiException(HttpStatus.CONFLICT, "PLAN_NOT_ACTIVE", "이미 새 리비전으로 대체된 계획입니다.");
         }
@@ -170,6 +177,12 @@ public class PlanService {
     private PlanRevision findActive(UUID eventId) {
         return planRevisionRepository.findByEventIdAndPlanStatus(eventId, "active")
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PLAN_NOT_FOUND", "활성 계획이 없습니다."));
+    }
+
+    /** 재계산 시작 전에 현재 active revision을 잠가 active 상태 전이를 직렬화한다. */
+    private PlanRevision findActiveForUpdate(UUID eventId) {
+        return planRevisionRepository.findActiveByEventIdForUpdate(eventId)
+                .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "PLAN_NOT_ACTIVE", "활성 계획이 변경되었습니다. 다시 시도해 주세요."));
     }
 
     private PlanDetailResponse toDetail(PlanRevision revision) {
