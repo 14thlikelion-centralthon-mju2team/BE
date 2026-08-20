@@ -64,7 +64,7 @@ class EventOutcomeControllerTest {
 
         mockMvc.perform(get("/events/" + eventIdString + "/execution").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.arrivalResult").value("LATE"))
+                .andExpect(jsonPath("$.arrivalResult").value("late"))
                 .andExpect(jsonPath("$.delayReasons[0].reasonCode").value("prep_late"));
     }
 
@@ -80,7 +80,7 @@ class EventOutcomeControllerTest {
                                 {"prepTimingAssessment":"TOO_EARLY","arrivalResult":"ON_TIME","rushAssessment":"NOT_RUSHED"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.prepTimingAssessment").value("TOO_EARLY"));
+                .andExpect(jsonPath("$.prepTimingAssessment").value("too_early"));
 
         mockMvc.perform(post("/events/" + eventId + "/feedback")
                         .header("Authorization", "Bearer " + accessToken)
@@ -89,7 +89,7 @@ class EventOutcomeControllerTest {
                                 {"prepTimingAssessment":"APPROPRIATE"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.prepTimingAssessment").value("APPROPRIATE"))
+                .andExpect(jsonPath("$.prepTimingAssessment").value("appropriate"))
                 .andExpect(jsonPath("$.arrivalResult").value(nullValue()));
     }
 
@@ -105,7 +105,7 @@ class EventOutcomeControllerTest {
                                 {"prepTimingAssessment":"too_early","arrivalResult":"on_time","rushAssessment":"not_rushed"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.prepTimingAssessment").value("TOO_EARLY"));
+                .andExpect(jsonPath("$.prepTimingAssessment").value("too_early"));
     }
 
     private String createEvent(String accessToken) throws Exception {

@@ -202,7 +202,9 @@ public class PlanService {
                 .toList();
         PlanDetailResponse.WellnessScoreItem wellness = planWellnessScoreRepository.findById(revision.getPlanId())
                 .map(score -> new PlanDetailResponse.WellnessScoreItem(
-                        score.getWisScore(), score.getWisBand(), score.getWeightVersion(), score.getCalculatedAt()))
+                        score.getWisScore(), score.getWisBand(), score.getWeightVersion(),
+                        // armedActionCode는 arm된 경우에만 채워진다 — eventArmed는 그 파생값이다.
+                        score.getArmedActionCode() != null, score.getCalculatedAt()))
                 .orElse(null);
 
         return new PlanDetailResponse(

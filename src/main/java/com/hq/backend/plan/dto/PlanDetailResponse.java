@@ -44,11 +44,11 @@ public record PlanDetailResponse(
 
     public record WellnessActionItem(
             UUID wellnessActionId, String wellnessTopic, String actionCode, String actionLabel,
-            short displayRank, String reason, String completionStatus, Instant respondedAt) {
+            short displayRank, String reasonSnapshot, String completionStatus, Instant respondedAt) {
     }
 
     public record WellnessScoreItem(
-            short wisScore, String wisBand, String weightVersion, Instant calculatedAt) {
+            short wisScore, String wisBand, String weightVersion, boolean eventArmed, Instant calculatedAt) {
     }
 
     public record ContextItem(

@@ -42,7 +42,7 @@ class PrepRuleControllerTest {
                         .content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.ruleName").value("영양제"))
-                .andExpect(jsonPath("$.ruleCategory").value("SUPPLEMENT"))
+                .andExpect(jsonPath("$.ruleCategory").value("supplement"))
                 .andExpect(jsonPath("$.fromChip").value(true));
 
         boolean logged = productEventRepository.findAll().stream()

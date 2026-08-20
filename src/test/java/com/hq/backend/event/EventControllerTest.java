@@ -46,8 +46,8 @@ class EventControllerTest {
                         .content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.displayName").value("강남역 미팅"))
-                .andExpect(jsonPath("$.locationState").value("NOT_REQUIRED"))
-                .andExpect(jsonPath("$.status").value("PLANNED"))
+                .andExpect(jsonPath("$.locationState").value("not_required"))
+                .andExpect(jsonPath("$.status").value("planned"))
                 .andExpect(jsonPath("$.plan").value(nullValue()));
     }
 
@@ -83,14 +83,14 @@ class EventControllerTest {
                                 {"locationState":"REQUIRED_MISSING"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.locationState").value("REQUIRED_MISSING"));
+                .andExpect(jsonPath("$.locationState").value("required_missing"));
 
         mockMvc.perform(delete("/events/" + eventId).header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/events/" + eventId).header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("CANCELLED"));
+                .andExpect(jsonPath("$.status").value("cancelled"));
     }
 
     @Test
@@ -298,9 +298,41 @@ class EventControllerTest {
         mockMvc.perform(post("/events/" + eventId + "/review")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"questionType\":\"is_online\",\"userAnswer\":\"online\"}"))
+                        .content("{\"questionType\":\"is_online\",\"userAnswer\":\"\"}"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    // API 명세 §8.4의 요청 바디에는 reviewId가 없다 — 서버가 이 event의 미답변 리뷰를 찾는다.
+    @Test
+    void reviewId_없이_보내면_해당_event의_미답변_review에_답변된다() throws Exception {
+        String token = signupAndLogin();
+        String eventId = createUndecidedEvent(token, "2026-08-21T10:00:00+09:00");
+        EventClassificationReview review = savePendingReview(UUID.fromString(eventId), Instant.now());
+
+        mockMvc.perform(post("/events/" + eventId + "/review")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"questionType\":\"is_online\",\"userAnswer\":\"offline\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.locationState").value("required_missing"))
+                .andExpect(jsonPath("$.reviewClosed").value(true));
+
+        assertThat(eventClassificationReviewRepository.findById(review.getReviewId()).orElseThrow()
+                .getAnsweredAt()).isNotNull();
+    }
+
+    @Test
+    void reviewId_없이_보냈는데_미답변_review가_없으면_404이다() throws Exception {
+        String token = signupAndLogin();
+        String eventId = createUndecidedEvent(token, "2026-08-21T10:00:00+09:00");
+
+        mockMvc.perform(post("/events/" + eventId + "/review")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"questionType\":\"is_online\",\"userAnswer\":\"online\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("REVIEW_NOT_FOUND"));
     }
 
     @Test
@@ -328,10 +360,10 @@ class EventControllerTest {
 
         answer(token, onlineEventId, online.getReviewId(), "online")
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.locationState").value("NOT_REQUIRED"));
+                .andExpect(jsonPath("$.locationState").value("not_required"));
         answer(token, offlineEventId, offline.getReviewId(), "offline")
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.locationState").value("REQUIRED_MISSING"));
+                .andExpect(jsonPath("$.locationState").value("required_missing"));
 
         EventClassificationReview reloadedOnline = eventClassificationReviewRepository.findById(online.getReviewId()).orElseThrow();
         EventClassificationReview reloadedOffline = eventClassificationReviewRepository.findById(offline.getReviewId()).orElseThrow();
