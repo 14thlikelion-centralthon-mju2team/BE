@@ -4,7 +4,7 @@ import com.hq.backend.calendar.dto.BusyBlockResponse;
 import com.hq.backend.calendar.dto.CalendarConnectionResponse;
 import com.hq.backend.calendar.dto.ConnectCalendarRequest;
 import com.hq.backend.calendar.dto.DensityResponse;
-import com.hq.backend.calendar.dto.GoogleCalendarEventsResponse;
+import com.hq.backend.calendar.dto.GoogleBusyEventsResponse;
 import com.hq.backend.calendar.dto.GoogleTokenResponse;
 import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.event.EventRepository;
@@ -46,6 +46,7 @@ public class CalendarService {
     private static final String PROVIDER_GOOGLE = "google";
     private static final String SOURCE_GOOGLE = "google";
     private static final String SOURCE_USER_EVENT = "user_event";
+    private static final String BUSY_FIELDS = "items(start(dateTime),end(dateTime)),nextPageToken";
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Seoul");
     private static final java.util.regex.Pattern SUB_CLAIM =
             java.util.regex.Pattern.compile("\"sub\"\\s*:\\s*\"([^\"]+)\"");
@@ -184,30 +185,35 @@ public class CalendarService {
                 return new GoogleFetchResult(false, List.of());
             }
 
-            URI uri = UriComponentsBuilder.fromUriString(googleCalendarEventsUrl)
-                    .queryParam("timeMin", rangeStart.toString())
-                    .queryParam("timeMax", rangeEnd.toString())
-                    .queryParam("singleEvents", true)
-                    .queryParam("orderBy", "startTime")
-                    .encode()
-                    .build()
-                    .toUri();
+            List<BusyBlockResponse> blocks = new ArrayList<>();
+            String pageToken = null;
+            do {
+                UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(googleCalendarEventsUrl)
+                        .queryParam("timeMin", rangeStart)
+                        .queryParam("timeMax", rangeEnd)
+                        .queryParam("singleEvents", true)
+                        .queryParam("orderBy", "startTime")
+                        .queryParam("fields", BUSY_FIELDS);
+                if (pageToken != null) {
+                    builder.queryParam("pageToken", pageToken);
+                }
 
-            GoogleCalendarEventsResponse response = restClient.get()
-                    .uri(uri)
-                    .header("Authorization", "Bearer " + accessToken.get())
-                    .retrieve()
-                    .body(GoogleCalendarEventsResponse.class);
-
-            if (response == null || response.items() == null) {
-                return new GoogleFetchResult(false, List.of());
-            }
-
-            List<BusyBlockResponse> blocks = response.items().stream()
-                    .filter(item -> item.start() != null && item.start().dateTime() != null
-                            && item.end() != null && item.end().dateTime() != null)
-                    .map(item -> new BusyBlockResponse(item.start().dateTime(), item.end().dateTime(), SOURCE_GOOGLE))
-                    .toList();
+                GoogleBusyEventsResponse response = restClient.get()
+                        .uri(builder.encode().build().toUri())
+                        .header("Authorization", "Bearer " + accessToken.get())
+                        .retrieve()
+                        .body(GoogleBusyEventsResponse.class);
+                if (response == null || response.items() == null) {
+                    return new GoogleFetchResult(false, List.of());
+                }
+                response.items().stream()
+                        .filter(item -> item.start() != null && item.start().dateTime() != null
+                                && item.end() != null && item.end().dateTime() != null)
+                        .map(item -> new BusyBlockResponse(
+                                item.start().dateTime(), item.end().dateTime(), SOURCE_GOOGLE))
+                        .forEach(blocks::add);
+                pageToken = response.nextPageToken();
+            } while (pageToken != null);
             return new GoogleFetchResult(true, blocks);
         } catch (RestClientException | IllegalStateException e) {
             return new GoogleFetchResult(false, List.of());

@@ -17,7 +17,7 @@
   - [x] Capture expected RED against the pre-V27 schema
   - [x] Add V27 schema safety migration and JPA/repository contracts
   - [x] Run focused and EventController regressions; self-review and commit
-- [ ] Task 2: Google 조회 DTO와 다페이지 수집 분리
+- [ ] Task 2: Google 조회 DTO와 다페이지 수집 분리 (in progress)
 - [ ] Task 3: 캘린더 쓰기 트랜잭션과 sync token CAS
 - [ ] Task 4: 분류 계약, 입력 정규화, 동의·롤아웃 게이트
 - [ ] Task 5: OpenAI Responses API strict client

@@ -1,12 +1,10 @@
 package com.hq.backend.calendar;
 
-import com.hq.backend.calendar.dto.GoogleCalendarEvent;
-import com.hq.backend.calendar.dto.GoogleCalendarEventsResponse;
+import com.hq.backend.calendar.dto.GoogleCalendarSyncEvent;
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
 import com.hq.backend.plan.PlanCreationService;
 import com.hq.backend.plan.PlanRevisionRepository;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Optional;
@@ -21,7 +19,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
-import org.springframework.web.util.UriComponentsBuilder;
 
 /**
  * M4 — Google Calendar 증분 동기화.
@@ -43,6 +40,7 @@ public class CalendarSyncService {
     private final PlanRevisionRepository planRevisionRepository;
     private final BytesEncryptor calendarTokenEncryptor;
     private final RestClient restClient;
+    private final GoogleCalendarSyncClient googleCalendarSyncClient;
 
     @Value("${oauth.google.token-url}")
     private String googleTokenUrl;
@@ -53,16 +51,14 @@ public class CalendarSyncService {
     @Value("${oauth.google.client-secret}")
     private String googleClientSecret;
 
-    @Value("${oauth.google.calendar-events-url}")
-    private String googleCalendarEventsUrl;
-
     public CalendarSyncService(CalendarConnectionRepository connectionRepository,
                                CalendarSourceRepository calendarSourceRepository,
                                EventRepository eventRepository,
                                PlanCreationService planCreationService,
                                PlanRevisionRepository planRevisionRepository,
                                BytesEncryptor calendarTokenEncryptor,
-                               RestClient restClient) {
+                               RestClient restClient,
+                               GoogleCalendarSyncClient googleCalendarSyncClient) {
         this.connectionRepository = connectionRepository;
         this.calendarSourceRepository = calendarSourceRepository;
         this.eventRepository = eventRepository;
@@ -70,6 +66,7 @@ public class CalendarSyncService {
         this.planRevisionRepository = planRevisionRepository;
         this.calendarTokenEncryptor = calendarTokenEncryptor;
         this.restClient = restClient;
+        this.googleCalendarSyncClient = googleCalendarSyncClient;
     }
 
     /**
@@ -102,29 +99,28 @@ public class CalendarSyncService {
             }
 
             String syncToken = connection.getSyncToken();
-            GoogleCalendarEventsResponse response = fetchEvents(accessToken, syncToken);
-
-            if (response == null || response.items() == null) {
+            Optional<GoogleSyncBatch> batch = googleCalendarSyncClient.fetchAll(accessToken, syncToken, Instant.now());
+            if (batch.isEmpty()) {
                 return;
             }
 
-            for (GoogleCalendarEvent gcEvent : response.items()) {
+            for (GoogleCalendarSyncEvent gcEvent : batch.get().events()) {
                 processEvent(connection, gcEvent);
             }
 
             // syncToken 갱신 (다음 동기화에서 변경분만 조회)
-            if (response.nextSyncToken() != null) {
-                connection.setSyncToken(response.nextSyncToken());
+            if (batch.get().nextSyncToken() != null) {
+                connection.setSyncToken(batch.get().nextSyncToken());
             }
 
             log.debug("[CalendarSync] user_id={} 동기화 완료, events={}", connection.getUserId(),
-                    response.items() != null ? response.items().size() : 0);
+                    batch.get().events().size());
         } catch (Exception e) {
             log.error("[CalendarSync] user_id={} 동기화 실패", connection.getUserId(), e);
         }
     }
 
-    private void processEvent(CalendarConnection connection, GoogleCalendarEvent gcEvent) {
+    private void processEvent(CalendarConnection connection, GoogleCalendarSyncEvent gcEvent) {
         if (gcEvent.id() == null) return;
         UUID userId = connection.getUserId();
         CalendarSource source = calendarSourceRepository
@@ -218,33 +214,6 @@ public class CalendarSyncService {
                     activePlan.getInputHash(), null);
         } catch (Exception e) {
             log.warn("[CalendarSync] 재계산 실패: event_id={}", event.getEventId(), e);
-        }
-    }
-
-    private GoogleCalendarEventsResponse fetchEvents(String accessToken, String syncToken) {
-        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(googleCalendarEventsUrl)
-                .queryParam("singleEvents", true)
-                .queryParam("orderBy", "startTime");
-
-        if (syncToken != null) {
-            builder.queryParam("syncToken", syncToken);
-        } else {
-            // 초기 동기화: 오늘부터 30일
-            builder.queryParam("timeMin", Instant.now().toString());
-            builder.queryParam("timeMax", Instant.now().plusSeconds(30L * 24 * 3600).toString());
-        }
-
-        URI uri = builder.encode().build().toUri();
-
-        try {
-            return restClient.get()
-                    .uri(uri)
-                    .header("Authorization", "Bearer " + accessToken)
-                    .retrieve()
-                    .body(GoogleCalendarEventsResponse.class);
-        } catch (RestClientException e) {
-            log.warn("[CalendarSync] Google API 호출 실패: {}", e.getMessage());
-            return null;
         }
     }
 
