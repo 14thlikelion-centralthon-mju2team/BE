@@ -29,8 +29,8 @@ class WellnessPrefControllerTest {
         mockMvc.perform(get("/me/wellness-prefs").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(5))
-                .andExpect(jsonPath("$[?(@.wellnessTopic=='UV')].isEnabled").value(org.hamcrest.Matchers.contains(false)))
-                .andExpect(jsonPath("$[?(@.wellnessTopic=='UV')].dailyEventCap").value(org.hamcrest.Matchers.contains(1)));
+                .andExpect(jsonPath("$[?(@.wellnessTopic=='uv')].isEnabled").value(org.hamcrest.Matchers.contains(false)))
+                .andExpect(jsonPath("$[?(@.wellnessTopic=='uv')].dailyEventCap").value(org.hamcrest.Matchers.contains(1)));
     }
 
     @Test
@@ -47,13 +47,13 @@ class WellnessPrefControllerTest {
                                 ]}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.wellnessTopic=='UV')].isEnabled").value(org.hamcrest.Matchers.contains(true)))
-                .andExpect(jsonPath("$[?(@.wellnessTopic=='UV')].remindIntervalMinutes").value(org.hamcrest.Matchers.contains(120)))
-                .andExpect(jsonPath("$[?(@.wellnessTopic=='PM')].isEnabled").value(org.hamcrest.Matchers.contains(false)));
+                .andExpect(jsonPath("$[?(@.wellnessTopic=='uv')].isEnabled").value(org.hamcrest.Matchers.contains(true)))
+                .andExpect(jsonPath("$[?(@.wellnessTopic=='uv')].remindIntervalMinutes").value(org.hamcrest.Matchers.contains(120)))
+                .andExpect(jsonPath("$[?(@.wellnessTopic=='pm')].isEnabled").value(org.hamcrest.Matchers.contains(false)));
 
         mockMvc.perform(get("/me/wellness-prefs").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.wellnessTopic=='UV')].isEnabled").value(org.hamcrest.Matchers.contains(true)));
+                .andExpect(jsonPath("$[?(@.wellnessTopic=='uv')].isEnabled").value(org.hamcrest.Matchers.contains(true)));
     }
 
     private String signupAndLogin() throws Exception {

@@ -191,13 +191,12 @@ public class EventService {
 
     @Transactional
     public EventReviewResponse answerReview(UUID userId, UUID eventId, EventReviewRequest request) {
-        if (request.reviewId() == null || request.questionType() == null || request.questionType().isBlank()
+        if (request.questionType() == null || request.questionType().isBlank()
                 || request.userAnswer() == null || request.userAnswer().isBlank()) {
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", "reviewId, questionType, userAnswer는 필수입니다.");
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", "questionType, userAnswer는 필수입니다.");
         }
         Event event = findOwnedForUpdate(userId, eventId);
-        EventClassificationReview review = classificationReviewRepository
-                .findByReviewIdAndEventIdForUpdate(request.reviewId(), eventId)
+        EventClassificationReview review = findReviewForUpdate(request.reviewId(), eventId)
                 .orElseThrow(() -> new ApiException(
                         HttpStatus.NOT_FOUND, "REVIEW_NOT_FOUND", "분류 확인 질문을 찾을 수 없습니다."));
 
@@ -239,6 +238,19 @@ public class EventService {
                 resolved == LocationState.NOT_REQUIRED ? AiReviewOutcome.ANSWERED_ONLINE : AiReviewOutcome.ANSWERED_OFFLINE));
 
         return new EventReviewResponse(eventId, resolved, true);
+    }
+
+    // reviewId가 오면 그 리뷰를, 안 오면 이 event의 미답변 리뷰를 잡는다. 미답변 리뷰는
+    // 부분 유니크 인덱스(event_id where answered_at is null)로 event당 최대 1건이라
+    // 서버가 고르는 결과가 모호해지지 않는다. 어느 쪽이든 PESSIMISTIC_WRITE로 잠근다.
+    private Optional<EventClassificationReview> findReviewForUpdate(UUID reviewId, UUID eventId) {
+        if (reviewId != null) {
+            return classificationReviewRepository.findByReviewIdAndEventIdForUpdate(reviewId, eventId);
+        }
+        return classificationReviewRepository
+                .findPendingByEventIdForUpdate(eventId, PageRequest.of(0, 1))
+                .stream()
+                .findFirst();
     }
 
     private void validateSelectedSearchRequest(EventCreateRequest request, SelectedRouteSearch selectedSearch) {

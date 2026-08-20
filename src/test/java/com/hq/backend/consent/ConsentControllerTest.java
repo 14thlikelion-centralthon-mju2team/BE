@@ -34,7 +34,7 @@ class ConsentControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.consentType").value("LOCATION"))
+                .andExpect(jsonPath("$.consentType").value("location"))
                 .andExpect(jsonPath("$.agreed").value(true))
                 .andExpect(jsonPath("$.recordedAt").exists());
     }

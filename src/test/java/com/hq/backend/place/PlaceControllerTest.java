@@ -39,7 +39,7 @@ class PlaceControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.placeType").value("HOME"))
+                .andExpect(jsonPath("$.placeType").value("home"))
                 .andExpect(jsonPath("$.lat").value(37.5))
                 .andExpect(jsonPath("$.lng").value(127.0))
                 .andExpect(jsonPath("$.isPrimary").value(true))

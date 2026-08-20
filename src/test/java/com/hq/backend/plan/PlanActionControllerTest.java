@@ -174,7 +174,7 @@ class PlanActionControllerTest {
                 .andExpect(jsonPath("$.actualPrepFinishedAt").value("2026-08-20T03:56:00Z"))
                 .andExpect(jsonPath("$.actualDepartedAt").value("2026-08-20T04:06:00Z"))
                 .andExpect(jsonPath("$.actualArrivedAt").value("2026-08-20T04:50:00Z"))
-                .andExpect(jsonPath("$.arrivalResult").value("ON_TIME"))
+                .andExpect(jsonPath("$.arrivalResult").value("on_time"))
                 .andExpect(jsonPath("$.resultSource").value("geo"));
     }
 
