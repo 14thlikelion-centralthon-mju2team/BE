@@ -20,6 +20,7 @@ import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest
 class CalendarEventWriterTest {
@@ -30,6 +31,7 @@ class CalendarEventWriterTest {
     @Autowired private EventRepository eventRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private CalendarSyncStateWriter syncStateWriter;
+    @Autowired private TransactionTemplate transactionTemplate;
 
     @Test
     void 신규_일정은_제목을_저장하지_않고_CREATED로_반환한다() {
@@ -42,6 +44,7 @@ class CalendarEventWriterTest {
         Event saved = eventRepository.findById(result.eventId()).orElseThrow();
         assertThat(result.changeType()).isEqualTo(CalendarChangeType.CREATED);
         assertThat(result.requiresPlanRecompute()).isFalse();
+        assertThat(result.eventRevision()).isEqualTo(saved.getRevision());
         assertThat(saved.getDisplayLabel()).isNull();
         assertThat(saved.getExternalEventId()).isEqualTo("one");
         assertThat(sourceRepository.findByCalendarConnectionIdAndIsDefaultTrueAndDeletedAtIsNull(
@@ -121,18 +124,18 @@ class CalendarEventWriterTest {
             for (int i = 0; i < 2; i++) {
                 results.add(executor.submit(() -> {
                     ready.countDown();
-                    start.await();
+                    await(start);
                     return calendarEventWriter.upsert(
                             connection.getUserId(), connection.getCalendarConnectionId(), event("racing", "confirmed", 0))
                             .orElseThrow();
                 }));
             }
-            ready.await();
+            await(ready);
             start.countDown();
 
             List<CalendarChangeType> changeTypes = new ArrayList<>();
             for (Future<CalendarUpsertResult> result : results) {
-                changeTypes.add(result.get().changeType());
+                changeTypes.add(result.get(5, java.util.concurrent.TimeUnit.SECONDS).changeType());
             }
             assertThat(changeTypes)
                     .containsExactlyInAnyOrder(CalendarChangeType.CREATED, CalendarChangeType.UNCHANGED);
@@ -141,6 +144,7 @@ class CalendarEventWriterTest {
         } finally {
             start.countDown();
             executor.shutdownNow();
+            executor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS);
         }
     }
 
@@ -155,6 +159,55 @@ class CalendarEventWriterTest {
         assertThat(syncStateWriter.advanceSyncToken(id, "one", "two")).isTrue();
         assertThat(syncStateWriter.clearExpiredSyncToken(id, "stale")).isFalse();
         assertThat(syncStateWriter.clearExpiredSyncToken(id, "two")).isTrue();
+    }
+
+    @Test
+    void 사용자_PATCH와_캘린더_시각_업데이트가_경합해도_사용자값과_최신_시각을_모두_보존한다() throws Exception {
+        CalendarConnection connection = saveConnection();
+        CalendarUpsertResult created = calendarEventWriter.upsert(
+                connection.getUserId(), connection.getCalendarConnectionId(), event("patch-race", "confirmed", 0))
+                .orElseThrow();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch userLockHeld = new CountDownLatch(1);
+        CountDownLatch allowUserCommit = new CountDownLatch(1);
+        try {
+            Future<?> userPatch = executor.submit(() -> transactionTemplate.executeWithoutResult(status -> {
+                Event locked = eventRepository.findByIdForUpdate(created.eventId()).orElseThrow();
+                locked.setDisplayLabel("사용자 지정명");
+                userLockHeld.countDown();
+                await(allowUserCommit);
+            }));
+            await(userLockHeld);
+            Future<CalendarUpsertResult> calendarUpdate = executor.submit(() -> calendarEventWriter.upsert(
+                    connection.getUserId(), connection.getCalendarConnectionId(),
+                    event("patch-race", "confirmed", 3600)).orElseThrow());
+            assertThatThrownBy(() -> calendarUpdate.get(200, java.util.concurrent.TimeUnit.MILLISECONDS))
+                    .isInstanceOf(java.util.concurrent.TimeoutException.class);
+
+            allowUserCommit.countDown();
+            userPatch.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(calendarUpdate.get(5, java.util.concurrent.TimeUnit.SECONDS).changeType())
+                    .isEqualTo(CalendarChangeType.UPDATED);
+
+            Event saved = eventRepository.findById(created.eventId()).orElseThrow();
+            assertThat(saved.getDisplayLabel()).isEqualTo("사용자 지정명");
+            assertThat(saved.getStartsAt()).isEqualTo(Instant.parse("2026-08-20T02:00:00Z"));
+        } finally {
+            allowUserCommit.countDown();
+            executor.shutdownNow();
+            executor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS);
+        }
+    }
+
+    private void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new AssertionError("동시성 테스트 latch 대기 시간이 5초를 초과했습니다.");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
+        }
     }
 
     private CalendarConnection saveConnection() {

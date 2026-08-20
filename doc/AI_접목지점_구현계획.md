@@ -399,7 +399,7 @@ public class AiClassificationGate {
 - [ ] condition 테스트에 기본 설정=NoOp 하나, enabled만=true=NoOp, key만 존재=NoOp, enabled+key+정책버전+pinned model=OpenAI primary를 작성한다.
 - [ ] `./gradlew test --tests '*OpenAiEventClassifierTest' --tests '*OpenAiEventClassifierConditionTest'`를 실행해 실패를 확인한다.
 - [ ] 전용 `RestClient` bean에 connect 3초/read 10초를 적용한다. SDK나 전역 ObjectMapper 설정을 변경하지 않는다.
-- [ ] Task 4의 `AiClassificationConfig`가 properties를 이미 등록한다. `OpenAiClassifierReadyCondition`은 enabled, nonblank key, nonblank 정책 버전, 정확한 pinned model을 모두 만족할 때만 OpenAI `@Primary` bean을 만든다. 일부 설정이나 model 불일치는 시작 실패가 아니라 WARN 한 건과 NoOp 선택으로 끝낸다.
+- [ ] Task 4의 `AiClassificationConfig`가 properties를 이미 등록한다. `OpenAiClassifierReadyCondition`은 enabled, nonblank key, nonblank 정책 버전, 정확한 pinned model, 승인된 HTTPS OpenAI base URL을 모두 만족할 때만 OpenAI `@Primary` bean을 만든다. 일부 설정이나 endpoint/model 불일치는 시작 실패가 아니라 WARN 한 건과 NoOp 선택으로 끝낸다.
 - [ ] DTO는 필요한 응답 필드와 token usage만 매핑하며 원문을 다른 객체나 DB에 저장하지 않는다.
 - [ ] 좁은 테스트와 `git diff --check` 후 `git commit -m "feat: classify calendar titles with OpenAI"`로 커밋한다.
 
@@ -437,13 +437,15 @@ public enum ClassificationAttemptOutcome {
 public class EventClassificationReviewWriter {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     CreateReviewOutcome createIfEligible(
-            UUID eventId, EventClassificationResult result, Instant askedAt);
+            UUID eventId, Long expectedEventRevision,
+            EventClassificationResult result, Instant askedAt);
 }
 
 @Service
 public class EventClassificationOrchestrator {
     ClassificationAttemptOutcome classifyCreated(
-            UUID userId, UUID eventId, String rawTitle, int remainingProviderCalls);
+            UUID userId, UUID eventId, Long eventRevision,
+            String rawTitle, int remainingProviderCalls);
 }
 
 @Component

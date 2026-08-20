@@ -21,13 +21,13 @@ public class EventClassificationReviewWriter {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public CreateReviewOutcome createIfEligible(
-            UUID eventId, EventClassificationResult result, Instant askedAt) {
-        if (eventId == null || result == null || askedAt == null) {
+            UUID eventId, Long expectedEventRevision, EventClassificationResult result, Instant askedAt) {
+        if (eventId == null || expectedEventRevision == null || result == null || askedAt == null) {
             eventPublisher.publishEvent(new AiReviewMetricEvent(AiReviewOutcome.STALE));
             return CreateReviewOutcome.STALE;
         }
         Event event = eventRepository.findByIdForUpdate(eventId).orElse(null);
-        if (!isEligible(event)) {
+        if (!isEligible(event) || !expectedEventRevision.equals(event.getRevision())) {
             eventPublisher.publishEvent(new AiReviewMetricEvent(AiReviewOutcome.STALE));
             return CreateReviewOutcome.STALE;
         }

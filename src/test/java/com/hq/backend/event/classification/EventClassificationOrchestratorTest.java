@@ -20,6 +20,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @ExtendWith(MockitoExtension.class)
 class EventClassificationOrchestratorTest {
 
+    private static final Long EVENT_REVISION = 0L;
+
     @Mock private AiClassificationGate gate;
     @Mock private CalendarTitleNormalizer titleNormalizer;
     @Mock private AiClassificationConcurrencyGuard concurrencyGuard;
@@ -31,7 +33,8 @@ class EventClassificationOrchestratorTest {
     void budget_is_checked_before_every_other_step() {
         EventClassificationOrchestrator orchestrator = orchestrator();
 
-        assertThat(orchestrator.classifyCreated(UUID.randomUUID(), UUID.randomUUID(), "private title", 0))
+        assertThat(orchestrator.classifyCreated(
+                UUID.randomUUID(), UUID.randomUUID(), EVENT_REVISION, "private title", 0))
                 .isEqualTo(ClassificationAttemptOutcome.SKIPPED_BUDGET);
 
         verify(gate, never()).evaluate(any());
@@ -44,9 +47,11 @@ class EventClassificationOrchestratorTest {
         when(gate.evaluate(any())).thenReturn(AiGateOutcome.SKIPPED_CONSENT, AiGateOutcome.ALLOWED);
         when(titleNormalizer.normalize("\u0000private")).thenReturn(Optional.empty());
 
-        assertThat(orchestrator.classifyCreated(UUID.randomUUID(), UUID.randomUUID(), "private", 1))
+        assertThat(orchestrator.classifyCreated(
+                UUID.randomUUID(), UUID.randomUUID(), EVENT_REVISION, "private", 1))
                 .isEqualTo(ClassificationAttemptOutcome.SKIPPED_CONSENT);
-        assertThat(orchestrator.classifyCreated(UUID.randomUUID(), UUID.randomUUID(), "\u0000private", 1))
+        assertThat(orchestrator.classifyCreated(
+                UUID.randomUUID(), UUID.randomUUID(), EVENT_REVISION, "\u0000private", 1))
                 .isEqualTo(ClassificationAttemptOutcome.SKIPPED_INVALID_INPUT);
 
         verify(classifier, never()).classify(any());
@@ -59,7 +64,8 @@ class EventClassificationOrchestratorTest {
         when(titleNormalizer.normalize("private")).thenReturn(Optional.of("private"));
         when(concurrencyGuard.tryAcquire()).thenReturn(false);
 
-        assertThat(orchestrator.classifyCreated(UUID.randomUUID(), UUID.randomUUID(), "private", 1))
+        assertThat(orchestrator.classifyCreated(
+                UUID.randomUUID(), UUID.randomUUID(), EVENT_REVISION, "private", 1))
                 .isEqualTo(ClassificationAttemptOutcome.SKIPPED_BUSY);
 
         verify(classifier, never()).classify(any());
@@ -78,7 +84,8 @@ class EventClassificationOrchestratorTest {
             return Optional.empty();
         });
 
-        assertThat(orchestrator.classifyCreated(UUID.randomUUID(), UUID.randomUUID(), "e\u0301 online meeting", 1))
+        assertThat(orchestrator.classifyCreated(
+                UUID.randomUUID(), UUID.randomUUID(), EVENT_REVISION, "e\u0301 online meeting", 1))
                 .isEqualTo(ClassificationAttemptOutcome.PROVIDER_EMPTY);
 
         assertThat(transactionWasActive.get()).isFalse();
@@ -95,9 +102,9 @@ class EventClassificationOrchestratorTest {
         when(titleNormalizer.normalize("private")).thenReturn(Optional.of("private"));
         when(concurrencyGuard.tryAcquire()).thenReturn(true);
         when(classifier.classify(any())).thenReturn(Optional.of(result()));
-        when(reviewWriter.createIfEligible(any(), any(), any())).thenReturn(CreateReviewOutcome.CREATED);
+        when(reviewWriter.createIfEligible(any(), any(), any(), any())).thenReturn(CreateReviewOutcome.CREATED);
 
-        assertThat(orchestrator.classifyCreated(userId, eventId, "private", 1))
+        assertThat(orchestrator.classifyCreated(userId, eventId, EVENT_REVISION, "private", 1))
                 .isEqualTo(ClassificationAttemptOutcome.REVIEW_CREATED);
 
         InOrder order = org.mockito.Mockito.inOrder(gate, titleNormalizer, concurrencyGuard, classifier, reviewWriter);
@@ -105,7 +112,8 @@ class EventClassificationOrchestratorTest {
         order.verify(titleNormalizer).normalize("private");
         order.verify(concurrencyGuard).tryAcquire();
         order.verify(classifier).classify(new EventClassificationInput("private"));
-        order.verify(reviewWriter).createIfEligible(org.mockito.ArgumentMatchers.eq(eventId), any(), any());
+        order.verify(reviewWriter).createIfEligible(
+                org.mockito.ArgumentMatchers.eq(eventId), org.mockito.ArgumentMatchers.eq(EVENT_REVISION), any(), any());
         verify(concurrencyGuard).release();
     }
 

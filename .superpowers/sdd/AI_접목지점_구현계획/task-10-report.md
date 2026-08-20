@@ -15,6 +15,8 @@
 - RED: replacing the flow fake first failed because the test fixture tried to serialize Java-time DTOs with an unconfigured mapper; the fixture now serves raw Google API JSON, and the real client regression passes.
 - GREEN: detailed provider usage is exposed only through a stateless package-private live-evaluation seam; the production meter contract remains exactly `input|output`. No Event user-field behavior changed.
 - Final fresh-clean RED: `EventReviewConcurrencyTest` occasionally allowed the answer transaction to acquire the Event lock before PATCH because its ordering latch fired before the repository invocation. The deterministic fix signals only after PATCH has returned from `findOwnedForUpdate`, starts answer while PATCH owns the lock, and then releases PATCH; the focused concurrency suite passed after the change.
+- Final branch review RED: an eligible-preserving user edit could receive a stale AI review, calendar time updates could race and overwrite user fields, arbitrary/non-HTTPS `openai.base-url` values could receive the key and title, and live evaluation omitted the documented input-token p95 limit. The fixes add a persisted Event optimistic revision carried from CREATED through review insertion, Event-first locking for existing calendar events, an exact approved HTTPS OpenAI endpoint policy enforced at bean and call gates, and input p95 <= 300 enforcement. Each finding was reproduced before its focused GREEN.
+- The final transaction audit also found density pagination running under a read-only transaction. `getDensity` no longer opens a transaction across token refresh and Google HTTP pages; repository reads retain their own short boundaries.
 
 ## Verification
 

@@ -48,6 +48,7 @@
 - 모델이 반환한 신뢰도는 자동 확정 기준이 아니라 품질 분석과 후속 승격 판단을 위한 관측값으로만 사용한다.
 - review 생성 직전에 Event가 여전히 `undecided`이고 미응답 review가 없는지 다시 확인한다.
 - 사용자가 AI 응답 도착 전에 일정을 수정했으면 분류 결과를 폐기한다.
+- 시간 정밀도에 의존하지 않도록 Event의 낙관적 revision을 CREATED 커밋 직후 캡아 분류 결과 저장 직전의 revision과 비교하며, 기존 Event를 쓰는 모든 경로는 Event-first 락 순서를 지킨다.
 - review-only 운영 중 질문 과다를 막기 위해 사용자 ID 안정 해시 rollout과 동기화 실행당 신규 일정 분류 예산을 설정으로 제어한다.
 
 review-only에서 임계값 기반 자동 반영으로 승격하려면 별도 설계 승인과 모델 품질 합격선 충족이 필요하다. 상위 TRD의 `confidence >= 0.70` 자동 반영은 1차 범위에서 의도적으로 유예한다.
@@ -353,7 +354,7 @@ GET /events/reviews/pending?from=...&to=...
 
 1. `openai.classification.enabled == true`
 2. stable hash rollout 대상
-3. API key, pinned model, policy version이 모두 유효
+3. API key, pinned model, policy version이 모두 유효하고 base URL이 승인된 `https://api.openai.com/v1`
 4. 최신 privacy 동의 action/version 일치
 5. 해당 sync의 신규 일정 분류 예산이 남음
 6. 전역 동시 호출 semaphore 획득 성공

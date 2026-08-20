@@ -54,6 +54,16 @@ class AiClassificationGateTest {
     }
 
     @Test
+    void non_https_or_unapproved_openai_base_url_fails_closed_before_consent_lookup() {
+        AiClassificationProperties httpEndpoint = propertiesWithBaseUrl("http://api.openai.com/v1");
+        AiClassificationProperties arbitraryEndpoint = propertiesWithBaseUrl("https://collector.example/v1");
+
+        assertThat(gate(httpEndpoint).evaluate(USER_ID)).isEqualTo(AiGateOutcome.DISABLED);
+        assertThat(gate(arbitraryEndpoint).evaluate(USER_ID)).isEqualTo(AiGateOutcome.DISABLED);
+        verifyNoInteractions(consentRepository);
+    }
+
+    @Test
     void rollout_zero_and_one_hundred_are_stable_boundaries() {
         when(consentRepository.findFirstByUserIdAndConsentTypeOrderByRecordedAtDescConsentEventIdDesc(USER_ID, "privacy"))
                 .thenReturn(Optional.of(consent("agreed", "privacy-ai-v1")));
@@ -115,6 +125,14 @@ class AiClassificationGateTest {
                 URI.create("https://api.openai.com/v1"), apiKey, model, 3_000, 10_000,
                 new AiClassificationProperties.Classification(
                         enabled, rolloutPercent, 5, 2, privacyPolicyVersion,
+                        "event-online-review-v1", "event-online-ko-v1", "event-online-v1"));
+    }
+
+    private AiClassificationProperties propertiesWithBaseUrl(String baseUrl) {
+        return new AiClassificationProperties(
+                URI.create(baseUrl), "key", "gpt-4o-mini-2024-07-18", 3_000, 10_000,
+                new AiClassificationProperties.Classification(
+                        true, 100, 5, 2, "privacy-ai-v1",
                         "event-online-review-v1", "event-online-ko-v1", "event-online-v1"));
     }
 

@@ -90,7 +90,9 @@ class CalendarSyncServiceTest {
                     assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
                     fetchEntered.countDown();
                     try {
-                        releaseFetch.await();
+                        if (!releaseFetch.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                            throw new AssertionError("fetch release latch timed out");
+                        }
                     } catch (InterruptedException interrupted) {
                         Thread.currentThread().interrupt();
                         throw new IllegalStateException(interrupted);
@@ -105,14 +107,15 @@ class CalendarSyncServiceTest {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
             Future<?> first = executor.submit(() -> blockingService.syncConnection(connection.getCalendarConnectionId(), true));
-            fetchEntered.await();
+            assertThat(fetchEntered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
             Future<?> second = executor.submit(() -> blockingService.syncConnection(connection.getCalendarConnectionId(), true));
-            second.get();
+            second.get(5, java.util.concurrent.TimeUnit.SECONDS);
             releaseFetch.countDown();
-            first.get();
+            first.get(5, java.util.concurrent.TimeUnit.SECONDS);
         } finally {
             releaseFetch.countDown();
             executor.shutdownNow();
+            executor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS);
         }
 
         verify(connectionRepository, times(1)).findById(connection.getCalendarConnectionId());
@@ -227,9 +230,9 @@ class CalendarSyncServiceTest {
         service = service((accessToken, token, now) -> Optional.of(new GoogleSyncBatch(List.of(created, updated), "next")));
         when(connectionRepository.findById(connection.getCalendarConnectionId())).thenReturn(Optional.of(connection));
         when(calendarEventWriter.upsert(any(), any(), any()))
-                .thenReturn(Optional.of(new CalendarUpsertResult(createdId, CalendarChangeType.CREATED, false)))
+                .thenReturn(Optional.of(new CalendarUpsertResult(createdId, CalendarChangeType.CREATED, false, 7L)))
                 .thenReturn(Optional.of(new CalendarUpsertResult(updatedId, CalendarChangeType.UPDATED, false)));
-        when(classificationOrchestrator.classifyCreated(connection.getUserId(), createdId, "created title", 1))
+        when(classificationOrchestrator.classifyCreated(connection.getUserId(), createdId, 7L, "created title", 1))
                 .thenAnswer(invocation -> {
                     assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
                     return ClassificationAttemptOutcome.PROVIDER_EMPTY;
@@ -241,10 +244,11 @@ class CalendarSyncServiceTest {
                 calendarEventWriter, classificationOrchestrator, syncStateWriter);
         order.verify(calendarEventWriter).upsert(connection.getUserId(), connection.getCalendarConnectionId(), created);
         order.verify(calendarEventWriter).upsert(connection.getUserId(), connection.getCalendarConnectionId(), updated);
-        order.verify(classificationOrchestrator).classifyCreated(connection.getUserId(), createdId, "created title", 1);
+        order.verify(classificationOrchestrator).classifyCreated(
+                connection.getUserId(), createdId, 7L, "created title", 1);
         order.verify(syncStateWriter).advanceSyncToken(connection.getCalendarConnectionId(), null, "next");
         verify(classificationOrchestrator, never()).classifyCreated(
-                eq(connection.getUserId()), eq(updatedId), any(), any(Integer.class));
+                eq(connection.getUserId()), eq(updatedId), any(), any(), any(Integer.class));
     }
 
     @Test
@@ -257,17 +261,17 @@ class CalendarSyncServiceTest {
         service = service((accessToken, token, now) -> Optional.of(new GoogleSyncBatch(List.of(first, second), "next")));
         when(connectionRepository.findById(connection.getCalendarConnectionId())).thenReturn(Optional.of(connection));
         when(calendarEventWriter.upsert(any(), any(), any()))
-                .thenReturn(Optional.of(new CalendarUpsertResult(firstId, CalendarChangeType.CREATED, false)))
-                .thenReturn(Optional.of(new CalendarUpsertResult(secondId, CalendarChangeType.CREATED, false)));
-        when(classificationOrchestrator.classifyCreated(connection.getUserId(), firstId, "first title", 1))
+                .thenReturn(Optional.of(new CalendarUpsertResult(firstId, CalendarChangeType.CREATED, false, 3L)))
+                .thenReturn(Optional.of(new CalendarUpsertResult(secondId, CalendarChangeType.CREATED, false, 4L)));
+        when(classificationOrchestrator.classifyCreated(connection.getUserId(), firstId, 3L, "first title", 1))
                 .thenReturn(ClassificationAttemptOutcome.REVIEW_CREATED);
-        when(classificationOrchestrator.classifyCreated(connection.getUserId(), secondId, "second title", 0))
+        when(classificationOrchestrator.classifyCreated(connection.getUserId(), secondId, 4L, "second title", 0))
                 .thenThrow(new IllegalStateException("review unavailable"));
 
         service.syncConnection(connection.getCalendarConnectionId(), true);
 
-        verify(classificationOrchestrator).classifyCreated(connection.getUserId(), firstId, "first title", 1);
-        verify(classificationOrchestrator).classifyCreated(connection.getUserId(), secondId, "second title", 0);
+        verify(classificationOrchestrator).classifyCreated(connection.getUserId(), firstId, 3L, "first title", 1);
+        verify(classificationOrchestrator).classifyCreated(connection.getUserId(), secondId, 4L, "second title", 0);
         verify(syncStateWriter).advanceSyncToken(connection.getCalendarConnectionId(), null, "next");
     }
 

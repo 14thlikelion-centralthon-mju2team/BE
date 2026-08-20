@@ -38,7 +38,8 @@ class EventClassificationReviewWriterTest {
     void eligible_event_creates_a_purged_review_with_complete_provenance() {
         Event event = saveEvent("undecided", "planned", false, null);
 
-        CreateReviewOutcome outcome = writer.createIfEligible(event.getEventId(), classificationResult(), ASKED_AT);
+        CreateReviewOutcome outcome = writer.createIfEligible(
+                event.getEventId(), event.getRevision(), classificationResult(), ASKED_AT);
 
         assertThat(outcome).isEqualTo(CreateReviewOutcome.CREATED);
         EventClassificationReview review = reviewRepository
@@ -59,11 +60,13 @@ class EventClassificationReviewWriterTest {
         Event stale = saveEvent("not_required", "planned", false, null);
         Event eligible = saveEvent("undecided", "planned", false, null);
 
-        assertThat(writer.createIfEligible(stale.getEventId(), classificationResult(), ASKED_AT))
+        assertThat(writer.createIfEligible(stale.getEventId(), stale.getRevision(), classificationResult(), ASKED_AT))
                 .isEqualTo(CreateReviewOutcome.STALE);
-        assertThat(writer.createIfEligible(eligible.getEventId(), classificationResult(), ASKED_AT))
+        assertThat(writer.createIfEligible(
+                eligible.getEventId(), eligible.getRevision(), classificationResult(), ASKED_AT))
                 .isEqualTo(CreateReviewOutcome.CREATED);
-        assertThat(writer.createIfEligible(eligible.getEventId(), classificationResult(), ASKED_AT.plusSeconds(1)))
+        assertThat(writer.createIfEligible(
+                eligible.getEventId(), eligible.getRevision(), classificationResult(), ASKED_AT.plusSeconds(1)))
                 .isEqualTo(CreateReviewOutcome.DUPLICATE);
         assertThat(reviewRepository.findFirstByEventIdAndAnsweredAtIsNullOrderByAskedAtDesc(stale.getEventId()))
                 .isEmpty();
@@ -77,9 +80,10 @@ class EventClassificationReviewWriterTest {
         double duplicateBefore = reviewCount("duplicate");
         double staleBefore = reviewCount("stale");
 
-        writer.createIfEligible(stale.getEventId(), classificationResult(), ASKED_AT);
-        writer.createIfEligible(eligible.getEventId(), classificationResult(), ASKED_AT);
-        writer.createIfEligible(eligible.getEventId(), classificationResult(), ASKED_AT.plusSeconds(1));
+        writer.createIfEligible(stale.getEventId(), stale.getRevision(), classificationResult(), ASKED_AT);
+        writer.createIfEligible(eligible.getEventId(), eligible.getRevision(), classificationResult(), ASKED_AT);
+        writer.createIfEligible(
+                eligible.getEventId(), eligible.getRevision(), classificationResult(), ASKED_AT.plusSeconds(1));
 
         assertThat(reviewCount("stale")).isEqualTo(staleBefore + 1);
         assertThat(reviewCount("created")).isEqualTo(createdBefore + 1);
@@ -91,7 +95,7 @@ class EventClassificationReviewWriterTest {
         Event event = saveEvent("undecided", "planned", false, null);
         double createdBefore = reviewCount("created");
 
-        assertThatThrownBy(() -> writer.createIfEligible(event.getEventId(), new EventClassificationResult(
+        assertThatThrownBy(() -> writer.createIfEligible(event.getEventId(), event.getRevision(), new EventClassificationResult(
                 null, "online", new BigDecimal("0.9400"), "openai", "gpt-4o-mini-2024-08-06",
                 "classifier-v1", "prompt-v1", "schema-v1"), ASKED_AT))
                 .isInstanceOf(RuntimeException.class);
@@ -112,21 +116,39 @@ class EventClassificationReviewWriterTest {
                 await(commitUserChange);
                 locked.setMeetingUrl("https://meeting.example");
             }));
-            eventLocked.await();
+            await(eventLocked);
             Future<CreateReviewOutcome> writerFuture = executor.submit(() -> {
-                eventLocked.await();
-                return writer.createIfEligible(event.getEventId(), classificationResult(), ASKED_AT);
+                await(eventLocked);
+                return writer.createIfEligible(
+                        event.getEventId(), event.getRevision(), classificationResult(), ASKED_AT);
             });
             commitUserChange.countDown();
-            userChangeFuture.get();
+            userChangeFuture.get(5, java.util.concurrent.TimeUnit.SECONDS);
 
-            assertThat(writerFuture.get()).isEqualTo(CreateReviewOutcome.STALE);
+            assertThat(writerFuture.get(5, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(CreateReviewOutcome.STALE);
             assertThat(reviewRepository.findFirstByEventIdAndAnsweredAtIsNullOrderByAskedAtDesc(event.getEventId()))
                     .isEmpty();
         } finally {
             commitUserChange.countDown();
             executor.shutdownNow();
+            executor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS);
         }
+    }
+
+    @Test
+    void event_changed_after_the_classification_snapshot_is_stale_even_when_it_remains_eligible() {
+        Event event = saveEvent("undecided", "planned", false, null);
+        Long classificationRevision = event.getRevision();
+        event.setDisplayLabel("사용자가 바꿄 일정");
+        Event changed = eventRepository.saveAndFlush(event);
+        assertThat(changed.getRevision()).isNotEqualTo(classificationRevision);
+
+        CreateReviewOutcome outcome = writer.createIfEligible(
+                event.getEventId(), classificationRevision, classificationResult(), ASKED_AT);
+
+        assertThat(outcome).isEqualTo(CreateReviewOutcome.STALE);
+        assertThat(reviewRepository.findFirstByEventIdAndAnsweredAtIsNullOrderByAskedAtDesc(event.getEventId()))
+                .isEmpty();
     }
 
     private Event saveEvent(String locationState, String status, boolean autoManageExcluded, String meetingUrl) {
@@ -148,7 +170,9 @@ class EventClassificationReviewWriterTest {
 
     private void await(CountDownLatch latch) {
         try {
-            latch.await();
+            if (!latch.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new AssertionError("classification concurrency latch timed out");
+            }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(exception);

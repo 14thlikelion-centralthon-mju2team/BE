@@ -158,7 +158,7 @@
 {"id":"synthetic-offline-special-008","title":"현장 또는 화상 전환 가능 일정","category":"ambiguous","expected":"offline","validInput":true}
 {"id":"synthetic-offline-special-009","title":"본사 출근 후 미팅 여부 확인","category":"ambiguous","expected":"offline","validInput":true}
 {"id":"synthetic-offline-special-010","title":"직접 만날지 논의할 일정","category":"ambiguous","expected":"offline","validInput":true}
-{"id":"synthetic-invalid-blank-001","title":"","expected":"online","validInput":false,"category":"blank"}
+{"id":"synthetic-invalid-blank-001","title":null,"expected":"online","validInput":false,"category":"null"}
 {"id":"synthetic-invalid-blank-002","title":" ","expected":"offline","validInput":false,"category":"blank"}
 {"id":"synthetic-invalid-blank-003","title":"\t","expected":"online","validInput":false,"category":"blank"}
 {"id":"synthetic-invalid-blank-004","title":"\n","expected":"offline","validInput":false,"category":"blank"}

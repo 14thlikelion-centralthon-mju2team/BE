@@ -71,8 +71,7 @@ public class AiClassificationGate {
                 && classification.rolloutPercent() <= 100
                 && classification.maxPerSync() >= 0
                 && classification.maxConcurrency() >= 1
-                && properties.baseUrl() != null
-                && hasText(properties.baseUrl().toString())
+                && OpenAiEndpointPolicy.isApproved(properties.baseUrl())
                 && properties.connectTimeoutMs() >= 1
                 && properties.readTimeoutMs() >= 1
                 && hasText(properties.apiKey())

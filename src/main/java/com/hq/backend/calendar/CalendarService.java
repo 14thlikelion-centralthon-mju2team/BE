@@ -151,7 +151,6 @@ public class CalendarService {
         connection.setRevokedAt(Instant.now());
     }
 
-    @Transactional(readOnly = true)
     public DensityResponse getDensity(UUID userId, LocalDate date) {
         Instant rangeStart = date.atStartOfDay(DEFAULT_ZONE).toInstant();
         Instant rangeEnd = date.plusDays(1).atStartOfDay(DEFAULT_ZONE).toInstant();

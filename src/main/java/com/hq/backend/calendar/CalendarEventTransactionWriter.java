@@ -28,7 +28,7 @@ public class CalendarEventTransactionWriter {
             throw new CalendarEventNotFoundForCancellationException();
         }
         CalendarSource source = existingSource.orElseGet(() -> ensureDefaultSource(connectionId));
-        Optional<Event> existing = eventRepository.findByCalendarSourceIdAndExternalEventId(
+        Optional<Event> existing = eventRepository.findByCalendarSourceIdAndExternalEventIdForUpdate(
                 source.getCalendarSourceId(), externalEvent.id());
 
         if ("cancelled".equals(externalEvent.status())) {
@@ -74,7 +74,8 @@ public class CalendarEventTransactionWriter {
             }
             throw exception;
         }
-        return new CalendarUpsertResult(created.getEventId(), CalendarChangeType.CREATED, false);
+        return new CalendarUpsertResult(
+                created.getEventId(), CalendarChangeType.CREATED, false, created.getRevision());
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)

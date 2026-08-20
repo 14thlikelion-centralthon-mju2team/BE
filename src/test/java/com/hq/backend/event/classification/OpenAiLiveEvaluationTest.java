@@ -77,6 +77,17 @@ class OpenAiLiveEvaluationTest {
     }
 
     @Test
+    void live_evaluation_rejects_input_token_p95_above_the_documented_limit() {
+        List<Long> inputTokens = new ArrayList<>();
+        for (int index = 0; index < 151; index++) inputTokens.add(300L);
+        for (int index = 0; index < 9; index++) inputTokens.add(301L);
+
+        assertThatThrownBy(() -> requireTokenPercentiles(inputTokens, java.util.Collections.nCopies(160, 50L)))
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("input-token p95");
+    }
+
+    @Test
     void enabled_live_evaluation_calls_the_real_classifier_and_enforces_quality_latency_tokens_requests_and_cost() throws Exception {
         Assumptions.assumeTrue("true".equals(System.getenv("OPENAI_EVAL_ENABLED")),
                 "set OPENAI_EVAL_ENABLED=true to opt in to live evaluation");
@@ -98,6 +109,7 @@ class OpenAiLiveEvaluationTest {
                 new AiClassificationMetrics(registry));
 
         List<Long> latencyMillis = new ArrayList<>();
+        List<Long> inputTokens = new ArrayList<>();
         List<Long> outputTokens = new ArrayList<>();
         int onlineTruePositive = 0;
         int onlineFalsePositive = 0;
@@ -117,6 +129,7 @@ class OpenAiLiveEvaluationTest {
             latencyMillis.add(Duration.ofNanos(System.nanoTime() - startedAt).toMillis());
             long outputDelta = counterCount(registry, "ai_classification_tokens_total", "direction", "output") - beforeOutput;
             long inputDelta = counterCount(registry, "ai_classification_tokens_total", "direction", "input") - beforeInput;
+            inputTokens.add(inputDelta);
             outputTokens.add(outputDelta);
 
             assertThat(result.result()).as("synthetic golden case %s must have a strict classifier response", goldenCase.id()).isPresent();
@@ -142,7 +155,7 @@ class OpenAiLiveEvaluationTest {
         double offlineF1 = f1(offlineTruePositive, offlineFalsePositive, offlineFalseNegative);
         assertThat((onlineF1 + offlineF1) / 2.0).as("macro F1 for synthetic golden set").isGreaterThanOrEqualTo(0.90);
         assertThat(percentile95(latencyMillis)).as("provider latency p95 in milliseconds").isLessThanOrEqualTo(5_000L);
-        assertThat(percentile95(outputTokens)).as("provider output-token p95").isLessThanOrEqualTo(50L);
+        requireTokenPercentiles(inputTokens, outputTokens);
         assertThat(observedCost).as("approved live-evaluation cost cap").isLessThanOrEqualTo(policy.costCap());
     }
 
@@ -198,6 +211,11 @@ class OpenAiLiveEvaluationTest {
     private long percentile95(List<Long> values) {
         List<Long> sorted = values.stream().sorted(Comparator.naturalOrder()).toList();
         return sorted.get((int) Math.ceil(sorted.size() * 0.95) - 1);
+    }
+
+    private void requireTokenPercentiles(List<Long> inputTokens, List<Long> outputTokens) {
+        assertThat(percentile95(inputTokens)).as("provider input-token p95").isLessThanOrEqualTo(300L);
+        assertThat(percentile95(outputTokens)).as("provider output-token p95").isLessThanOrEqualTo(50L);
     }
 
     private double f1(int truePositive, int falsePositive, int falseNegative) {

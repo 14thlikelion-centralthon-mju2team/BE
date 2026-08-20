@@ -111,7 +111,8 @@ public class CalendarSyncService {
                 calendarEventWriter.upsert(connection.getUserId(), connectionId, externalEvent).ifPresent(result -> {
                     results.add(result);
                     if (result.isCreated()) {
-                        createdCandidates.add(new CreatedCandidate(result.eventId(), externalEvent.summary()));
+                        createdCandidates.add(new CreatedCandidate(
+                                result.eventId(), result.eventRevision(), externalEvent.summary()));
                     }
                 });
             }
@@ -148,7 +149,7 @@ public class CalendarSyncService {
         for (CreatedCandidate candidate : candidates) {
             try {
                 ClassificationAttemptOutcome outcome = classificationOrchestrator.classifyCreated(
-                        userId, candidate.eventId(), candidate.rawTitle(),
+                        userId, candidate.eventId(), candidate.eventRevision(), candidate.rawTitle(),
                         classificationProperties.classification().maxPerSync() - providerCalls);
                 if (outcome.providerCalled()) {
                     providerCalls++;
@@ -194,6 +195,6 @@ public class CalendarSyncService {
     private record SyncFetchResult(GoogleSyncBatch batch, String expectedTokenForCas) {
     }
 
-    record CreatedCandidate(UUID eventId, String rawTitle) {
+    record CreatedCandidate(UUID eventId, Long eventRevision, String rawTitle) {
     }
 }

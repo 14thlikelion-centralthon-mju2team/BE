@@ -15,12 +15,14 @@ public class OpenAiClassifierReadyCondition implements Condition {
         String apiKey = context.getEnvironment().getProperty("openai.api-key", "");
         String policyVersion = context.getEnvironment().getProperty("openai.classification.privacy-policy-version", "");
         String model = context.getEnvironment().getProperty("openai.model", AiClassificationGate.PINNED_MODEL);
+        String baseUrl = context.getEnvironment().getProperty("openai.base-url", "https://api.openai.com/v1");
         boolean enabled = context.getEnvironment().getProperty("openai.classification.enabled", Boolean.class, false);
 
         boolean ready = enabled
                 && hasText(apiKey)
                 && hasText(policyVersion)
-                && AiClassificationGate.PINNED_MODEL.equals(model);
+                && AiClassificationGate.PINNED_MODEL.equals(model)
+                && OpenAiEndpointPolicy.isApproved(baseUrl);
         if (!ready && (enabled || hasText(apiKey) || hasText(policyVersion) || !AiClassificationGate.PINNED_MODEL.equals(model))) {
             log.warn("OpenAI event classifier disabled: failureReason=configuration_not_ready");
         }

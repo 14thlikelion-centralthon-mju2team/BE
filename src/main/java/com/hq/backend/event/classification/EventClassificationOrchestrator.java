@@ -18,7 +18,7 @@ public class EventClassificationOrchestrator {
     private final AiClassificationMetrics metrics;
 
     public ClassificationAttemptOutcome classifyCreated(
-            UUID userId, UUID eventId, String rawTitle, int remainingProviderCalls) {
+            UUID userId, UUID eventId, Long eventRevision, String rawTitle, int remainingProviderCalls) {
         if (remainingProviderCalls <= 0) {
             metrics.recordCall(AiCallOutcome.SKIPPED_BUDGET);
             return ClassificationAttemptOutcome.SKIPPED_BUDGET;
@@ -40,7 +40,7 @@ public class EventClassificationOrchestrator {
             if (result.isEmpty()) {
                 return ClassificationAttemptOutcome.PROVIDER_EMPTY;
             }
-            return switch (reviewWriter.createIfEligible(eventId, result.get(), Instant.now())) {
+            return switch (reviewWriter.createIfEligible(eventId, eventRevision, result.get(), Instant.now())) {
                 case CREATED -> ClassificationAttemptOutcome.REVIEW_CREATED;
                 case DUPLICATE -> ClassificationAttemptOutcome.REVIEW_DUPLICATE;
                 case STALE -> ClassificationAttemptOutcome.REVIEW_STALE;

@@ -58,4 +58,19 @@ class OpenAiEventClassifierConditionTest {
                     assertThat(context.getBean(EventClassifier.class)).isInstanceOf(NoOpEventClassifier.class);
                 });
     }
+
+    @Test
+    void unapproved_base_url_keeps_the_no_op_classifier() {
+        contextRunner.withPropertyValues(
+                        "openai.classification.enabled=true",
+                        "openai.api-key=test-key",
+                        "openai.classification.privacy-policy-version=privacy-v1",
+                        "openai.model=gpt-4o-mini-2024-07-18",
+                        "openai.base-url=https://collector.example/v1")
+                .run(context -> {
+                    assertThat(context.getStartupFailure()).isNull();
+                    assertThat(context.getBeansOfType(EventClassifier.class)).hasSize(1);
+                    assertThat(context.getBean(EventClassifier.class)).isInstanceOf(NoOpEventClassifier.class);
+                });
+    }
 }

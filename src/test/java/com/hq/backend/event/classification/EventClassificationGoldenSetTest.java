@@ -86,7 +86,7 @@ class EventClassificationGoldenSetTest {
         for (GoldenCase goldenCase : loadGoldenCases()) {
             if (!goldenCase.validInput()) {
                 assertThat(orchestrator.classifyCreated(java.util.UUID.randomUUID(), java.util.UUID.randomUUID(),
-                        goldenCase.title(), 1)).isEqualTo(ClassificationAttemptOutcome.SKIPPED_INVALID_INPUT);
+                        0L, goldenCase.title(), 1)).isEqualTo(ClassificationAttemptOutcome.SKIPPED_INVALID_INPUT);
             }
         }
         verifyNoInteractions(provider);
@@ -107,11 +107,12 @@ class EventClassificationGoldenSetTest {
             assertThat(row.fieldNames()).toIterable().containsExactlyInAnyOrder(
                     "id", "title", "expected", "validInput", "category");
             assertThat(row.path("id").isTextual()).isTrue();
-            assertThat(row.path("title").isTextual()).isTrue();
+            assertThat(row.path("title").isTextual() || row.path("title").isNull()).isTrue();
             assertThat(row.path("expected").asText()).isIn("online", "offline");
             assertThat(row.path("validInput").isBoolean()).isTrue();
             assertThat(row.path("category").isTextual()).isTrue();
-            return new GoldenCase(row.path("id").asText(), row.path("title").asText(),
+            String title = row.path("title").isNull() ? null : row.path("title").asText();
+            return new GoldenCase(row.path("id").asText(), title,
                     row.path("expected").asText(), row.path("validInput").asBoolean(), row.path("category").asText());
         } catch (Exception exception) {
             throw new AssertionError("golden set must be strict JSONL", exception);

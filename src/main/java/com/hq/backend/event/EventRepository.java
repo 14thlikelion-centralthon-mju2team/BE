@@ -32,6 +32,14 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
 
     Optional<Event> findByCalendarSourceIdAndExternalEventId(UUID calendarSourceId, String externalEventId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select e from Event e
+            where e.calendarSourceId = :calendarSourceId and e.externalEventId = :externalEventId
+            """)
+    Optional<Event> findByCalendarSourceIdAndExternalEventIdForUpdate(
+            UUID calendarSourceId, String externalEventId);
+
     List<Event> findByUserIdAndStartsAtBetweenOrderByStartsAtAsc(UUID userId, Instant from, Instant to);
 
     @org.springframework.data.jpa.repository.Query("""

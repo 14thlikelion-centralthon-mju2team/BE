@@ -378,6 +378,14 @@ class CalendarServiceTest {
     }
 
     @Test
+    void density_조회는_다페이지_Google_HTTP를_가로지르는_transaction을_열지_않는다() throws Exception {
+        var method = CalendarService.class.getMethod("getDensity", UUID.class, LocalDate.class);
+
+        assertThat(org.springframework.core.annotation.AnnotationUtils.findAnnotation(
+                method, org.springframework.transaction.annotation.Transactional.class)).isNull();
+    }
+
+    @Test
     void density_조회는_반복_nextPageToken에서_추가_요청_없이_실패로_종료한다() {
         UUID userId = UUID.randomUUID();
         CalendarConnection connection = connectedGoogleCalendar(userId);

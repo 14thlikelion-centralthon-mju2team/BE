@@ -175,12 +175,12 @@ class AiClassificationMetricsTest {
                 gate, normalizer, guard, classifier, writer, metrics);
         java.util.UUID userId = java.util.UUID.randomUUID();
 
-        assertThat(orchestrator.classifyCreated(userId, java.util.UUID.randomUUID(), "private title", 0))
+        assertThat(orchestrator.classifyCreated(userId, java.util.UUID.randomUUID(), 0L, "private title", 0))
                 .isEqualTo(ClassificationAttemptOutcome.SKIPPED_BUDGET);
         Mockito.when(gate.evaluate(userId)).thenReturn(AiGateOutcome.ALLOWED);
         Mockito.when(normalizer.normalize("private title")).thenReturn(java.util.Optional.of("private title"));
         Mockito.when(guard.tryAcquire()).thenReturn(false);
-        assertThat(orchestrator.classifyCreated(userId, java.util.UUID.randomUUID(), "private title", 1))
+        assertThat(orchestrator.classifyCreated(userId, java.util.UUID.randomUUID(), 0L, "private title", 1))
                 .isEqualTo(ClassificationAttemptOutcome.SKIPPED_BUSY);
 
         assertThat(registry.get("ai_classification_calls_total").tag("outcome", "skipped_budget").counter().count()).isEqualTo(1);
