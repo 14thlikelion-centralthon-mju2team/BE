@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,18 +27,18 @@ public class PlanOrchestrator {
     private final PlanEvalRepository planEvalRepository;
     private final NotificationScheduler notificationScheduler;
     private final NotificationRepository notificationRepository;
-    private final NotificationService notificationService;
+    private final ApplicationEventPublisher eventPublisher;
     private final com.hq.backend.wellness.WellnessEventSchedulerService wellnessEventSchedulerService;
 
     public PlanOrchestrator(PlanEvalRepository planEvalRepository,
                             NotificationScheduler notificationScheduler,
                             NotificationRepository notificationRepository,
-                            NotificationService notificationService,
+                            ApplicationEventPublisher eventPublisher,
                             com.hq.backend.wellness.WellnessEventSchedulerService wellnessEventSchedulerService) {
         this.planEvalRepository = planEvalRepository;
         this.notificationScheduler = notificationScheduler;
         this.notificationRepository = notificationRepository;
-        this.notificationService = notificationService;
+        this.eventPublisher = eventPublisher;
         this.wellnessEventSchedulerService = wellnessEventSchedulerService;
     }
 
@@ -68,20 +69,14 @@ public class PlanOrchestrator {
     }
 
     /**
-     * 개별 계획 평가. 알림 예약 + 도래한 알림 아웃박스 투입.
-     * 향후 환경 변화 감지 → 재계산 → 실질 변화 판정(TRD §8.3) 추가 예정.
+     * 개별 계획 평가. 알림 예약 + 도래한 알림 dispatch event 발행.
+     * FCM I/O는 transaction commit 후 listener가 처리한다.
      */
     private void evaluate(PlanRevision revision, Instant now) {
-        // 1. 시간 알림 슬롯 예약 (여유A / 극한B / 돌발C)
         notificationScheduler.scheduleTimeSlots(revision, now);
-
-        // 2. ENROUTE + wellness gate 통과 시 일정당 1회 wellness event 예약
         wellnessEventSchedulerService.tryFireWellnessEvents(revision, now);
-
-        // 3. 발송 시각이 도래한 알림을 아웃박스에 투입
         enqueueDueNotifications(revision, now);
 
-        // 4. next_eval_at 갱신 — 구간별 주기(TRD §8.2)
         Instant nextEval = computeNextEvalAt(revision, now);
         revision.setNextEvalAt(nextEval);
 
@@ -89,14 +84,12 @@ public class PlanOrchestrator {
                 revision.getPlanId(), nextEval);
     }
 
-    /** 해당 plan의 scheduled 알림 중 시각이 도래한 것을 FCM으로 발송 */
+    /** due notification은 DB transaction이 commit된 뒤 FCM dispatch한다. */
     private void enqueueDueNotifications(PlanRevision revision, Instant now) {
         notificationRepository.findByPlanIdAndDeliveryStatus(revision.getPlanId(), "scheduled")
                 .stream()
                 .filter(n -> !n.getScheduledAt().isAfter(now))
-                .forEach(n -> {
-                    notificationService.sendNotification(n, revision);
-                });
+                .forEach(n -> eventPublisher.publishEvent(new NotificationDueEvent(n.getNotificationId())));
     }
 
     /**
@@ -114,27 +107,21 @@ public class PlanOrchestrator {
         Instant depart = revision.getRecommendedDepartAt();
         Instant arrive = revision.getTargetArriveAt();
 
-        // 이미 도착 시각을 지남 → 평가 종료
-        if (now.isAfter(arrive.plusSeconds(1800))) { // 도착 후 30분 유예
+        if (now.isAfter(arrive.plusSeconds(1800))) {
             return null;
         }
 
         long minutesToPrepStart = java.time.Duration.between(now, prepStart).toMinutes();
 
         if (now.isAfter(depart)) {
-            // 이동 중 구간
             return now.plusSeconds(5 * 60);
         } else if (now.isAfter(prepStart) || minutesToPrepStart <= 0) {
-            // 준비 시작 ~ 출발
             return now.plusSeconds(3 * 60);
         } else if (minutesToPrepStart <= 90) {
-            // 90분 전 ~ 준비 시작
             return now.plusSeconds(5 * 60);
         } else if (minutesToPrepStart <= 360) {
-            // 6시간 ~ 90분 전
             return now.plusSeconds(20 * 60);
         } else {
-            // 6시간 이상 전
             return now.plusSeconds(60 * 60);
         }
     }

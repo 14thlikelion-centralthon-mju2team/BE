@@ -7,11 +7,37 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 public interface NotificationRepository extends JpaRepository<Notification, UUID> {
 
-    /** dedup_key로 이미 존재하는 알림 확인 (중복 발송 차단) */
+    /** dedup_key로 이미 존재하는 알림 확인 (조회용) */
     Optional<Notification> findByDedupKey(String dedupKey);
+
+    /**
+     * PostgreSQL unique dedup_key를 원자적으로 예약한다.
+     * @return 1이면 신규 예약, 0이면 다른 요청이 이미 같은 키를 예약함
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            INSERT INTO notification (
+                plan_id, notification_category, notification_type, scheduled_at,
+                delivery_status, body_masked, trigger_reason, dedup_key
+            ) VALUES (
+                :planId, :category, :type, :scheduledAt,
+                'scheduled', :bodyMasked, :triggerReason, :dedupKey
+            ) ON CONFLICT (dedup_key) DO NOTHING
+            """, nativeQuery = true)
+    int insertIfAbsent(
+            @Param("planId") UUID planId,
+            @Param("category") String category,
+            @Param("type") String type,
+            @Param("scheduledAt") Instant scheduledAt,
+            @Param("bodyMasked") String bodyMasked,
+            @Param("triggerReason") String triggerReason,
+            @Param("dedupKey") String dedupKey);
 
     /** 발송 대기 중인 알림 조회 — 아웃박스 워커가 사용 */
     @Query("""
