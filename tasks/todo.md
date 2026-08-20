@@ -58,7 +58,13 @@
   - [x] Publish review outcomes only after commit; verify rollback remains uncounted
   - [x] Align YAML, environment examples, Compose, and private-scrape runbook
   - [x] Run focused/adjacent/full verification, compose render, diff check, report, and commit
-- [ ] Task 10: 골든셋, 통합 회귀, 출시 증거 (in progress)
+- [x] Task 10: 골든셋, 통합 회귀, 출시 증거
+  - [x] Add the synthetic 200-row Korean golden set and deterministic strict-provider contract test
+  - [x] Add PostgreSQL two-page sync → title-free review → user-answer and privacy/failure integration regressions
+  - [x] Exclude opt-in `openai-eval` tagged execution from default Gradle tests and fail closed when enabled without approval/key/cap
+  - [x] Bound Task 7/8 concurrency waits; cover pending-review reviewId tie break and exact-500 retention drain
+  - [x] Run clean Java/build/Compose/Python verification and record exact evidence (Python blocked by CPython 3.14/PyO3 compatibility before pytest)
+  - [x] Self-review, force-track release evidence, commit Task 10
 
 ## Review
 
@@ -84,3 +90,4 @@
 - Task 9: Added only low-cardinality AI classification counters/timers, transaction-after-commit review metrics, safe rollout configuration, and a private-scrape operating runbook. Focused, adjacent, full Gradle, and both Compose render checks passed before commit.
 - Task 9 review follow-up: fixed JDK timeout/incomplete outcome mapping, real backlog lag and partial-batch retention accounting, writer AFTER_COMMIT metrics, identifier-free sync failure logs, and the operating controls required for staged rollout/rollback.
 - Task 9 final scoped review: APPROVED (Critical 0, Important 0).
+- Task 10: self-review found no Critical/Important issue. Final release evidence retains explicit "not executed" markers for unapproved live provider evaluation and does not infer F1, latency, tokens, cost cap, or provider approval. Independent review could not be allocated because all agent slots were occupied.

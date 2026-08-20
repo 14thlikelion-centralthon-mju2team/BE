@@ -43,7 +43,8 @@ class EventReviewConcurrencyTest {
             Future<Object> second = executor.submit(() -> answerAfter(start, fixture));
             start.countDown();
 
-            List<Object> outcomes = List.of(first.get(), second.get());
+            List<Object> outcomes = List.of(first.get(5, java.util.concurrent.TimeUnit.SECONDS),
+                    second.get(5, java.util.concurrent.TimeUnit.SECONDS));
             assertThat(outcomes).filteredOn(outcome -> outcome instanceof com.hq.backend.event.dto.EventReviewResponse)
                     .hasSize(1);
             assertThat(outcomes).filteredOn(outcome -> outcome instanceof ApiException).hasSize(1);
@@ -70,23 +71,23 @@ class EventReviewConcurrencyTest {
                 lockHeld.countDown();
                 await(releaseLock);
             }));
-            lockHeld.await();
+            await(lockHeld);
             Future<?> patch = executor.submit(() -> {
                 patchStarted.countDown();
                 eventService.update(fixture.userId(), fixture.eventId(), new EventUpdateRequest(
                         null, null, null, null, null, null, "https://meeting.example", null, null, null));
             });
-            patchStarted.await();
+            await(patchStarted);
             awaitCondition(() -> jdbcTemplate.queryForObject("""
                     select count(*) from pg_stat_activity
                     where wait_event_type = 'Lock' and query ilike '%from event%'
                     """, Integer.class) > 0, "PATCH가 Event row lock 대기열에 진입");
             Future<Object> answer = executor.submit(() -> answer(fixture));
             releaseLock.countDown();
-            holder.get();
-            patch.get();
+            holder.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            patch.get(5, java.util.concurrent.TimeUnit.SECONDS);
 
-            Object answerOutcome = answer.get();
+            Object answerOutcome = answer.get(5, java.util.concurrent.TimeUnit.SECONDS);
             assertThat(answerOutcome).isInstanceOf(ApiException.class);
             assertThat(((ApiException) answerOutcome).getCode()).isEqualTo("REVIEW_ALREADY_CLOSED");
             Event event = eventRepository.findById(fixture.eventId()).orElseThrow();
@@ -133,7 +134,9 @@ class EventReviewConcurrencyTest {
 
     private void await(CountDownLatch latch) {
         try {
-            latch.await();
+            if (!latch.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new AssertionError("동시성 테스트 latch 대기 시간이 5초를 초과했습니다.");
+            }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(exception);

@@ -257,6 +257,26 @@ class EventControllerTest {
     }
 
     @Test
+    void pending_review는_동일한_startsAt과_askedAt에서도_reviewId로_결정론적으로_정렬한다() throws Exception {
+        String token = signupAndLogin();
+        Instant askedAt = Instant.parse("2026-08-20T03:00:00Z");
+        String firstEventId = createUndecidedEvent(token, "2026-08-21T10:00:00+09:00");
+        String secondEventId = createUndecidedEvent(token, "2026-08-21T10:00:00+09:00");
+        EventClassificationReview first = savePendingReview(UUID.fromString(firstEventId), askedAt);
+        EventClassificationReview second = savePendingReview(UUID.fromString(secondEventId), askedAt);
+        java.util.List<String> expected = java.util.stream.Stream.of(first, second)
+                .map(review -> review.getReviewId().toString()).sorted().toList();
+
+        mockMvc.perform(get("/events/reviews/pending")
+                        .header("Authorization", "Bearer " + token)
+                        .param("from", "2026-08-20T00:00:00+09:00")
+                        .param("to", "2026-08-22T00:00:00+09:00"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].reviewId").value(expected.get(0)))
+                .andExpect(jsonPath("$[1].reviewId").value(expected.get(1)));
+    }
+
+    @Test
     void reviewId가_다른_event에_속하거나_다른_사용자면_404이다() throws Exception {
         String token = signupAndLogin();
         String eventId = createUndecidedEvent(token, "2026-08-21T10:00:00+09:00");

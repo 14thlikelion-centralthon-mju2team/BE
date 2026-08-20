@@ -49,5 +49,17 @@ dependencies {
 }
 
 tasks.named('test') {
-	useJUnitPlatform()
+	useJUnitPlatform {
+		excludeTags 'openai-eval'
+	}
+}
+
+tasks.register('openAiEvalTest', Test) {
+	group = 'verification'
+	description = 'Runs opt-in live OpenAI golden-set evaluation; never part of the default test task.'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform {
+		includeTags 'openai-eval'
+	}
 }

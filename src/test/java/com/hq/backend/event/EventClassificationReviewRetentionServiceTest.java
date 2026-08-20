@@ -123,6 +123,17 @@ class EventClassificationReviewRetentionServiceTest {
     }
 
     @Test
+    void service는_정확히_500개_만료_review도_후속_빈_batch까지_확인해_남김없이_삭제한다() {
+        Event event = saveEvent();
+        List<UUID> reviewIds = insertExpiredAnsweredReviews(event.getEventId(), 500);
+
+        RetentionBatchResult result = retentionService.deleteExpired(NOW.minus(90, ChronoUnit.DAYS), 500);
+
+        assertThat(result).isEqualTo(new RetentionBatchResult(500, false));
+        assertThat(reviewIds).allSatisfy(id -> assertThat(reviewRepository.existsById(id)).isFalse());
+    }
+
+    @Test
     void answer가_review_lock을_기다리는동안_purge는_skip_locked로_건너뛰고_답변필드를_유실하지_않는다() throws Exception {
         Event event = saveEvent();
         EventClassificationReview review = saveTitleReview(event.getEventId(), NOW.minus(25, ChronoUnit.HOURS));
@@ -135,7 +146,7 @@ class EventClassificationReviewRetentionServiceTest {
                 locked.countDown();
                 await(release);
             }));
-            locked.await();
+            await(locked);
 
             Future<?> answer = executor.submit(() -> eventService.answerReview(
                     event.getUserId(), event.getEventId(),
@@ -143,8 +154,8 @@ class EventClassificationReviewRetentionServiceTest {
 
             assertThat(batchWriter.purgeBatch(NOW.minus(24, ChronoUnit.HOURS), NOW, 500)).isZero();
             release.countDown();
-            holder.get();
-            answer.get();
+            holder.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            answer.get(5, java.util.concurrent.TimeUnit.SECONDS);
 
             entityManager.clear();
             EventClassificationReview saved = reviewRepository.findById(review.getReviewId()).orElseThrow();
@@ -170,12 +181,12 @@ class EventClassificationReviewRetentionServiceTest {
                 locked.countDown();
                 await(release);
             }));
-            locked.await();
+            await(locked);
 
             assertThat(batchWriter.deleteBatch(NOW.minus(90, ChronoUnit.DAYS), 500)).isZero();
             assertThat(reviewRepository.existsById(review.getReviewId())).isTrue();
             release.countDown();
-            holder.get();
+            holder.get(5, java.util.concurrent.TimeUnit.SECONDS);
 
             assertThat(batchWriter.deleteBatch(NOW.minus(90, ChronoUnit.DAYS), 500)).isEqualTo(1);
             assertThat(reviewRepository.existsById(review.getReviewId())).isFalse();
@@ -239,7 +250,9 @@ class EventClassificationReviewRetentionServiceTest {
 
     private void await(CountDownLatch latch) {
         try {
-            latch.await();
+            if (!latch.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new AssertionError("retention 동시성 latch 대기 시간이 5초를 초과했습니다.");
+            }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(exception);
