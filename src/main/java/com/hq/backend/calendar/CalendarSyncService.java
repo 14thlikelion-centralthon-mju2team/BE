@@ -5,6 +5,7 @@ import com.hq.backend.calendar.dto.GoogleCalendarEventsResponse;
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
 import com.hq.backend.plan.PlanCreationService;
+import com.hq.backend.plan.PlanRevision;
 import com.hq.backend.plan.PlanRevisionRepository;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -14,7 +15,6 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.encrypt.BytesEncryptor;
 import org.springframework.stereotype.Service;
@@ -28,8 +28,11 @@ import org.springframework.web.util.UriComponentsBuilder;
  * syncToken 기반으로 변경된 일정만 가져와서 Event를 upsert하고,
  * 변경이 감지되면 계획을 자동 재계산한다.
  *
- * TRD §13.1: 캘린더 동기화는 ext_uid 기준 upsert.
- * TRD CAL-03: 사용자가 수정한 필드(place_need_by='user')는 동기화가 덮지 않는다.
+ * P0 수정 (#208):
+ * - Google HTTP 호출은 트랜잭션 밖에서 수행
+ * - DB 변경(Event upsert, syncToken 갱신)은 짧은 트랜잭션에서 명시적 save
+ * - triggerRecalculate 실패 시 기존 active plan 복원
+ * - syncToken은 모든 이벤트 처리 성공 후에만 저장
  */
 @Service
 public class CalendarSyncService {
@@ -75,6 +78,7 @@ public class CalendarSyncService {
     /**
      * 5분마다 모든 활성 캘린더 연결에 대해 증분 동기화를 수행한다.
      * 단일 VM이므로 동시성 문제 없음 (TRD T1).
+     * Google HTTP 호출은 트랜잭션 밖에서 수행하고, DB 변경은 짧은 트랜잭션으로 분리한다.
      */
     @Scheduled(fixedDelay = 300_000) // 5분
     public void syncAll() {
@@ -86,12 +90,13 @@ public class CalendarSyncService {
     /**
      * 특정 사용자의 캘린더를 즉시 동기화 (수동 트리거용).
      */
-    @Transactional
     public void syncForUser(UUID userId) {
         connectionRepository.findByUserIdAndProvider(userId, "google")
                 .filter(c -> c.getRevokedAt() == null)
                 .ifPresent(this::syncConnection);
     }
+
+    // ─── orchestration (트랜잭션 없음 — Google 호출 중 DB 커넥션 미점유) ───
 
     private void syncConnection(CalendarConnection connection) {
         try {
@@ -108,29 +113,42 @@ public class CalendarSyncService {
                 return;
             }
 
+            // 각 이벤트를 짧은 트랜잭션으로 처리
+            boolean allSuccess = true;
             for (GoogleCalendarEvent gcEvent : response.items()) {
-                processEvent(connection, gcEvent);
+                try {
+                    persistEvent(connection.getUserId(), connection.getCalendarConnectionId(), gcEvent);
+                } catch (Exception e) {
+                    log.error("[CalendarSync] 이벤트 처리 실패: external_id={}, cause={}",
+                            gcEvent.id(), e.getMessage());
+                    allSuccess = false;
+                }
             }
 
-            // syncToken 갱신 (다음 동기화에서 변경분만 조회)
-            if (response.nextSyncToken() != null) {
-                connection.setSyncToken(response.nextSyncToken());
+            // syncToken은 모든 이벤트 처리 성공 후에만 전진 — 실패 시 다음 주기에 재처리
+            if (allSuccess && response.nextSyncToken() != null) {
+                advanceSyncToken(connection.getCalendarConnectionId(), response.nextSyncToken());
             }
 
-            log.debug("[CalendarSync] user_id={} 동기화 완료, events={}", connection.getUserId(),
-                    response.items() != null ? response.items().size() : 0);
+            log.debug("[CalendarSync] user_id={} 동기화 완료, events={}, tokenAdvanced={}",
+                    connection.getUserId(),
+                    response.items() != null ? response.items().size() : 0,
+                    allSuccess && response.nextSyncToken() != null);
         } catch (Exception e) {
             log.error("[CalendarSync] user_id={} 동기화 실패", connection.getUserId(), e);
         }
     }
 
-    private void processEvent(CalendarConnection connection, GoogleCalendarEvent gcEvent) {
+    // ─── DB 변경 (짧은 트랜잭션) ───
+
+    @Transactional
+    public void persistEvent(UUID userId, UUID connectionId, GoogleCalendarEvent gcEvent) {
         if (gcEvent.id() == null) return;
-        UUID userId = connection.getUserId();
+
         CalendarSource source = calendarSourceRepository
-                .findByCalendarConnectionIdAndIsDefaultTrueAndDeletedAtIsNull(connection.getCalendarConnectionId())
+                .findByCalendarConnectionIdAndIsDefaultTrueAndDeletedAtIsNull(connectionId)
                 .orElseGet(() -> calendarSourceRepository.save(CalendarSource.builder()
-                        .calendarConnectionId(connection.getCalendarConnectionId())
+                        .calendarConnectionId(connectionId)
                         .externalCalendarId("primary")
                         .displayName("내 캘린더")
                         .isWritable(true)
@@ -138,7 +156,6 @@ public class CalendarSyncService {
                         .syncEnabled(true)
                         .build()));
 
-        // 시간 정보가 없는 이벤트(종일 이벤트 중 dateTime이 없는 것)는 스킵
         if (gcEvent.start() == null || gcEvent.start().dateTime() == null) {
             return;
         }
@@ -147,10 +164,10 @@ public class CalendarSyncService {
                 source.getCalendarSourceId(), gcEvent.id());
 
         if ("cancelled".equals(gcEvent.status())) {
-            // 삭제된 일정 → cancelled 처리
             existingOpt.ifPresent(event -> {
                 if (!"cancelled".equals(event.getStatus())) {
                     event.setStatus("cancelled");
+                    eventRepository.save(event);
                     log.info("[CalendarSync] 일정 삭제 감지: event_id={}", event.getEventId());
                 }
             });
@@ -161,7 +178,6 @@ public class CalendarSyncService {
         Instant endsAt = gcEvent.end() != null ? gcEvent.end().dateTime() : startsAt.plusSeconds(3600);
 
         if (existingOpt.isPresent()) {
-            // 기존 일정 업데이트 — 시각 변경만 동기화, 사용자 수정 필드는 건드리지 않음 (CAL-03)
             Event event = existingOpt.get();
             boolean timeChanged = !startsAt.equals(event.getStartsAt()) || !endsAt.equals(event.getEndsAt());
 
@@ -169,12 +185,11 @@ public class CalendarSyncService {
                 event.setStartsAt(startsAt);
                 event.setEndsAt(endsAt);
                 event.setUpdatedAt(Instant.now());
-                // 시각이 바뀌면 계획 재계산 트리거
+                eventRepository.save(event);
                 triggerRecalculate(userId, event);
                 log.info("[CalendarSync] 일정 시각 변경: event_id={}", event.getEventId());
             }
         } else {
-            // 새 일정 생성
             Event newEvent = Event.builder()
                     .userId(userId)
                     .calendarSourceId(source.getCalendarSourceId())
@@ -189,26 +204,30 @@ public class CalendarSyncService {
                     .createdAt(Instant.now())
                     .updatedAt(Instant.now())
                     .build();
-
-            // displayLabel: 외부 일정 제목 원문은 저장하지 않음 (TRD 절대 원칙 8)
-            // 분류 후 폐기 — displayLabel은 사용자가 승인할 때까지 null
             eventRepository.save(newEvent);
             log.info("[CalendarSync] 새 일정 생성: event_id={}, external_id={}", newEvent.getEventId(), gcEvent.id());
-
-            // 목적지가 없으면 계획을 바로 만들 수 없음 — location_state=undecided
-            // FE에서 목적지 입력 후 POST /events/{id}/plan-trigger 등으로 계획 생성
         }
     }
 
+    @Transactional
+    public void advanceSyncToken(UUID connectionId, String nextToken) {
+        connectionRepository.findById(connectionId).ifPresent(conn -> {
+            conn.setSyncToken(nextToken);
+            connectionRepository.save(conn);
+        });
+    }
+
+    // ─── 재계산 (실패 시 기존 active plan 복원) ───
+
     private void triggerRecalculate(UUID userId, Event event) {
+        var activePlanOpt = planRevisionRepository.findByEventIdAndPlanStatus(event.getEventId(), "active");
+        if (activePlanOpt.isEmpty()) return;
+
+        PlanRevision activePlan = activePlanOpt.get();
+        String originalStatus = activePlan.getPlanStatus();
+
         try {
-            // 현재 활성 리비전을 찾아서 재계산
-            var activePlanOpt = planRevisionRepository.findByEventIdAndPlanStatus(event.getEventId(), "active");
-            if (activePlanOpt.isEmpty()) return;
-
-            var activePlan = activePlanOpt.get();
-
-            // uq_active_plan_per_event 제약: 새 리비전 INSERT 전에 기존을 superseded로 전환 + flush
+            // uq_active_plan_per_event 제약: 새 리비전 INSERT 전에 기존을 superseded로 전환
             activePlan.setPlanStatus("superseded");
             planRevisionRepository.saveAndFlush(activePlan);
 
@@ -217,9 +236,15 @@ public class CalendarSyncService {
                     activePlan.getRevisionNo() + 1,
                     activePlan.getInputHash(), null);
         } catch (Exception e) {
-            log.warn("[CalendarSync] 재계산 실패: event_id={}", event.getEventId(), e);
+            // 재계산 실패 → 기존 active plan 복원 (사용자가 계획 없는 상태로 남지 않도록)
+            log.warn("[CalendarSync] 재계산 실패, 기존 plan 복원: event_id={}, cause={}",
+                    event.getEventId(), e.getMessage());
+            activePlan.setPlanStatus(originalStatus);
+            planRevisionRepository.save(activePlan);
         }
     }
+
+    // ─── Google 외부 호출 (트랜잭션 밖) ───
 
     private GoogleCalendarEventsResponse fetchEvents(String accessToken, String syncToken) {
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(googleCalendarEventsUrl)
@@ -229,7 +254,6 @@ public class CalendarSyncService {
         if (syncToken != null) {
             builder.queryParam("syncToken", syncToken);
         } else {
-            // 초기 동기화: 오늘부터 30일
             builder.queryParam("timeMin", Instant.now().toString());
             builder.queryParam("timeMax", Instant.now().plusSeconds(30L * 24 * 3600).toString());
         }
