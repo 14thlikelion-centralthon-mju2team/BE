@@ -39,6 +39,22 @@ public class SecurityConfig {
             "/error"
     };
 
+    /**
+     * Browser clients are hosted on Firebase Hosting. Keep this exact allowlist in sync with
+     * deployed frontend origins; the API origin itself is not a cross-origin browser client.
+     */
+    private static final List<String> ALLOWED_CORS_ORIGINS = List.of(
+            "https://ensom-10da2.web.app",
+            "https://ensom-10da2.firebaseapp.com"
+    );
+
+    private static final List<String> ALLOWED_CORS_HEADERS = List.of(
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            "X-App-Version"
+    );
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -58,11 +74,12 @@ public class SecurityConfig {
     @Bean
     public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
         var config = new org.springframework.web.cors.CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("*"));
+        config.setAllowedOrigins(ALLOWED_CORS_ORIGINS);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
+        config.setAllowedHeaders(ALLOWED_CORS_HEADERS);
         config.setExposedHeaders(List.of("Authorization", "Idempotency-Key"));
-        config.setAllowCredentials(true);
+        // ENSOM uses Bearer tokens rather than browser cookies; do not permit credentialed CORS.
+        config.setAllowCredentials(false);
         config.setMaxAge(3600L);
         var source = new org.springframework.web.cors.UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
