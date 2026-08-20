@@ -120,7 +120,7 @@ public class CalendarSyncService {
             processCreatedCandidates(connection.getUserId(), createdCandidates, classificationAllowed);
             syncStateWriter.advanceSyncToken(connectionId, fetch.expectedTokenForCas(), fetch.batch().nextSyncToken());
         } catch (Exception exception) {
-            log.warn("[CalendarSync] connection sync failed: connection_id={}", connectionId);
+            log.warn("[CalendarSync] connection sync failed");
         } finally {
             runningConnectionIds.remove(connectionId);
         }
@@ -170,7 +170,7 @@ public class CalendarSyncService {
                         activePlan.getRevisionNo() + 1, activePlan.getInputHash(), null);
             });
         } catch (Exception exception) {
-            log.warn("[CalendarSync] plan recompute failed: event_id={}", eventId);
+            log.warn("[CalendarSync] plan recompute failed");
         }
     }
 

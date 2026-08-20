@@ -31,11 +31,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.encrypt.BytesEncryptor;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.client.RestClient;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class CalendarSyncServiceTest {
 
     @Mock private CalendarConnectionRepository connectionRepository;
@@ -183,6 +185,22 @@ class CalendarSyncServiceTest {
     }
 
     @Test
+    void sync_failure_log_never_emits_connection_user_event_or_title_identifiers(CapturedOutput output) {
+        UUID connectionId = UUID.fromString("00000000-0000-0000-0000-000000000091");
+        UUID userId = UUID.fromString("00000000-0000-0000-0000-000000000092");
+        CalendarConnection connection = connection(connectionId, userId, null);
+        String privateTitle = "private calendar title";
+        service = service((accessToken, token, now) -> Optional.of(new GoogleSyncBatch(List.of(event(privateTitle, "secret-event-id")), "next")));
+        when(connectionRepository.findById(connectionId)).thenReturn(Optional.of(connection));
+        when(calendarEventWriter.upsert(any(), any(), any())).thenThrow(new IllegalStateException("private exception detail"));
+
+        service.syncConnection(connectionId, true);
+
+        assertThat(output).contains("[CalendarSync] connection sync failed")
+                .doesNotContain(connectionId.toString(), userId.toString(), "secret-event-id", privateTitle, "private exception detail");
+    }
+
+    @Test
     void 수동_sync는_CREATED를_처리해도_AI를_호출하지_않고_token을_전진시킨다() {
         CalendarConnection connection = connection(null);
         service = service((accessToken, token, now) -> {
@@ -264,9 +282,13 @@ class CalendarSyncServiceTest {
     }
 
     private CalendarConnection connection(String syncToken) {
+        return connection(UUID.randomUUID(), UUID.randomUUID(), syncToken);
+    }
+
+    private CalendarConnection connection(UUID connectionId, UUID userId, String syncToken) {
         CalendarConnection connection = CalendarConnection.builder()
-                .calendarConnectionId(UUID.randomUUID())
-                .userId(UUID.randomUUID())
+                .calendarConnectionId(connectionId)
+                .userId(userId)
                 .provider("google")
                 .externalAccountId("account")
                 .refreshTokenEnc(new byte[] {1})

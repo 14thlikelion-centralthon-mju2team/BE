@@ -1,6 +1,7 @@
 package com.hq.backend.event.classification;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventClassificationReview;
@@ -83,6 +84,19 @@ class EventClassificationReviewWriterTest {
         assertThat(reviewCount("stale")).isEqualTo(staleBefore + 1);
         assertThat(reviewCount("created")).isEqualTo(createdBefore + 1);
         assertThat(reviewCount("duplicate")).isEqualTo(duplicateBefore + 1);
+    }
+
+    @Test
+    void failed_requires_new_writer_transaction_does_not_publish_a_review_metric() {
+        Event event = saveEvent("undecided", "planned", false, null);
+        double createdBefore = reviewCount("created");
+
+        assertThatThrownBy(() -> writer.createIfEligible(event.getEventId(), new EventClassificationResult(
+                null, "online", new BigDecimal("0.9400"), "openai", "gpt-4o-mini-2024-08-06",
+                "classifier-v1", "prompt-v1", "schema-v1"), ASKED_AT))
+                .isInstanceOf(RuntimeException.class);
+
+        assertThat(reviewCount("created")).isEqualTo(createdBefore);
     }
 
     @Test

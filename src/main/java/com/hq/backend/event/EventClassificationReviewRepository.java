@@ -45,6 +45,18 @@ public interface EventClassificationReviewRepository extends JpaRepository<Event
 
     boolean existsByEventIdAndAnsweredAtIsNull(UUID eventId);
 
+    @Query("""
+            select min(r.askedAt) from EventClassificationReview r
+            where r.titleSnapshot is not null and r.askedAt <= :cutoff
+            """)
+    Optional<Instant> findOldestPurgeEligibleAskedAt(@Param("cutoff") Instant cutoff);
+
+    @Query("""
+            select min(r.askedAt) from EventClassificationReview r
+            where r.askedAt < :cutoff
+            """)
+    Optional<Instant> findOldestDeleteEligibleAskedAt(@Param("cutoff") Instant cutoff);
+
     @Modifying
     @Query(value = """
             INSERT INTO event_classification_review (

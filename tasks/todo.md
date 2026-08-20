@@ -82,3 +82,4 @@
 - Task 8: Exact PostgreSQL CTE batches purge stale title snapshots without touching answers and delete both pending/answered reviews after 90 days. Focused, adjacent, and full PostgreSQL suites passed before commit.
 - Task 8 independent review: APPROVED (Spec Critical/Important/Minor 0; Quality Critical/Important 0, Minor 3). Deterministic concurrency and exact-500 test hardening are deferred to Task 10.
 - Task 9: Added only low-cardinality AI classification counters/timers, transaction-after-commit review metrics, safe rollout configuration, and a private-scrape operating runbook. Focused, adjacent, full Gradle, and both Compose render checks passed before commit.
+- Task 9 review follow-up: fixed JDK timeout/incomplete outcome mapping, real backlog lag and partial-batch retention accounting, writer AFTER_COMMIT metrics, identifier-free sync failure logs, and the operating controls required for staged rollout/rollback.

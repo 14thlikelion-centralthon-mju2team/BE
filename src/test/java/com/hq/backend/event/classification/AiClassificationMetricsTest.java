@@ -10,9 +10,14 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.net.URI;
+import java.net.http.HttpConnectTimeoutException;
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mockito;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
@@ -116,6 +121,44 @@ class AiClassificationMetricsTest {
                 .extracting(tag -> tag.getValue())
                 .doesNotContain("429", "503", "private title one", "private title two");
         server.verify();
+    }
+
+    @ParameterizedTest
+    @MethodSource("httpTimeoutFailures")
+    void records_jdk_http_timeout_failures_as_timeout_once(java.io.IOException timeout) {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AiClassificationMetrics metrics = new AiClassificationMetrics(registry);
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://openai.test/v1");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://openai.test/v1/responses")).andRespond(request -> { throw timeout; });
+
+        new OpenAiEventClassifier(builder.build(), new ObjectMapper(), properties(), metrics)
+                .classify(new EventClassificationInput("private title"));
+
+        assertThat(registry.get("ai_classification_calls_total").tag("outcome", "timeout").counter().count()).isEqualTo(1);
+        assertThat(registry.get("ai_classification_latency_seconds").timer().count()).isEqualTo(1);
+        server.verify();
+    }
+
+    @Test
+    void records_incomplete_before_validating_model_or_output_shape() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AiClassificationMetrics metrics = new AiClassificationMetrics(registry);
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://openai.test/v1");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://openai.test/v1/responses"))
+                .andRespond(withSuccess("{\"status\":\"in_progress\",\"output\":[]}", MediaType.APPLICATION_JSON));
+
+        new OpenAiEventClassifier(builder.build(), new ObjectMapper(), properties(), metrics)
+                .classify(new EventClassificationInput("private title"));
+
+        assertThat(registry.get("ai_classification_calls_total").tag("outcome", "incomplete").counter().count()).isEqualTo(1);
+        assertThat(registry.find("ai_classification_calls_total").tag("outcome", "invalid_schema").counter()).isNull();
+        server.verify();
+    }
+
+    private static Stream<java.io.IOException> httpTimeoutFailures() {
+        return Stream.of(new HttpTimeoutException("timeout detail"), new HttpConnectTimeoutException("connect timeout detail"));
     }
 
     @Test

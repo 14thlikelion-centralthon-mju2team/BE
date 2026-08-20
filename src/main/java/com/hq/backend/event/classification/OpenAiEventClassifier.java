@@ -7,6 +7,7 @@ import com.hq.backend.event.classification.dto.OpenAiResponsesRequest;
 import com.hq.backend.event.classification.dto.OpenAiResponsesResponse;
 import java.math.BigDecimal;
 import java.net.SocketTimeoutException;
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -102,16 +103,18 @@ public class OpenAiEventClassifier implements EventClassifier {
     }
 
     private ParsedResponse parseResponse(OpenAiResponsesResponse response) {
-        if (response == null
-                || response.error() != null
-                || !hasText(response.model())
-                || response.output() == null
-                || response.output().size() != 1) {
+        if (response == null) {
             return invalidResponse();
         }
         if (!"completed".equals(response.status()) || response.incompleteDetails() != null) {
             empty(FailureReason.RESPONSE_INVALID);
             return new ParsedResponse(Optional.empty(), AiCallOutcome.INCOMPLETE);
+        }
+        if (response.error() != null
+                || !hasText(response.model())
+                || response.output() == null
+                || response.output().size() != 1) {
+            return invalidResponse();
         }
 
         OpenAiResponsesResponse.Output message = response.output().getFirst();
@@ -173,7 +176,7 @@ public class OpenAiEventClassifier implements EventClassifier {
     private boolean isTimeout(Exception exception) {
         Throwable cause = exception;
         while (cause != null) {
-            if (cause instanceof SocketTimeoutException) return true;
+            if (cause instanceof SocketTimeoutException || cause instanceof HttpTimeoutException) return true;
             cause = cause.getCause();
         }
         return false;
