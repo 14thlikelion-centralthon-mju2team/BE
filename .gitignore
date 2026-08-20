@@ -45,6 +45,8 @@ out/
 
 ### Project-local documents ###
 /doc/
+!/doc/
+!/doc/API.md
 
 ### Python virtual environments ###
 **/.venv/
