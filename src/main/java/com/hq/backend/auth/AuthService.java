@@ -7,6 +7,7 @@ import com.hq.backend.auth.dto.SignupRequest;
 import com.hq.backend.auth.dto.SignupResponse;
 import com.hq.backend.auth.dto.TokenResponse;
 import com.hq.backend.common.exception.ApiException;
+import com.hq.backend.consent.UserConsentRepository;
 import com.hq.backend.pushdevice.PushDeviceRepository;
 import com.hq.backend.user.User;
 import com.hq.backend.user.UserCredential;
@@ -18,6 +19,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,6 +45,8 @@ public class AuthService {
 
     private static final short LOGIN_FAIL_LOCK_THRESHOLD = 5;
     private static final long LOGIN_LOCK_MINUTES = 15;
+    // API 명세 §2.8·클라이언트 동의 화면과 같은 목록. marketing은 선택이라 빠진다.
+    private static final List<String> REQUIRED_CONSENT_TYPES = List.of("terms", "privacy", "location");
 
     private final UserRepository userRepository;
     private final UserIdentityRepository userIdentityRepository;
@@ -54,6 +58,10 @@ public class AuthService {
     private final RestClient restClient;
     private final TransactionTemplate transactionTemplate;
     private final EmailVerificationService emailVerificationService;
+    private final UserConsentRepository userConsentRepository;
+
+    @Value("${app.consent.policy-version}")
+    private String consentPolicyVersion;
 
     @Value("${oauth.google.token-info-url}")
     private String googleTokenInfoUrl;
@@ -253,7 +261,20 @@ public class AuthService {
                         user.getUserId().toString(),
                         user.getNickname(),
                         user.getTimezone(),
-                        isNew));
+                        isNew),
+                consentRequiredFor(user.getUserId()));
+    }
+
+    // 필수 약관별로 가장 최근 기록 하나만 본다 — action이 revoked거나 policyVersion이
+    // 현재 버전보다 낮으면 재동의 대상이다. 3건짜리 조회라 배치 쿼리를 따로 만들지 않았다.
+    private List<String> consentRequiredFor(UUID userId) {
+        return REQUIRED_CONSENT_TYPES.stream()
+                .filter(type -> userConsentRepository
+                        .findFirstByUserIdAndConsentTypeOrderByRecordedAtDescConsentEventIdDesc(userId, type)
+                        .filter(consent -> "agreed".equals(consent.getAction())
+                                && consentPolicyVersion.equals(consent.getPolicyVersion()))
+                        .isEmpty())
+                .toList();
     }
 
     /**

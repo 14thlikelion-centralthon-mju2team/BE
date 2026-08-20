@@ -47,6 +47,7 @@ class AuthServiceTest {
     @Mock private JwtService jwtService;
     @Mock private TransactionTemplate transactionTemplate;
     @Mock private EmailVerificationService emailVerificationService;
+    @Mock private com.hq.backend.consent.UserConsentRepository userConsentRepository;
 
     private AuthService authService;
 
@@ -55,7 +56,8 @@ class AuthServiceTest {
     void setUp() {
         authService = new AuthService(
                 userRepository, userIdentityRepository, userCredentialRepository, refreshTokenRepository, pushDeviceRepository, passwordEncoder, jwtService,
-                restClient, transactionTemplate, emailVerificationService);
+                restClient, transactionTemplate, emailVerificationService, userConsentRepository);
+        ReflectionTestUtils.setField(authService, "consentPolicyVersion", "v1");
         ReflectionTestUtils.setField(authService, "googleTokenInfoUrl", "https://oauth2.googleapis.com/tokeninfo");
         ReflectionTestUtils.setField(authService, "googleClientId", "ensom-client-id");
     }

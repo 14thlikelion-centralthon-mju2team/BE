@@ -95,6 +95,9 @@ app:
     # salt는 BytesEncryptor가 요구하는 hex 문자열 형식.
     secret: ${ENCRYPTION_SECRET:dev-only-local-encryption-secret-change-before-deploy}
     salt: ${ENCRYPTION_SALT:deadbeefdeadbeefdeadbeefdeadbeef}
+  consent:
+    # 필수 약관의 현재 정책 버전. 올리면 기존 동의가 만료되어 재동의를 요구한다.
+    policy-version: ${CONSENT_POLICY_VERSION:v1}
   email-verification:
     enabled: ${EMAIL_VERIFICATION_ENABLED:true}
     # 제품 정책: 이메일 소유 인증 링크는 발급 후 30분간만 유효하다.
