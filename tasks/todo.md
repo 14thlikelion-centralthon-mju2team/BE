@@ -31,7 +31,7 @@
   - [x] Write focused RED tests for title normalization, policy gate, configuration binding, and NoOp selection
   - [x] Add minimal fail-closed classification contracts, properties, normalizer, and consent/rollout gate
   - [x] Verify focused tests, application context, full regression, diff; write report and commit
-- [ ] Task 5: OpenAI Responses API strict client
+- [ ] Task 5: OpenAI Responses API strict client (in progress)
 - [ ] Task 6: 신규 일정 분류와 review 저장 orchestration
 - [ ] Task 7: pending 조회와 stale-safe 답변 API
 - [ ] Task 8: 24시간 방어 purge와 90일 review 삭제
@@ -49,3 +49,4 @@
 - Task 3: Event/source writes and sync-token CAS now use isolated `REQUIRES_NEW` writers; focused PostgreSQL tests and the full Gradle suite passed before commit.
 - Task 3 independent review: two data-loss findings fixed with TDD; scoped re-review APPROVED (Critical 0, Important 0).
 - Task 4: Added a fail-closed title normalizer, exact privacy-consent gate, stable rollout, validated configuration, and unconditional NoOp classifier. Focused PostgreSQL/context tests and the full Gradle suite passed before commit.
+- Task 4 independent review: APPROVED (Critical 0, Important 0, Minor 0).
