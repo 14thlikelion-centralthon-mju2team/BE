@@ -4,6 +4,9 @@ import com.hq.backend.calendar.dto.GoogleCalendarSyncEvent;
 import com.hq.backend.calendar.dto.GoogleTokenResponse;
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
+import com.hq.backend.event.classification.AiClassificationProperties;
+import com.hq.backend.event.classification.ClassificationAttemptOutcome;
+import com.hq.backend.event.classification.EventClassificationOrchestrator;
 import com.hq.backend.plan.PlanCreationService;
 import com.hq.backend.plan.PlanRevisionRepository;
 import java.nio.charset.StandardCharsets;
@@ -40,6 +43,8 @@ public class CalendarSyncService {
     private final BytesEncryptor calendarTokenEncryptor;
     private final RestClient restClient;
     private final GoogleCalendarSyncClient googleCalendarSyncClient;
+    private final EventClassificationOrchestrator classificationOrchestrator;
+    private final AiClassificationProperties classificationProperties;
     private final Set<UUID> runningConnectionIds = ConcurrentHashMap.newKeySet();
 
     @Value("${oauth.google.token-url}")
@@ -57,7 +62,9 @@ public class CalendarSyncService {
                                PlanRevisionRepository planRevisionRepository,
                                BytesEncryptor calendarTokenEncryptor,
                                RestClient restClient,
-                               GoogleCalendarSyncClient googleCalendarSyncClient) {
+                               GoogleCalendarSyncClient googleCalendarSyncClient,
+                               EventClassificationOrchestrator classificationOrchestrator,
+                               AiClassificationProperties classificationProperties) {
         this.connectionRepository = connectionRepository;
         this.calendarEventWriter = calendarEventWriter;
         this.syncStateWriter = syncStateWriter;
@@ -67,6 +74,8 @@ public class CalendarSyncService {
         this.calendarTokenEncryptor = calendarTokenEncryptor;
         this.restClient = restClient;
         this.googleCalendarSyncClient = googleCalendarSyncClient;
+        this.classificationOrchestrator = classificationOrchestrator;
+        this.classificationProperties = classificationProperties;
     }
 
     @Scheduled(fixedDelay = 300_000)
@@ -97,12 +106,18 @@ public class CalendarSyncService {
             if (fetch == null || fetch.batch().nextSyncToken() == null) return;
 
             List<CalendarUpsertResult> results = new ArrayList<>();
+            List<CreatedCandidate> createdCandidates = new ArrayList<>();
             for (GoogleCalendarSyncEvent externalEvent : fetch.batch().events()) {
-                calendarEventWriter.upsert(connection.getUserId(), connectionId, externalEvent).ifPresent(results::add);
+                calendarEventWriter.upsert(connection.getUserId(), connectionId, externalEvent).ifPresent(result -> {
+                    results.add(result);
+                    if (result.isCreated()) {
+                        createdCandidates.add(new CreatedCandidate(result.eventId(), externalEvent.summary()));
+                    }
+                });
             }
             results.stream().filter(CalendarUpsertResult::requiresPlanRecompute)
                     .forEach(result -> triggerRecalculate(connection.getUserId(), result.eventId()));
-            processCreatedCandidates(results, classificationAllowed);
+            processCreatedCandidates(connection.getUserId(), createdCandidates, classificationAllowed);
             syncStateWriter.advanceSyncToken(connectionId, fetch.expectedTokenForCas(), fetch.batch().nextSyncToken());
         } catch (Exception exception) {
             log.warn("[CalendarSync] connection sync failed: connection_id={}", connectionId);
@@ -127,9 +142,21 @@ public class CalendarSyncService {
         }
     }
 
-    /** Task 6 injects classifier/review orchestration here; this task intentionally creates no AI dependency. */
-    void processCreatedCandidates(List<CalendarUpsertResult> results, boolean classificationAllowed) {
-        if (!classificationAllowed || results.stream().noneMatch(CalendarUpsertResult::isCreated)) return;
+    void processCreatedCandidates(UUID userId, List<CreatedCandidate> candidates, boolean classificationAllowed) {
+        if (!classificationAllowed) return;
+        int providerCalls = 0;
+        for (CreatedCandidate candidate : candidates) {
+            try {
+                ClassificationAttemptOutcome outcome = classificationOrchestrator.classifyCreated(
+                        userId, candidate.eventId(), candidate.rawTitle(),
+                        classificationProperties.classification().maxPerSync() - providerCalls);
+                if (outcome.providerCalled()) {
+                    providerCalls++;
+                }
+            } catch (RuntimeException ignored) {
+                // A best-effort review must never prevent sync-token CAS.
+            }
+        }
     }
 
     private void triggerRecalculate(UUID userId, UUID eventId) {
@@ -165,5 +192,8 @@ public class CalendarSyncService {
     }
 
     private record SyncFetchResult(GoogleSyncBatch batch, String expectedTokenForCas) {
+    }
+
+    record CreatedCandidate(UUID eventId, String rawTitle) {
     }
 }

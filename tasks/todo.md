@@ -36,6 +36,11 @@
   - [x] Verify exact request shape, adversarial input escaping, fail-closed parsing, no retry, no-sensitive-data logs, and configuration fallback
   - [x] Run focused/context/full regressions, independent review, diff check, report, and commit
 - [ ] Task 6: 신규 일정 분류와 review 저장 orchestration (in progress)
+  - [x] RED: review-writer eligibility/provenance/duplicate PostgreSQL contracts
+  - [x] RED: gate-normalize-guard-classifier orchestration outcomes and provider budget
+  - [x] RED: scheduled CREATED-only integration and token-CAS ordering
+  - [x] GREEN: isolated writer, nonblocking guard, orchestration, sync integration
+  - [ ] Verify focused PostgreSQL/orchestrator/sync, full suite, diff, review, report, commit (focused/diff pass; unrelated Wellness full-suite failure reproduced)
 - [ ] Task 7: pending 조회와 stale-safe 답변 API
 - [ ] Task 8: 24시간 방어 purge와 90일 review 삭제
 - [ ] Task 9: 저카디널리티 관측성과 배포 설정

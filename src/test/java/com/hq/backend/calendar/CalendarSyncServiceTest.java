@@ -2,17 +2,19 @@ package com.hq.backend.calendar;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.hq.backend.calendar.dto.GoogleCalendarSyncEvent;
 import com.hq.backend.calendar.dto.GoogleEventDateTime;
 import com.hq.backend.event.EventRepository;
+import com.hq.backend.event.classification.AiClassificationProperties;
+import com.hq.backend.event.classification.ClassificationAttemptOutcome;
+import com.hq.backend.event.classification.EventClassificationOrchestrator;
 import com.hq.backend.plan.PlanCreationService;
 import com.hq.backend.plan.PlanRevisionRepository;
 import java.time.Instant;
@@ -39,6 +41,7 @@ class CalendarSyncServiceTest {
     @Mock private CalendarConnectionRepository connectionRepository;
     @Mock private CalendarEventWriter calendarEventWriter;
     @Mock private CalendarSyncStateWriter syncStateWriter;
+    @Mock private EventClassificationOrchestrator classificationOrchestrator;
     @Mock private EventRepository eventRepository;
     @Mock private PlanCreationService planCreationService;
     @Mock private PlanRevisionRepository planRevisionRepository;
@@ -49,13 +52,18 @@ class CalendarSyncServiceTest {
     @Mock private RestClient.ResponseSpec responseSpec;
 
     private CalendarSyncService service;
+    private final AiClassificationProperties classificationProperties = new AiClassificationProperties(
+            java.net.URI.create("https://openai.test/v1"), "key", "gpt-4o-mini-2024-07-18", 3_000, 10_000,
+            new AiClassificationProperties.Classification(true, 100, 1, 2, "privacy-v1",
+                    "classifier-v1", "prompt-v1", "schema-v1"));
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
         service = new CalendarSyncService(connectionRepository, calendarEventWriter, syncStateWriter,
                 eventRepository, planCreationService, planRevisionRepository, encryptor, restClient,
-                (accessToken, syncToken, now) -> Optional.of(new GoogleSyncBatch(List.of(), "next")));
+                (accessToken, syncToken, now) -> Optional.of(new GoogleSyncBatch(List.of(), "next")),
+                classificationOrchestrator, classificationProperties);
         ReflectionTestUtils.setField(service, "googleTokenUrl", "https://oauth.example/token");
         ReflectionTestUtils.setField(service, "googleClientId", "client");
         ReflectionTestUtils.setField(service, "googleClientSecret", "secret");
@@ -86,7 +94,7 @@ class CalendarSyncServiceTest {
                         throw new IllegalStateException(interrupted);
                     }
                     return Optional.of(new GoogleSyncBatch(List.of(), "next"));
-                });
+                }, classificationOrchestrator, classificationProperties);
         ReflectionTestUtils.setField(blockingService, "googleTokenUrl", "https://oauth.example/token");
         ReflectionTestUtils.setField(blockingService, "googleClientId", "client");
         ReflectionTestUtils.setField(blockingService, "googleClientSecret", "secret");
@@ -175,25 +183,80 @@ class CalendarSyncServiceTest {
     }
 
     @Test
-    void 수동_sync는_CREATED를_처리한뒤_false_분류_gate를_전달하고_token을_전진시킨다() {
+    void 수동_sync는_CREATED를_처리해도_AI를_호출하지_않고_token을_전진시킨다() {
         CalendarConnection connection = connection(null);
-        service = spy(service((accessToken, token, now) -> {
+        service = service((accessToken, token, now) -> {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             return Optional.of(new GoogleSyncBatch(List.of(event()), "next"));
-        }));
+        });
         when(connectionRepository.findByUserIdAndProvider(connection.getUserId(), "google")).thenReturn(Optional.of(connection));
         when(connectionRepository.findById(connection.getCalendarConnectionId())).thenReturn(Optional.of(connection));
         when(calendarEventWriter.upsert(any(), any(), any())).thenReturn(Optional.of(
                 new CalendarUpsertResult(UUID.randomUUID(), CalendarChangeType.CREATED, false)));
         service.syncForUser(connection.getUserId());
 
-        verify(service).processCreatedCandidates(anyList(), eq(false));
+        verifyNoInteractions(classificationOrchestrator);
+        verify(syncStateWriter).advanceSyncToken(connection.getCalendarConnectionId(), null, "next");
+    }
+
+    @Test
+    void scheduled_sync_uses_only_created_events_with_local_provider_budget_before_token_CAS() {
+        CalendarConnection connection = connection(null);
+        UUID createdId = UUID.randomUUID();
+        UUID updatedId = UUID.randomUUID();
+        GoogleCalendarSyncEvent created = event("created title", "created");
+        GoogleCalendarSyncEvent updated = event("updated title", "updated");
+        service = service((accessToken, token, now) -> Optional.of(new GoogleSyncBatch(List.of(created, updated), "next")));
+        when(connectionRepository.findById(connection.getCalendarConnectionId())).thenReturn(Optional.of(connection));
+        when(calendarEventWriter.upsert(any(), any(), any()))
+                .thenReturn(Optional.of(new CalendarUpsertResult(createdId, CalendarChangeType.CREATED, false)))
+                .thenReturn(Optional.of(new CalendarUpsertResult(updatedId, CalendarChangeType.UPDATED, false)));
+        when(classificationOrchestrator.classifyCreated(connection.getUserId(), createdId, "created title", 1))
+                .thenAnswer(invocation -> {
+                    assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                    return ClassificationAttemptOutcome.PROVIDER_EMPTY;
+                });
+
+        service.syncConnection(connection.getCalendarConnectionId(), true);
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(
+                calendarEventWriter, classificationOrchestrator, syncStateWriter);
+        order.verify(calendarEventWriter).upsert(connection.getUserId(), connection.getCalendarConnectionId(), created);
+        order.verify(calendarEventWriter).upsert(connection.getUserId(), connection.getCalendarConnectionId(), updated);
+        order.verify(classificationOrchestrator).classifyCreated(connection.getUserId(), createdId, "created title", 1);
+        order.verify(syncStateWriter).advanceSyncToken(connection.getCalendarConnectionId(), null, "next");
+        verify(classificationOrchestrator, never()).classifyCreated(
+                eq(connection.getUserId()), eq(updatedId), any(), any(Integer.class));
+    }
+
+    @Test
+    void provider_budget_counts_only_provider_attempts_and_an_unexpected_attempt_error_still_advances_token() {
+        CalendarConnection connection = connection(null);
+        UUID firstId = UUID.randomUUID();
+        UUID secondId = UUID.randomUUID();
+        GoogleCalendarSyncEvent first = event("first title", "first");
+        GoogleCalendarSyncEvent second = event("second title", "second");
+        service = service((accessToken, token, now) -> Optional.of(new GoogleSyncBatch(List.of(first, second), "next")));
+        when(connectionRepository.findById(connection.getCalendarConnectionId())).thenReturn(Optional.of(connection));
+        when(calendarEventWriter.upsert(any(), any(), any()))
+                .thenReturn(Optional.of(new CalendarUpsertResult(firstId, CalendarChangeType.CREATED, false)))
+                .thenReturn(Optional.of(new CalendarUpsertResult(secondId, CalendarChangeType.CREATED, false)));
+        when(classificationOrchestrator.classifyCreated(connection.getUserId(), firstId, "first title", 1))
+                .thenReturn(ClassificationAttemptOutcome.REVIEW_CREATED);
+        when(classificationOrchestrator.classifyCreated(connection.getUserId(), secondId, "second title", 0))
+                .thenThrow(new IllegalStateException("review unavailable"));
+
+        service.syncConnection(connection.getCalendarConnectionId(), true);
+
+        verify(classificationOrchestrator).classifyCreated(connection.getUserId(), firstId, "first title", 1);
+        verify(classificationOrchestrator).classifyCreated(connection.getUserId(), secondId, "second title", 0);
         verify(syncStateWriter).advanceSyncToken(connection.getCalendarConnectionId(), null, "next");
     }
 
     private CalendarSyncService service(GoogleCalendarSyncClient client) {
         CalendarSyncService replacement = new CalendarSyncService(connectionRepository, calendarEventWriter, syncStateWriter,
-                eventRepository, planCreationService, planRevisionRepository, encryptor, restClient, client);
+                eventRepository, planCreationService, planRevisionRepository, encryptor, restClient, client,
+                classificationOrchestrator, classificationProperties);
         ReflectionTestUtils.setField(replacement, "googleTokenUrl", "https://oauth.example/token");
         ReflectionTestUtils.setField(replacement, "googleClientId", "client");
         ReflectionTestUtils.setField(replacement, "googleClientSecret", "secret");
@@ -214,8 +277,12 @@ class CalendarSyncServiceTest {
     }
 
     private GoogleCalendarSyncEvent event() {
+        return event("title", "one");
+    }
+
+    private GoogleCalendarSyncEvent event(String title, String id) {
         Instant start = Instant.parse("2026-08-20T01:00:00Z");
-        return new GoogleCalendarSyncEvent("one", "confirmed", "title", new GoogleEventDateTime(start),
+        return new GoogleCalendarSyncEvent(id, "confirmed", title, new GoogleEventDateTime(start),
                 new GoogleEventDateTime(start.plusSeconds(3600)));
     }
 }
