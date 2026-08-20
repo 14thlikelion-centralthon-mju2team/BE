@@ -16,8 +16,10 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -186,20 +188,11 @@ public class CalendarService {
             }
 
             List<BusyBlockResponse> blocks = new ArrayList<>();
+            Set<String> seenPageTokens = new HashSet<>();
             String pageToken = null;
-            do {
-                UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(googleCalendarEventsUrl)
-                        .queryParam("timeMin", rangeStart)
-                        .queryParam("timeMax", rangeEnd)
-                        .queryParam("singleEvents", true)
-                        .queryParam("orderBy", "startTime")
-                        .queryParam("fields", BUSY_FIELDS);
-                if (pageToken != null) {
-                    builder.queryParam("pageToken", pageToken);
-                }
-
+            while (true) {
                 GoogleBusyEventsResponse response = restClient.get()
-                        .uri(builder.encode().build().toUri())
+                        .uri(buildGoogleBusyUri(rangeStart, rangeEnd, pageToken))
                         .header("Authorization", "Bearer " + accessToken.get())
                         .retrieve()
                         .body(GoogleBusyEventsResponse.class);
@@ -212,12 +205,35 @@ public class CalendarService {
                         .map(item -> new BusyBlockResponse(
                                 item.start().dateTime(), item.end().dateTime(), SOURCE_GOOGLE))
                         .forEach(blocks::add);
-                pageToken = response.nextPageToken();
-            } while (pageToken != null);
+                String nextPageToken = response.nextPageToken();
+                if (nextPageToken == null || nextPageToken.isBlank()) {
+                    break;
+                }
+                if (!seenPageTokens.add(nextPageToken)) {
+                    return new GoogleFetchResult(false, List.of());
+                }
+                pageToken = nextPageToken;
+            }
             return new GoogleFetchResult(true, blocks);
         } catch (RestClientException | IllegalStateException e) {
             return new GoogleFetchResult(false, List.of());
         }
+    }
+
+    private URI buildGoogleBusyUri(Instant rangeStart, Instant rangeEnd, String pageToken) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(googleCalendarEventsUrl)
+                .queryParam("timeMin", rangeStart)
+                .queryParam("timeMax", rangeEnd)
+                .queryParam("singleEvents", true)
+                .queryParam("orderBy", "startTime")
+                .queryParam("fields", BUSY_FIELDS);
+        if (pageToken == null) {
+            return builder.encode().build().toUri();
+        }
+        return builder.queryParam("pageToken", "{pageToken}")
+                .encode()
+                .buildAndExpand(pageToken)
+                .toUri();
     }
 
     private record GoogleFetchResult(boolean synced, List<BusyBlockResponse> blocks) {

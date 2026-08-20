@@ -5,8 +5,12 @@ import com.hq.backend.calendar.dto.GoogleCalendarSyncEventsResponse;
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -35,6 +39,7 @@ public class DefaultGoogleCalendarSyncClient implements GoogleCalendarSyncClient
     public Optional<GoogleSyncBatch> fetchAll(String accessToken, String syncToken, Instant now)
             throws GoogleSyncTokenExpiredException {
         List<GoogleCalendarSyncEvent> events = new ArrayList<>();
+        Set<String> seenPageTokens = new HashSet<>();
         String pageToken = null;
         String finalSyncToken = null;
 
@@ -61,9 +66,16 @@ public class DefaultGoogleCalendarSyncClient implements GoogleCalendarSyncClient
             if (response.items() != null) {
                 events.addAll(response.items());
             }
-            pageToken = response.nextPageToken();
             finalSyncToken = response.nextSyncToken();
-        } while (pageToken != null);
+            String nextPageToken = response.nextPageToken();
+            if (nextPageToken == null || nextPageToken.isBlank()) {
+                break;
+            }
+            if (!seenPageTokens.add(nextPageToken)) {
+                return Optional.empty();
+            }
+            pageToken = nextPageToken;
+        } while (true);
 
         return Optional.of(new GoogleSyncBatch(List.copyOf(events), finalSyncToken));
     }
@@ -71,17 +83,20 @@ public class DefaultGoogleCalendarSyncClient implements GoogleCalendarSyncClient
     private URI buildUri(String syncToken, String pageToken, Instant now) {
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(googleCalendarEventsUrl)
                 .queryParam("fields", FIELDS);
+        Map<String, Object> uriVariables = new HashMap<>();
         if (syncToken == null) {
             builder.queryParam("singleEvents", true)
                     .queryParam("orderBy", "startTime")
                     .queryParam("timeMin", now)
                     .queryParam("timeMax", now.plusSeconds(INITIAL_SYNC_WINDOW_SECONDS));
         } else {
-            builder.queryParam("syncToken", syncToken);
+            builder.queryParam("syncToken", "{syncToken}");
+            uriVariables.put("syncToken", syncToken);
         }
         if (pageToken != null) {
-            builder.queryParam("pageToken", pageToken);
+            builder.queryParam("pageToken", "{pageToken}");
+            uriVariables.put("pageToken", pageToken);
         }
-        return builder.encode().build().toUri();
+        return builder.encode().buildAndExpand(uriVariables).toUri();
     }
 }
