@@ -2,10 +2,10 @@
 
 ## 검증 범위와 실행 환경
 
-- 대상 커밋: Task 10 커밋 후 SHA를 아래 증적 표에 기록한다.
+- 검증한 구현 커밋: `07970c3` (`test: complete AI release verification`). 아래 명령 증적은 이 SHA에서 실행했다.
 - Java: Homebrew OpenJDK 21, 데이터베이스: PostgreSQL 16.
 - 골든셋: `src/test/resources/ai/event-online-golden-v1.jsonl`의 원문 재배포 위험이 없는 합성 한국어 200건이다. 필드는 `id`, `title`, `expected`, `validInput`, `category`만 사용한다. 유효 160건은 online/offline 각 80건이고, 무효 40건은 blank/control/501 code point/unpaired surrogate 각 10건이다.
-- 기본 CI는 OpenAI 네트워크 호출을 하지 않는다. `openAiEvalTest`는 `openai-eval` 태그를 명시적으로 선택할 때만 실행되며, `OPENAI_EVAL_ENABLED=true`인 경우 정책 승인, 전용 키, 예산 cap이 없으면 provider 호출 전 실패한다.
+- 기본 CI는 OpenAI 네트워크 호출을 하지 않는다. `openAiEvalTest`는 `openai-eval` 태그를 명시적으로 선택할 때만 실행되며, `OPENAI_EVAL_ENABLED=true`인 경우 정확한 정책·전용 키·가격 승인, pinned model, 160-request, 비용 cap이 모두 없으면 provider 호출 전 실패한다.
 
 ## 오프라인 계약 증거
 
@@ -23,7 +23,21 @@
 - output token p95 <= 50
 - 실제 비용 cap 준수
 
-승인 후에만 `OPENAI_EVAL_ENABLED=true OPENAI_EVAL_POLICY_APPROVED=true OPENAI_API_KEY=... OPENAI_EVAL_MAX_COST_USD=... ./gradlew openAiEvalTest`로 별도 실행하고, provider 출력 요약·지연·토큰·비용을 이 문서에 기록한다. 기본 `./gradlew test`에는 포함되지 않는다.
+승인 후에만 아래의 모든 값으로 별도 실행한다. API key, 원문 제목, 원시 provider 응답은 콘솔이나 문서에 기록하지 않고, 집계된 F1/지연/토큰/비용만 기록한다. 기본 `./gradlew test`에는 포함되지 않는다.
+
+```bash
+OPENAI_EVAL_ENABLED=true \
+OPENAI_EVAL_POLICY_APPROVED=true \
+OPENAI_EVAL_DEDICATED_KEY_APPROVED=true \
+OPENAI_EVAL_PRICING_APPROVED=true \
+OPENAI_API_KEY=... \
+OPENAI_MODEL=gpt-4o-mini-2024-07-18 \
+OPENAI_EVAL_MAX_REQUESTS=160 \
+OPENAI_EVAL_MAX_COST_USD=... \
+OPENAI_EVAL_INPUT_USD_PER_1M=... \
+OPENAI_EVAL_OUTPUT_USD_PER_1M=... \
+./gradlew openAiEvalTest --console=plain
+```
 
 ## 단계적 rollout 및 rollback runbook
 
@@ -36,13 +50,12 @@
 
 | 명령 | 상태 | 비고 |
 | --- | --- | --- |
-| `JAVA_HOME=...openjdk@21... ./gradlew clean test --console=plain` | exit 0 | 257 tests, 0 failures; JDK 21/PostgreSQL 16 |
+| `JAVA_HOME=...openjdk@21... ./gradlew --no-daemon clean test --console=plain` | exit 0 | 260 tests, 0 failures, 0 errors; JDK 21/PostgreSQL 16 |
 | `JAVA_HOME=...openjdk@21... ./gradlew build --console=plain` | exit 0 | 기본 테스트는 live eval 제외 |
+| `JAVA_HOME=...openjdk@21... ./gradlew openAiEvalTest --console=plain` | exit 0 | live opt-in test task 자체 검증; `OPENAI_EVAL_ENABLED` 미설정이라 provider request 0 |
 | `docker compose -f docker-compose.yml config -q` | exit 0 | CI compose |
 | `docker compose -f docker-compose.local.yml config -q` | exit 0 | local compose |
 | `cd ai/plan-engine && uv run --no-project --python 3.13 ... pytest -q` | exit 0 | pytest 전체 통과 (명시적 CPython 3.13 환경) |
 | `cd ai/plan-engine && uv run --no-project --python 3.13 ... ruff check .` | exit 0 | `All checks passed!` |
 | `cd ai/plan-engine && uv run --no-project --python 3.13 ... mypy app` | exit 0 | `Success: no issues found in 61 source files` |
-| `git diff --check` | exit 0 | 최종 재실행 전에도 공백 오류 없음 |
-
-테스트 수, 각 exit code, 최종 SHA, 미실행 사유는 최종 검증 완료 시 이 표와 Task 10 report에 동기화한다.
+| `git diff --check` | exit 0 | 구현 SHA `07970c3`에서 공백 오류 없음 |
