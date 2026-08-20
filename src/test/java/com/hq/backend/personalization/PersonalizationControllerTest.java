@@ -7,8 +7,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.hq.backend.event.Event;
-import com.hq.backend.event.EventRepository;
 import com.hq.backend.metrics.ProductEventRepository;
 import com.jayway.jsonpath.JsonPath;
 import java.math.BigDecimal;
@@ -30,9 +28,6 @@ class PersonalizationControllerTest {
 
     @Autowired
     private UserPrepEstimateRepository userPrepEstimateRepository;
-
-    @Autowired
-    private EventRepository eventRepository;
 
     @Autowired
     private ProductEventRepository productEventRepository;
@@ -87,7 +82,7 @@ class PersonalizationControllerTest {
     }
 
     @Test
-    void 되돌리면_직전_추정값으로_복원되고_이벤트가_학습에서_제외된다() throws Exception {
+    void eventId_없이_되돌리면_직전_global_추정값으로_복원된다() throws Exception {
         String accessToken = signupAndLogin();
         UUID userId = UUID.fromString(JsonPath.read(decode(accessToken), "$.sub").toString());
         Instant now = Instant.now();
@@ -103,23 +98,14 @@ class PersonalizationControllerTest {
                 .adjustmentReason("최근 지연 반영").validFrom(now)
                 .build());
 
-        Event event = eventRepository.save(Event.builder()
-                .userId(userId).sourceType("internal").startsAt(now.plusSeconds(3600))
-                .isAllDay(false).locationState("not_required").autoManageExcluded(false)
-                .status("planned").createdAt(now)
-                .build());
-
         mockMvc.perform(post("/me/personalization/revert")
-                        .header("Authorization", "Bearer " + accessToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"eventId\":\"" + event.getEventId() + "\"}"))
+                        .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.estimates[0].estimatedMinutes").value(30));
 
-        assertThat(eventRepository.findById(event.getEventId()).orElseThrow().isExcludedFromLearning()).isTrue();
-
         boolean logged = productEventRepository.findAll().stream()
-                .anyMatch(e -> "personalization_reverted".equals(e.getEventName()) && userId.equals(e.getUserId()));
+                .anyMatch(e -> "personalization_reverted".equals(e.getEventName())
+                        && userId.equals(e.getUserId()));
         assertThat(logged).isTrue();
     }
 
@@ -133,16 +119,8 @@ class PersonalizationControllerTest {
                 .userId(userId).scopeType("global").estimatedMinutes(30).sampleCount(0)
                 .confidence(BigDecimal.ZERO).modelVersion("m1").validFrom(now)
                 .build());
-        Event event = eventRepository.save(Event.builder()
-                .userId(userId).sourceType("internal").startsAt(now.plusSeconds(3600))
-                .isAllDay(false).locationState("not_required").autoManageExcluded(false)
-                .status("planned").createdAt(now)
-                .build());
-
         mockMvc.perform(post("/me/personalization/revert")
-                        .header("Authorization", "Bearer " + accessToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"eventId\":\"" + event.getEventId() + "\"}"))
+                        .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("NO_ADJUSTMENT_TO_REVERT"));
     }
