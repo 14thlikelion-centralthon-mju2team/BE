@@ -1,6 +1,7 @@
 package com.hq.backend.calendar;
 
 import com.hq.backend.calendar.dto.CalendarConnectionResponse;
+import com.hq.backend.calendar.dto.CalendarConnectionStatusResponse;
 import com.hq.backend.calendar.dto.ConnectCalendarRequest;
 import com.hq.backend.calendar.dto.DensityResponse;
 import com.hq.backend.common.auth.CurrentUserId;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class CalendarController {
 
     private final CalendarService calendarService;
+    private final CalendarSyncService calendarSyncService;
 
     @PostMapping("/calendar/google/connect")
     public CalendarConnectionResponse connect(
@@ -35,6 +37,18 @@ public class CalendarController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void disconnect(@CurrentUserId UUID userId) {
         calendarService.disconnect(userId);
+    }
+
+    @GetMapping("/calendar/google/status")
+    public CalendarConnectionStatusResponse googleConnectionStatus(@CurrentUserId UUID userId) {
+        return calendarService.getGoogleConnectionStatus(userId);
+    }
+
+    /** Manual sync intentionally delegates to the no-AI CalendarSyncService entry point. */
+    @PostMapping("/calendar/sync")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void sync(@CurrentUserId UUID userId) {
+        calendarSyncService.syncForUser(userId);
     }
 
     @GetMapping("/calendar/density")
