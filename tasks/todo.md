@@ -35,7 +35,7 @@
   - [x] Add strict Responses API DTOs, a dedicated bounded RestClient, and a conditional `@Primary` classifier
   - [x] Verify exact request shape, adversarial input escaping, fail-closed parsing, no retry, no-sensitive-data logs, and configuration fallback
   - [x] Run focused/context/full regressions, independent review, diff check, report, and commit
-- [ ] Task 6: 신규 일정 분류와 review 저장 orchestration
+- [ ] Task 6: 신규 일정 분류와 review 저장 orchestration (in progress)
 - [ ] Task 7: pending 조회와 stale-safe 답변 API
 - [ ] Task 8: 24시간 방어 purge와 90일 review 삭제
 - [ ] Task 9: 저카디널리티 관측성과 배포 설정
@@ -56,3 +56,4 @@
 - Task 5: Added a strict, fail-closed OpenAI Responses client that sends only the normalized calendar-title JSON; focused contract tests, context validation, and full suite passed before commit.
 - Task 5 independent review: APPROVED (Critical 0, Important 0). Added direct regressions for both enum domains and confidence bounds after review.
 - Task 5 root follow-up: DTO-scoped null omission fixes the exact JSON Schema payload; actual timeout-path log capture proves exception and sensitive sentinels remain absent.
+- Task 5 final scoped review: APPROVED (Critical 0, Important 0).
