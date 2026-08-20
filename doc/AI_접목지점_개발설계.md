@@ -245,13 +245,14 @@ public record CalendarUpsertResult(
 ) {}
 
 @Transactional
-public CalendarUpsertResult upsert(
+public Optional<CalendarUpsertResult> upsert(
         UUID userId,
         UUID connectionId,
         GoogleCalendarSyncEvent externalEvent
 );
 ```
 
+- `Optional.empty()`는 id 없는 항목, 종일 항목, 존재하지 않는 cancelled 항목처럼 Event ID가 없는 정상 skip만 뜻한다. DB/Google 실패를 empty로 숨기지 않는다.
 - writer는 connection의 기본 `CalendarSource`를 내부에서 idempotent하게 확보하고 모든 변경을 `saveAndFlush`로 확정한다.
 - `(calendar_source_id, external_event_id)` unique 충돌은 별도 트랜잭션에서 기존 Event를 재조회해 `created=false`와 동등한 `UNCHANGED`로 정상화한다.
 - 기존 일정 시각 변경은 `requiresPlanRecompute=true`로 반환하고 writer 커밋 후 기존 재계산 경로를 실행한다.
