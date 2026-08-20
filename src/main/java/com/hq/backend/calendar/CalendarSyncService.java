@@ -2,6 +2,7 @@ package com.hq.backend.calendar;
 
 import com.hq.backend.calendar.dto.GoogleCalendarSyncEvent;
 import com.hq.backend.calendar.dto.GoogleTokenResponse;
+import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
 import com.hq.backend.event.classification.AiClassificationProperties;
@@ -21,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.encrypt.BytesEncryptor;
@@ -88,9 +90,14 @@ public class CalendarSyncService {
 
     /** Manual sync deliberately has no transaction and does not enable the future AI hook. */
     public void syncForUser(UUID userId) {
-        connectionRepository.findByUserIdAndProvider(userId, "google")
-                .filter(connection -> connection.getRevokedAt() == null)
-                .ifPresent(connection -> syncConnection(connection.getCalendarConnectionId(), false));
+        // 연결이 없으면 조용히 넘어가지 않는다 — 아무것도 안 한 호출이 FE 배너에서
+        // "동기화 완료"로 보이면 안 된다.
+        CalendarConnection connection = connectionRepository
+                .findByUserIdAndProvider(userId, "google")
+                .filter(found -> found.getRevokedAt() == null)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND, "CALENDAR_NOT_CONNECTED", "연결된 구글 캘린더가 없습니다."));
+        syncConnection(connection.getCalendarConnectionId(), false);
     }
 
     void syncConnection(UUID connectionId, boolean classificationAllowed) {

@@ -2,6 +2,7 @@ package com.hq.backend.calendar;
 
 import com.hq.backend.calendar.dto.BusyBlockResponse;
 import com.hq.backend.calendar.dto.CalendarConnectionResponse;
+import com.hq.backend.calendar.dto.CalendarStatusResponse;
 import com.hq.backend.calendar.dto.ConnectCalendarRequest;
 import com.hq.backend.calendar.dto.DensityResponse;
 import com.hq.backend.calendar.dto.GoogleBusyEventsResponse;
@@ -140,6 +141,19 @@ public class CalendarService {
         } catch (Exception e) {
             return Optional.empty();
         }
+    }
+
+    @Transactional(readOnly = true)
+    public CalendarStatusResponse status(UUID userId) {
+        return calendarConnectionRepository
+                .findByUserIdAndProvider(userId, PROVIDER_GOOGLE)
+                .filter(connection -> connection.getRevokedAt() == null)
+                .map(connection -> new CalendarStatusResponse(
+                        true,
+                        connection.getProvider(),
+                        connection.getExternalAccountId(),
+                        connection.getConnectedAt()))
+                .orElseGet(CalendarStatusResponse::disconnected);
     }
 
     @Transactional

@@ -1,6 +1,7 @@
 package com.hq.backend.calendar;
 
 import com.hq.backend.calendar.dto.CalendarConnectionResponse;
+import com.hq.backend.calendar.dto.CalendarStatusResponse;
 import com.hq.backend.calendar.dto.ConnectCalendarRequest;
 import com.hq.backend.calendar.dto.DensityResponse;
 import com.hq.backend.common.auth.CurrentUserId;
@@ -24,6 +25,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class CalendarController {
 
     private final CalendarService calendarService;
+    private final CalendarSyncService calendarSyncService;
+
+    @GetMapping("/calendar/google/status")
+    public CalendarStatusResponse status(@CurrentUserId UUID userId) {
+        return calendarService.status(userId);
+    }
+
+    // 구글 왕복이 끝난 뒤에 응답한다 — FE 동기화 배너가 완료·실패를 그대로 반영할 수 있어야 한다.
+    @PostMapping("/calendar/sync")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void sync(@CurrentUserId UUID userId) {
+        calendarSyncService.syncForUser(userId);
+    }
 
     @PostMapping("/calendar/google/connect")
     public CalendarConnectionResponse connect(
