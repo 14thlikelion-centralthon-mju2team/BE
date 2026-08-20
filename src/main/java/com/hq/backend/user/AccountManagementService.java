@@ -6,7 +6,6 @@ import com.hq.backend.auth.dto.GoogleUserInfoResponse;
 import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.common.util.TokenHashUtil;
 import com.hq.backend.event.EventActionLogRepository;
-import com.hq.backend.event.EventRepository;
 import com.hq.backend.user.dto.LinkProviderRequest;
 import com.hq.backend.user.dto.ProviderResponse;
 import com.hq.backend.user.dto.SessionResponse;
@@ -29,7 +28,6 @@ public class AccountManagementService {
 
     private final UserIdentityRepository userIdentityRepository;
     private final RefreshTokenRepository refreshTokenRepository;
-    private final EventRepository eventRepository;
     private final EventActionLogRepository eventActionLogRepository;
     private final RestClient restClient;
 
@@ -94,7 +92,7 @@ public class AccountManagementService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "IDENTITY_NOT_FOUND",
                         "연결 정보를 찾을 수 없습니다."));
 
-        long activeCount = userIdentityRepository.findAllByUserIdAndRevokedAtIsNull(userId).size();
+        long activeCount = userIdentityRepository.findAllActiveByUserIdForUpdate(userId).size();
         if (activeCount <= 1) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "LAST_IDENTITY",
                     "마지막 남은 인증 수단은 해제할 수 없습니다.");
@@ -142,10 +140,7 @@ public class AccountManagementService {
 
     @Transactional
     public void deleteActionLogs(UUID userId) {
-        List<UUID> eventIds = eventRepository.findAllEventIdsByUserId(userId);
-        if (!eventIds.isEmpty()) {
-            eventActionLogRepository.deleteAllByEventIdIn(eventIds);
-        }
+        eventActionLogRepository.deleteAllByUserId(userId);
     }
 
     // ─── Private helpers ───

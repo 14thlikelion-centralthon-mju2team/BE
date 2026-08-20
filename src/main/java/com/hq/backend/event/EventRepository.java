@@ -34,6 +34,8 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
     Optional<Event> findFirstByUserIdAndStartsAtAfterAndStatusNotInOrderByStartsAtAsc(
             UUID userId, Instant after, List<String> excludedStatuses);
 
+    /** @deprecated Use {@link com.hq.backend.event.EventActionLogRepository#deleteAllByUserId(UUID)} for bulk action log deletion. */
+    @Deprecated
     @Query("SELECT e.eventId FROM Event e WHERE e.userId = :userId")
     List<UUID> findAllEventIdsByUserId(UUID userId);
 }

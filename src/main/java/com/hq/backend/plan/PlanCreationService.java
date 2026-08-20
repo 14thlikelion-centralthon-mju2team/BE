@@ -256,7 +256,8 @@ public class PlanCreationService {
         WellnessEngineRequest.EnvironmentSnapshot environmentSnapshot = computed.environment() == null ? null
                 : new WellnessEngineRequest.EnvironmentSnapshot(
                         computed.environment().precipitationProb(), computed.environment().tempC(),
-                        computed.environment().uvIndex(), computed.environment().pm10(),
+                        computed.environment().uvIndex() < 0 ? null : computed.environment().uvIndex(),
+                        computed.environment().pm10() < 0 ? null : computed.environment().pm10(),
                         computed.environment().airGrade(), computed.environment().feelsLikeMinCelsius(),
                         computed.environment().feelsLikeMaxCelsius(), computed.environment().asOf());
 
