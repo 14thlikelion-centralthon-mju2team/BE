@@ -80,7 +80,10 @@ public class AirKoreaUvEnvironmentProvider implements EnvironmentProvider {
                 air.map(AirReading::grade).orElse(null),
                 weather.feelsLikeMinCelsius(),
                 weather.feelsLikeMaxCelsius(),
-                air.isPresent() ? "airkorea" : null);
+                air.isPresent() ? "airkorea" : null,
+                weather.sky(),
+                air.map(AirReading::pm10Grade).orElse(null),
+                air.map(AirReading::pm25Grade).orElse(null));
     }
 
     private Optional<AirReading> fetchAir() {
@@ -104,11 +107,16 @@ public class AirKoreaUvEnvironmentProvider implements EnvironmentProvider {
             }
             Integer pm10 = parseInt(item.pm10Value());
             Integer pm25 = parseInt(item.pm25Value());
-            String grade = providerGrade(item.pm25Grade()).or(() -> providerGrade(item.pm10Grade())).orElse(null);
+            String pm10Grade = providerGrade(item.pm10Grade()).orElse(null);
+            String pm25Grade = providerGrade(item.pm25Grade()).orElse(null);
+            // airGrade(엔진 입력)는 종전대로 PM2.5 우선 단일 값이다. 화면용으로 둘을 따로
+            // 보여줘야 해서 원본 등급 두 개를 함께 싣는다.
+            String grade = pm25Grade != null ? pm25Grade : pm10Grade;
             if (pm10 == null && pm25 == null && grade == null) {
                 return Optional.empty();
             }
-            return Optional.of(new AirReading(pm10 == null ? -1 : pm10, pm25, grade, parseObservedAt(item.dataTime())));
+            return Optional.of(new AirReading(pm10 == null ? -1 : pm10, pm25, grade,
+                    pm10Grade, pm25Grade, parseObservedAt(item.dataTime())));
         } catch (RestClientException | IllegalArgumentException e) {
             log.warn("[AIRKOREA] API 호출 실패; PM 입력을 degraded 처리합니다: {}", e.getMessage());
             return Optional.empty();
@@ -178,7 +186,8 @@ public class AirKoreaUvEnvironmentProvider implements EnvironmentProvider {
         }
     }
 
-    private record AirReading(int pm10, Integer pm25, String grade, Optional<Instant> observedAt) {
+    private record AirReading(int pm10, Integer pm25, String grade, String pm10Grade, String pm25Grade,
+            Optional<Instant> observedAt) {
     }
 
     private record AirKoreaResponse(AirKoreaEnvelope response) {
