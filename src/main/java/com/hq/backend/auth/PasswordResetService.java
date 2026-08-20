@@ -86,6 +86,9 @@ public class PasswordResetService {
         if (token.getConsumedAt() != null || !token.getExpiresAt().isAfter(now)) {
             throw invalidToken();
         }
+        if (!"password_reset".equals(token.getType())) {
+            throw invalidToken();
+        }
 
         UserCredential credential = userCredentialRepository.findById(token.getUserId())
                 .orElseThrow(this::invalidToken);
