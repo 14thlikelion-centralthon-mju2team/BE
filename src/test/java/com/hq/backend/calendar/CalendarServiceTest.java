@@ -349,9 +349,10 @@ class CalendarServiceTest {
             assertThat(decodedQueryParameter(query.getFirst("fields")))
                     .isEqualTo("items(start(dateTime),end(dateTime)),nextPageToken");
         });
-        assertThat(org.springframework.web.util.UriComponentsBuilder.fromUri(uriCaptor.getAllValues().get(1))
-                .build().getQueryParams().getFirst("pageToken"))
-                .isEqualTo("next%2Bpage%3D%2Fopaque");
+        var nextPageQuery = org.springframework.web.util.UriComponentsBuilder.fromUri(uriCaptor.getAllValues().get(1))
+                .build().getQueryParams();
+        assertThat(decodedQueryParameter(nextPageQuery.getFirst("pageToken")))
+                .isEqualTo("next+page=/opaque");
         assertThat(uriCaptor.getAllValues().get(1).getRawQuery())
                 .contains("pageToken=next%2Bpage%3D%2Fopaque");
     }
@@ -385,7 +386,9 @@ class CalendarServiceTest {
         when(responseSpec.body(GoogleTokenResponse.class))
                 .thenReturn(new GoogleTokenResponse("access-token", null, null, 3600L));
         when(responseSpec.body(GoogleBusyEventsResponse.class))
-                .thenReturn(new GoogleBusyEventsResponse(List.of(), "repeat"))
+                .thenReturn(new GoogleBusyEventsResponse(List.of(new GoogleBusyEvent(
+                        new GoogleEventDateTime(Instant.parse("2026-08-14T09:00:00Z")),
+                        new GoogleEventDateTime(Instant.parse("2026-08-14T10:00:00Z")))), "repeat"))
                 .thenReturn(new GoogleBusyEventsResponse(List.of(), "repeat"))
                 .thenThrow(new RestClientException("unexpected extra page"));
         when(eventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
@@ -394,6 +397,7 @@ class CalendarServiceTest {
         var result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
 
         assertThat(result.calendarSynced()).isFalse();
+        assertThat(result.blocks()).isEmpty();
         verify(requestHeadersUriSpec, times(2)).uri(any(URI.class));
     }
 
