@@ -4,7 +4,7 @@ import com.hq.backend.calendar.dto.BusyBlockResponse;
 import com.hq.backend.calendar.dto.CalendarConnectionResponse;
 import com.hq.backend.calendar.dto.ConnectCalendarRequest;
 import com.hq.backend.calendar.dto.DensityResponse;
-import com.hq.backend.calendar.dto.GoogleCalendarEventsResponse;
+import com.hq.backend.calendar.dto.GoogleBusyEventsResponse;
 import com.hq.backend.calendar.dto.GoogleTokenResponse;
 import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.event.EventRepository;
@@ -16,8 +16,10 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -46,6 +48,7 @@ public class CalendarService {
     private static final String PROVIDER_GOOGLE = "google";
     private static final String SOURCE_GOOGLE = "google";
     private static final String SOURCE_USER_EVENT = "user_event";
+    private static final String BUSY_FIELDS = "items(start(dateTime),end(dateTime)),nextPageToken";
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Seoul");
     private static final java.util.regex.Pattern SUB_CLAIM =
             java.util.regex.Pattern.compile("\"sub\"\\s*:\\s*\"([^\"]+)\"");
@@ -148,7 +151,6 @@ public class CalendarService {
         connection.setRevokedAt(Instant.now());
     }
 
-    @Transactional(readOnly = true)
     public DensityResponse getDensity(UUID userId, LocalDate date) {
         Instant rangeStart = date.atStartOfDay(DEFAULT_ZONE).toInstant();
         Instant rangeEnd = date.plusDays(1).atStartOfDay(DEFAULT_ZONE).toInstant();
@@ -184,34 +186,53 @@ public class CalendarService {
                 return new GoogleFetchResult(false, List.of());
             }
 
-            URI uri = UriComponentsBuilder.fromUriString(googleCalendarEventsUrl)
-                    .queryParam("timeMin", rangeStart.toString())
-                    .queryParam("timeMax", rangeEnd.toString())
-                    .queryParam("singleEvents", true)
-                    .queryParam("orderBy", "startTime")
-                    .encode()
-                    .build()
-                    .toUri();
-
-            GoogleCalendarEventsResponse response = restClient.get()
-                    .uri(uri)
-                    .header("Authorization", "Bearer " + accessToken.get())
-                    .retrieve()
-                    .body(GoogleCalendarEventsResponse.class);
-
-            if (response == null || response.items() == null) {
-                return new GoogleFetchResult(false, List.of());
+            List<BusyBlockResponse> blocks = new ArrayList<>();
+            Set<String> seenPageTokens = new HashSet<>();
+            String pageToken = null;
+            while (true) {
+                GoogleBusyEventsResponse response = restClient.get()
+                        .uri(buildGoogleBusyUri(rangeStart, rangeEnd, pageToken))
+                        .header("Authorization", "Bearer " + accessToken.get())
+                        .retrieve()
+                        .body(GoogleBusyEventsResponse.class);
+                if (response == null || response.items() == null) {
+                    return new GoogleFetchResult(false, List.of());
+                }
+                response.items().stream()
+                        .filter(item -> item.start() != null && item.start().dateTime() != null
+                                && item.end() != null && item.end().dateTime() != null)
+                        .map(item -> new BusyBlockResponse(
+                                item.start().dateTime(), item.end().dateTime(), SOURCE_GOOGLE))
+                        .forEach(blocks::add);
+                String nextPageToken = response.nextPageToken();
+                if (nextPageToken == null || nextPageToken.isBlank()) {
+                    break;
+                }
+                if (!seenPageTokens.add(nextPageToken)) {
+                    return new GoogleFetchResult(false, List.of());
+                }
+                pageToken = nextPageToken;
             }
-
-            List<BusyBlockResponse> blocks = response.items().stream()
-                    .filter(item -> item.start() != null && item.start().dateTime() != null
-                            && item.end() != null && item.end().dateTime() != null)
-                    .map(item -> new BusyBlockResponse(item.start().dateTime(), item.end().dateTime(), SOURCE_GOOGLE))
-                    .toList();
             return new GoogleFetchResult(true, blocks);
         } catch (RestClientException | IllegalStateException e) {
             return new GoogleFetchResult(false, List.of());
         }
+    }
+
+    private URI buildGoogleBusyUri(Instant rangeStart, Instant rangeEnd, String pageToken) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(googleCalendarEventsUrl)
+                .queryParam("timeMin", rangeStart)
+                .queryParam("timeMax", rangeEnd)
+                .queryParam("singleEvents", true)
+                .queryParam("orderBy", "startTime")
+                .queryParam("fields", BUSY_FIELDS);
+        if (pageToken == null) {
+            return builder.encode().build().toUri();
+        }
+        return builder.queryParam("pageToken", "{pageToken}")
+                .encode()
+                .buildAndExpand(pageToken)
+                .toUri();
     }
 
     private record GoogleFetchResult(boolean synced, List<BusyBlockResponse> blocks) {
@@ -269,14 +290,7 @@ public class CalendarService {
     }
 
     private void ensurePrimarySource(CalendarConnection connection) {
-        calendarSourceRepository.findByCalendarConnectionIdAndIsDefaultTrueAndDeletedAtIsNull(connection.getCalendarConnectionId())
-                .orElseGet(() -> calendarSourceRepository.save(CalendarSource.builder()
-                        .calendarConnectionId(connection.getCalendarConnectionId())
-                        .externalCalendarId("primary")
-                        .displayName("내 캘린더")
-                        .isWritable(true)
-                        .isDefault(true)
-                        .syncEnabled(true)
-                        .build()));
+        calendarSourceRepository.insertDefaultSourceIfAbsent(
+                connection.getCalendarConnectionId(), "primary", "내 캘린더");
     }
 }

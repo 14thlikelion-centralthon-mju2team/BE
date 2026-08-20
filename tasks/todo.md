@@ -1,0 +1,102 @@
+# AI 일정 분류 리뷰 구현
+
+## Constraints
+
+- review-only: AI 결과로 Event 사용자 필드를 직접 변경하지 않는다.
+- scheduled sync only: `syncForUser()`에는 AI를 연결하지 않는다.
+- privacy-policy exact-match와 기본 no-op/fail-closed를 유지한다.
+- Event와 review의 잠금 순서는 항상 Event → review다.
+- 테스트를 먼저 실패시키고 기대한 Red임을 확인한 뒤 production code를 작성한다.
+- Homebrew JDK 21 경로와 CI 보안 환경변수를 명시하고 PostgreSQL 16 컨테이너를 사용해 각 Task를 검증한다.
+
+## Checklist
+
+- [x] Task 0: 실행 기준선과 작업 추적 생성
+- [x] Task 1: 리뷰 무결성과 provenance 스키마 고정
+  - [x] Write repository integration tests for pending-review uniqueness and provenance round-trip
+  - [x] Capture expected RED against the pre-V27 schema
+  - [x] Add V27 schema safety migration and JPA/repository contracts
+  - [x] Run focused and EventController regressions; self-review and commit
+- [x] Task 2: Google 조회 DTO와 다페이지 수집 분리
+- [x] Task 3: 캘린더 쓰기 트랜잭션과 sync token CAS
+  - [x] Add RED tests for Event writer source/event concurrency and token CAS
+  - [x] Add REQUIRES_NEW event/state writers and conflict facade
+  - [x] Add RED orchestration tests for mutex, 410 recovery, token ordering, manual no-AI
+  - [x] Refactor sync orchestration outside transactions and verify focused/PostgreSQL/full regressions
+  - [x] Self-review, diff check, report, and commit
+  - [x] Review fix: accept id-only cancellation tombstones
+  - [x] Review fix: normalize only external-event unique insert conflicts
+  - [x] Review fix: exercise manual false classification gate after CREATED upsert
+- [x] Task 4: 분류 계약, 입력 정규화, 동의·롤아웃 게이트
+  - [x] Write focused RED tests for title normalization, policy gate, configuration binding, and NoOp selection
+  - [x] Add minimal fail-closed classification contracts, properties, normalizer, and consent/rollout gate
+  - [x] Verify focused tests, application context, full regression, diff; write report and commit
+- [x] Task 5: OpenAI Responses API strict client
+  - [x] Add strict Responses API DTOs, a dedicated bounded RestClient, and a conditional `@Primary` classifier
+  - [x] Verify exact request shape, adversarial input escaping, fail-closed parsing, no retry, no-sensitive-data logs, and configuration fallback
+  - [x] Run focused/context/full regressions, independent review, diff check, report, and commit
+- [x] Task 6: 신규 일정 분류와 review 저장 orchestration
+  - [x] RED: review-writer eligibility/provenance/duplicate PostgreSQL contracts
+  - [x] RED: gate-normalize-guard-classifier orchestration outcomes and provider budget
+  - [x] RED: scheduled CREATED-only integration and token-CAS ordering
+  - [x] GREEN: isolated writer, nonblocking guard, orchestration, sync integration
+  - [x] Verify focused PostgreSQL/orchestrator/sync, full suite, diff, review, report, commit
+- [x] Task 7: pending 조회와 stale-safe 답변 API
+  - [x] RED: pending projection ownership/range/privacy and stale-safe answer/PATCH controller contracts
+  - [x] GREEN: Event-first lock workflow, review closure, and validation boundaries
+  - [x] RED/GREEN: PostgreSQL double-answer and PATCH-first races
+  - [x] Verify focused, adjacent Task 6, full suite, diff check; self-review, report, and commit
+- [x] Task 8: 24시간 방어 purge와 90일 review 삭제
+  - [x] RED: PostgreSQL cutoff, 500-row stable batch, pending/answered and idempotency contracts
+  - [x] RED: answer/purge and delete/SKIP LOCKED concurrency contracts
+  - [x] GREEN: native CTE repository methods, isolated batch writer, mutation-driven service drain
+  - [x] RED/GREEN: ApplicationReady/fixed-delay/UTC-cron scheduler and retry-boundary contracts
+  - [x] Verify PostgreSQL-focused, adjacent, full suites; diff, report and commit
+- [x] Task 9: 저카디널리티 관측성과 배포 설정
+  - [x] Write RED metric-contract, configuration-readiness, and after-commit tests
+  - [x] Add privacy-safe metric facade, call/gate/orchestrator/writer/retention instrumentation
+  - [x] Publish review outcomes only after commit; verify rollback remains uncounted
+  - [x] Align YAML, environment examples, Compose, and private-scrape runbook
+  - [x] Run focused/adjacent/full verification, compose render, diff check, report, and commit
+- [x] Task 10: 골든셋, 통합 회귀, 출시 증거
+  - [x] Add the synthetic 200-row Korean golden set and deterministic strict-provider contract test
+  - [x] Add PostgreSQL two-page sync → title-free review → user-answer and privacy/failure integration regressions
+  - [x] Exclude opt-in `openai-eval` tagged execution from default Gradle tests; exact approval/key/pricing/model/request/cost preflight, bounded HTTP client, and complete per-call usage/quality/token/latency/cost limits guard live evaluation
+  - [x] Exercise production Google HTTP pagination and final sync token with two real fixture pages; use bounded real Task 7/8 lock races and scheduler privacy canary
+  - [x] Run clean Java/build/Compose/Python verification and record exact SHA `07970c3` evidence (Python uses explicit CPython 3.13)
+  - [x] Self-review, force-track release evidence, commit Task 10
+- [x] Final review hardening
+  - [x] RED/GREEN: serialize calendar existing-event updates on the Event lock so user PATCH fields cannot be overwritten
+  - [x] RED/GREEN: keep density Google pagination outside a long-lived database transaction
+  - [x] RED/GREEN: discard classifications when Event changed after the CREATED sync snapshot
+  - [x] RED/GREEN: fail closed unless the configured base URL is the approved HTTPS OpenAI endpoint
+  - [x] RED/GREEN: enforce the documented live-evaluation input-token p95 <= 300
+  - [x] Re-run focused, clean full, build, Compose, Python, independent review, and update PR evidence
+
+## Review
+
+- Draft PR: https://github.com/14thlikelion-centralthon-mju2team/BE/pull/204
+- Self-review: https://github.com/14thlikelion-centralthon-mju2team/BE/pull/204#issuecomment-5355635832
+- Baseline: JDK 21 + PostgreSQL 16에서 `./gradlew test` 138 tests, 0 failures.
+- Task 1: V27 partial unique index and provenance constraints, immutable entity mapping, locking APIs, and PostgreSQL repository tests verified before commit.
+- Task 1 independent review: APPROVED (Critical 0, Important 0). Minor follow-up is covered by the later end-to-end creation/update integration tests.
+- Task 2 independent review: two pagination findings fixed with TDD; scoped re-review APPROVED (Critical 0, Important 0).
+- Task 3: Event/source writes and sync-token CAS now use isolated `REQUIRES_NEW` writers; focused PostgreSQL tests and the full Gradle suite passed before commit.
+- Task 3 independent review: two data-loss findings fixed with TDD; scoped re-review APPROVED (Critical 0, Important 0).
+- Task 4: Added a fail-closed title normalizer, exact privacy-consent gate, stable rollout, validated configuration, and unconditional NoOp classifier. Focused PostgreSQL/context tests and the full Gradle suite passed before commit.
+- Task 4 independent review: APPROVED (Critical 0, Important 0, Minor 0).
+- Task 5: Added a strict, fail-closed OpenAI Responses client that sends only the normalized calendar-title JSON; focused contract tests, context validation, and full suite passed before commit.
+- Task 5 independent review: APPROVED (Critical 0, Important 0). Added direct regressions for both enum domains and confidence bounds after review.
+- Task 5 root follow-up: DTO-scoped null omission fixes the exact JSON Schema payload; actual timeout-path log capture proves exception and sensitive sentinels remain absent.
+- Task 5 final scoped review: APPROVED (Critical 0, Important 0).
+- Task 6: review-only orchestration, atomic title-free review insert, scheduled-only gating, and provider-call budgeting verified with PostgreSQL and the complete 214-test suite.
+- Task 6 independent review: APPROVED (Critical 0, Important 0, Minor 0).
+- Task 7 independent review: APPROVED (Spec Critical/Important/Minor 0; Quality Critical/Important 0, Minor 3). Bounded concurrency waits and full tie-break coverage are deferred to Task 10 final regressions.
+- Task 8: Exact PostgreSQL CTE batches purge stale title snapshots without touching answers and delete both pending/answered reviews after 90 days. Focused, adjacent, and full PostgreSQL suites passed before commit.
+- Task 8 independent review: APPROVED (Spec Critical/Important/Minor 0; Quality Critical/Important 0, Minor 3). Deterministic concurrency and exact-500 test hardening are deferred to Task 10.
+- Task 9: Added only low-cardinality AI classification counters/timers, transaction-after-commit review metrics, safe rollout configuration, and a private-scrape operating runbook. Focused, adjacent, full Gradle, and both Compose render checks passed before commit.
+- Task 9 review follow-up: fixed JDK timeout/incomplete outcome mapping, real backlog lag and partial-batch retention accounting, writer AFTER_COMMIT metrics, identifier-free sync failure logs, and the operating controls required for staged rollout/rollback.
+- Task 9 final scoped review: APPROVED (Critical 0, Important 0).
+- Task 10: initial implementation SHA `07970c3`, re-review hardening SHA `122bc23`, live-usage seam fix SHA `3cf2f40`, and final review-gap hardening SHA `3e51c65` are covered by 265 Java tests (0 failures/errors), build, both Compose renders, and opt-in evaluator preflight. The operational token meter direction contract is exactly input/output; the package-private live-evaluation seam alone validates raw total consistency. Python CPython 3.13 evidence is 474 collected/passed plus Ruff/mypy success. Final release evidence retains explicit "not executed" markers for unapproved live provider evaluation and does not infer F1, latency, tokens, cost cap, or provider approval.
+- Final independent branch review at `3e51c65`: READY, Critical 0, Important 0. The two documentation-only Minor findings were corrected in the following evidence-only commit.
+- Final verification at implementation SHA `3e51c65`: Java 265/265, Gradle build, disabled/no-network `openAiEvalTest`, both Compose renders, Python 474/474, Ruff, mypy, and diff checks passed. Live provider evaluation remains explicitly unexecuted pending external approvals/key/cost cap.

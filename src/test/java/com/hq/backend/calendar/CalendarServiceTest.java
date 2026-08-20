@@ -4,13 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.hq.backend.calendar.dto.CalendarConnectionResponse;
 import com.hq.backend.calendar.dto.ConnectCalendarRequest;
-import com.hq.backend.calendar.dto.GoogleCalendarEvent;
-import com.hq.backend.calendar.dto.GoogleCalendarEventsResponse;
+import com.hq.backend.calendar.dto.GoogleBusyEvent;
+import com.hq.backend.calendar.dto.GoogleBusyEventsResponse;
 import com.hq.backend.calendar.dto.GoogleEventDateTime;
 import com.hq.backend.calendar.dto.GoogleTokenResponse;
 import com.hq.backend.common.exception.ApiException;
@@ -283,13 +284,12 @@ class CalendarServiceTest {
         when(responseSpec.body(GoogleTokenResponse.class))
                 .thenReturn(new GoogleTokenResponse("access-token", null, null, 3600L));
 
-        GoogleCalendarEvent timedEvent = new GoogleCalendarEvent(
-                "evt-1", "confirmed",
+        GoogleBusyEvent timedEvent = new GoogleBusyEvent(
                 new GoogleEventDateTime(Instant.parse("2026-08-14T09:00:00Z")),
                 new GoogleEventDateTime(Instant.parse("2026-08-14T10:00:00Z")));
-        GoogleCalendarEvent allDayEvent = new GoogleCalendarEvent("evt-2", "confirmed", new GoogleEventDateTime(null), new GoogleEventDateTime(null));
-        when(responseSpec.body(GoogleCalendarEventsResponse.class))
-                .thenReturn(new GoogleCalendarEventsResponse(List.of(timedEvent, allDayEvent), null));
+        GoogleBusyEvent allDayEvent = new GoogleBusyEvent(new GoogleEventDateTime(null), new GoogleEventDateTime(null));
+        when(responseSpec.body(GoogleBusyEventsResponse.class))
+                .thenReturn(new GoogleBusyEventsResponse(List.of(timedEvent, allDayEvent), null));
 
         Event userEvent = Event.builder()
                 .eventId(UUID.randomUUID())
@@ -310,5 +310,117 @@ class CalendarServiceTest {
         assertThat(result.blocks()).hasSize(2); // 종일 일정은 제외되고 2건만
         assertThat(result.blocks().get(0).source()).isEqualTo("user_event"); // 05시가 09시보다 먼저
         assertThat(result.blocks().get(1).source()).isEqualTo("google");
+    }
+
+    @Test
+    void density_조회는_busy_전용_필드로_다음_페이지까지_수집한다() {
+        UUID userId = UUID.randomUUID();
+        CalendarConnection connection = CalendarConnection.builder()
+                .calendarConnectionId(UUID.randomUUID())
+                .userId(userId)
+                .provider("google")
+                .externalAccountId("google-sub-1")
+                .refreshTokenEnc(new byte[] {1, 2, 3})
+                .connectedAt(Instant.now())
+                .build();
+        when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.of(connection));
+        when(calendarTokenEncryptor.decrypt(any())).thenReturn("refresh-token".getBytes(StandardCharsets.UTF_8));
+        when(responseSpec.body(GoogleTokenResponse.class))
+                .thenReturn(new GoogleTokenResponse("access-token", null, null, 3600L));
+        when(responseSpec.body(GoogleBusyEventsResponse.class)).thenReturn(
+                new GoogleBusyEventsResponse(List.of(new GoogleBusyEvent(
+                        new GoogleEventDateTime(Instant.parse("2026-08-14T09:00:00Z")),
+                        new GoogleEventDateTime(Instant.parse("2026-08-14T10:00:00Z")))), "next+page=/opaque"),
+                new GoogleBusyEventsResponse(List.of(new GoogleBusyEvent(
+                        new GoogleEventDateTime(Instant.parse("2026-08-14T11:00:00Z")),
+                        new GoogleEventDateTime(Instant.parse("2026-08-14T12:00:00Z")))), null));
+        when(eventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
+                .thenReturn(List.of());
+
+        var result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
+
+        assertThat(result.calendarSynced()).isTrue();
+        assertThat(result.blocks()).extracting(block -> block.startsAt())
+                .containsExactly(Instant.parse("2026-08-14T09:00:00Z"), Instant.parse("2026-08-14T11:00:00Z"));
+        var uriCaptor = org.mockito.ArgumentCaptor.forClass(URI.class);
+        verify(requestHeadersUriSpec, times(2)).uri(uriCaptor.capture());
+        assertThat(uriCaptor.getAllValues()).allSatisfy(uri -> {
+            var query = org.springframework.web.util.UriComponentsBuilder.fromUri(uri).build().getQueryParams();
+            assertThat(decodedQueryParameter(query.getFirst("fields")))
+                    .isEqualTo("items(start(dateTime),end(dateTime)),nextPageToken");
+        });
+        var nextPageQuery = org.springframework.web.util.UriComponentsBuilder.fromUri(uriCaptor.getAllValues().get(1))
+                .build().getQueryParams();
+        assertThat(decodedQueryParameter(nextPageQuery.getFirst("pageToken")))
+                .isEqualTo("next+page=/opaque");
+        assertThat(uriCaptor.getAllValues().get(1).getRawQuery())
+                .contains("pageToken=next%2Bpage%3D%2Fopaque");
+    }
+
+    @Test
+    void density_조회는_빈_nextPageToken에서_추가_요청_없이_정상_종료한다() {
+        UUID userId = UUID.randomUUID();
+        CalendarConnection connection = connectedGoogleCalendar(userId);
+        when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.of(connection));
+        when(calendarTokenEncryptor.decrypt(any())).thenReturn("refresh-token".getBytes(StandardCharsets.UTF_8));
+        when(responseSpec.body(GoogleTokenResponse.class))
+                .thenReturn(new GoogleTokenResponse("access-token", null, null, 3600L));
+        when(responseSpec.body(GoogleBusyEventsResponse.class))
+                .thenReturn(new GoogleBusyEventsResponse(List.of(), ""))
+                .thenThrow(new RestClientException("unexpected extra page"));
+        when(eventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
+                .thenReturn(List.of());
+
+        var result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
+
+        assertThat(result.calendarSynced()).isTrue();
+        verify(requestHeadersUriSpec, times(1)).uri(any(URI.class));
+    }
+
+    @Test
+    void density_조회는_다페이지_Google_HTTP를_가로지르는_transaction을_열지_않는다() throws Exception {
+        var method = CalendarService.class.getMethod("getDensity", UUID.class, LocalDate.class);
+
+        assertThat(org.springframework.core.annotation.AnnotationUtils.findAnnotation(
+                method, org.springframework.transaction.annotation.Transactional.class)).isNull();
+    }
+
+    @Test
+    void density_조회는_반복_nextPageToken에서_추가_요청_없이_실패로_종료한다() {
+        UUID userId = UUID.randomUUID();
+        CalendarConnection connection = connectedGoogleCalendar(userId);
+        when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.of(connection));
+        when(calendarTokenEncryptor.decrypt(any())).thenReturn("refresh-token".getBytes(StandardCharsets.UTF_8));
+        when(responseSpec.body(GoogleTokenResponse.class))
+                .thenReturn(new GoogleTokenResponse("access-token", null, null, 3600L));
+        when(responseSpec.body(GoogleBusyEventsResponse.class))
+                .thenReturn(new GoogleBusyEventsResponse(List.of(new GoogleBusyEvent(
+                        new GoogleEventDateTime(Instant.parse("2026-08-14T09:00:00Z")),
+                        new GoogleEventDateTime(Instant.parse("2026-08-14T10:00:00Z")))), "repeat"))
+                .thenReturn(new GoogleBusyEventsResponse(List.of(), "repeat"))
+                .thenThrow(new RestClientException("unexpected extra page"));
+        when(eventRepository.findByUserIdAndStartsAtLessThanAndEndsAtGreaterThan(any(), any(), any()))
+                .thenReturn(List.of());
+
+        var result = calendarService.getDensity(userId, LocalDate.of(2026, 8, 14));
+
+        assertThat(result.calendarSynced()).isFalse();
+        assertThat(result.blocks()).isEmpty();
+        verify(requestHeadersUriSpec, times(2)).uri(any(URI.class));
+    }
+
+    private CalendarConnection connectedGoogleCalendar(UUID userId) {
+        return CalendarConnection.builder()
+                .calendarConnectionId(UUID.randomUUID())
+                .userId(userId)
+                .provider("google")
+                .externalAccountId("google-sub-1")
+                .refreshTokenEnc(new byte[] {1, 2, 3})
+                .connectedAt(Instant.now())
+                .build();
+    }
+
+    private String decodedQueryParameter(String value) {
+        return value == null ? null : java.net.URLDecoder.decode(value, java.nio.charset.StandardCharsets.UTF_8);
     }
 }

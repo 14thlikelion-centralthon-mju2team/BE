@@ -6,6 +6,7 @@ import com.hq.backend.event.dto.EventResponse;
 import com.hq.backend.event.dto.EventReviewRequest;
 import com.hq.backend.event.dto.EventReviewResponse;
 import com.hq.backend.event.dto.EventUpdateRequest;
+import com.hq.backend.event.dto.PendingEventReviewResponse;
 import jakarta.validation.Valid;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -41,6 +42,12 @@ public class EventController {
         return eventService.next(userId);
     }
 
+    @GetMapping("/reviews/pending")
+    public List<PendingEventReviewResponse> pendingReviews(
+            @CurrentUserId UUID userId, @RequestParam OffsetDateTime from, @RequestParam OffsetDateTime to) {
+        return eventService.listPendingReviews(userId, from.toInstant(), to.toInstant());
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public EventResponse create(@CurrentUserId UUID userId, @Valid @RequestBody EventCreateRequest request) {
@@ -66,7 +73,7 @@ public class EventController {
 
     @PostMapping("/{eventId}/review")
     public EventReviewResponse review(
-            @CurrentUserId UUID userId, @PathVariable UUID eventId, @Valid @RequestBody EventReviewRequest request) {
+            @CurrentUserId UUID userId, @PathVariable UUID eventId, @RequestBody EventReviewRequest request) {
         return eventService.answerReview(userId, eventId, request);
     }
 }

@@ -73,3 +73,6 @@ __pycache__/
 firebase-service-account.json
 .claude/
 .serena/
+
+# Agent-isolated implementation worktrees
+.worktrees/
