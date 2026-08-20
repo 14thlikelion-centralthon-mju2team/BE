@@ -13,6 +13,10 @@ public interface UserIdentityRepository extends JpaRepository<UserIdentity, UUID
 
     Optional<UserIdentity> findByProviderAndProviderUid(String provider, String providerUid);
 
+    Optional<UserIdentity> findByProviderAndProviderUidAndRevokedAtIsNull(String provider, String providerUid);
+
+    Optional<UserIdentity> findByUserIdAndProviderAndRevokedAtIsNull(UUID userId, String provider);
+
     List<UserIdentity> findAllByUserIdAndRevokedAtIsNull(UUID userId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

@@ -145,6 +145,11 @@ public class AuthService {
             credential.setFailedAttempts((short) 0);
         }
 
+        // email identity가 해제(revoked)됐으면 로그인 차단
+        if (userIdentityRepository.findByUserIdAndProviderAndRevokedAtIsNull(user.getUserId(), "email").isEmpty()) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다.");
+        }
+
         return issueTokens(user, false);
     }
 
@@ -182,7 +187,7 @@ public class AuthService {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_GOOGLE_TOKEN", "유효하지 않은 구글 토큰입니다.");
         }
 
-        User user = userIdentityRepository.findByProviderAndProviderUid("google", info.sub())
+        User user = userIdentityRepository.findByProviderAndProviderUidAndRevokedAtIsNull("google", info.sub())
                 .map(identity -> userRepository.findById(identity.getUserId())
                         .orElseThrow(() -> new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "USER_NOT_FOUND", "계정을 찾을 수 없습니다.")))
                 .orElse(null);
