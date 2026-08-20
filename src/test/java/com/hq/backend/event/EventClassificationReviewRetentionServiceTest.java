@@ -3,6 +3,7 @@ package com.hq.backend.event;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.hq.backend.event.dto.EventReviewRequest;
+import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.user.User;
 import com.hq.backend.user.UserRepository;
 import jakarta.persistence.EntityManager;
@@ -152,7 +153,7 @@ class EventClassificationReviewRetentionServiceTest {
                     event.getUserId(), event.getEventId(),
                     new EventReviewRequest(review.getReviewId(), "is_online", "online")));
 
-            assertThat(batchWriter.purgeBatch(NOW.minus(24, ChronoUnit.HOURS), NOW, 500)).isZero();
+            assertThat(retentionService.purgeTitles(NOW.minus(24, ChronoUnit.HOURS), 500).processed()).isZero();
             release.countDown();
             holder.get(5, java.util.concurrent.TimeUnit.SECONDS);
             answer.get(5, java.util.concurrent.TimeUnit.SECONDS);
@@ -192,6 +193,49 @@ class EventClassificationReviewRetentionServiceTest {
             assertThat(reviewRepository.existsById(review.getReviewId())).isFalse();
         } finally {
             release.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void event_lock을_기다리는_실제_answer와_90일_delete가_동시에_실행되면_delete가_완료되고_answer는_stale로_실패한다() throws Exception {
+        Event event = saveEvent();
+        EventClassificationReview review = savePurgedReview(event.getEventId(), NOW.minus(91, ChronoUnit.DAYS));
+        ExecutorService executor = Executors.newFixedThreadPool(3);
+        CountDownLatch eventLocked = new CountDownLatch(1);
+        CountDownLatch releaseEvent = new CountDownLatch(1);
+        CountDownLatch answerStarted = new CountDownLatch(1);
+        try {
+            Future<?> holder = executor.submit(() -> transactionTemplate.executeWithoutResult(status -> {
+                eventRepository.findByIdForUpdate(event.getEventId()).orElseThrow();
+                eventLocked.countDown();
+                await(releaseEvent);
+            }));
+            await(eventLocked);
+
+            Future<Object> answer = executor.submit(() -> {
+                answerStarted.countDown();
+                try {
+                    return eventService.answerReview(event.getUserId(), event.getEventId(),
+                            new EventReviewRequest(review.getReviewId(), "is_online", "online"));
+                } catch (ApiException exception) {
+                    return exception;
+                }
+            });
+            await(answerStarted);
+            Future<RetentionBatchResult> deletion = executor.submit(() ->
+                    retentionService.deleteExpired(NOW.minus(90, ChronoUnit.DAYS), 500));
+
+            assertThat(deletion.get(5, java.util.concurrent.TimeUnit.SECONDS).processed()).isEqualTo(1);
+            assertThat(reviewRepository.existsById(review.getReviewId())).isFalse();
+            releaseEvent.countDown();
+            holder.get(5, java.util.concurrent.TimeUnit.SECONDS);
+
+            Object answerOutcome = answer.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(answerOutcome).isInstanceOf(ApiException.class);
+            assertThat(((ApiException) answerOutcome).getCode()).isEqualTo("REVIEW_NOT_FOUND");
+        } finally {
+            releaseEvent.countDown();
             executor.shutdownNow();
         }
     }

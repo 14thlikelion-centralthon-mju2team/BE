@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
@@ -13,8 +14,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hq.backend.calendar.CalendarConnection;
 import com.hq.backend.calendar.CalendarConnectionRepository;
 import com.hq.backend.calendar.CalendarSyncService;
-import com.hq.backend.calendar.GoogleCalendarSyncClient;
-import com.hq.backend.calendar.GoogleSyncBatch;
+import com.hq.backend.calendar.DefaultGoogleCalendarSyncClient;
 import com.hq.backend.calendar.dto.GoogleCalendarSyncEvent;
 import com.hq.backend.calendar.dto.GoogleEventDateTime;
 import com.hq.backend.calendar.dto.GoogleTokenResponse;
@@ -32,10 +32,10 @@ import com.hq.backend.user.User;
 import com.hq.backend.user.UserRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.ArrayList;
+import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ScheduledFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,8 +49,10 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.encrypt.BytesEncryptor;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.springframework.web.client.RestClient;
 
 @SpringBootTest(properties = {
@@ -78,36 +80,35 @@ class EventClassificationFlowIntegrationTest {
 
         @Bean
         @Primary
-        TwoPageGoogleFixtureClient twoPageGoogleFixtureClient() {
-            return new TwoPageGoogleFixtureClient();
+        DefaultGoogleCalendarSyncClient flowGoogleCalendarSyncClient(GoogleCalendarFixture fixture) {
+            return fixture.client();
+        }
+
+        @Bean
+        GoogleCalendarFixture googleCalendarFixture() {
+            RestClient.Builder builder = RestClient.builder();
+            MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+            return new GoogleCalendarFixture(server, new DefaultGoogleCalendarSyncClient(builder.build(),
+                    "https://calendar.fixture/calendar/v3/calendars/primary/events"));
+        }
+
+        @Bean(name = "taskScheduler")
+        @Primary
+        @SuppressWarnings("unchecked")
+        TaskScheduler noOpTaskScheduler() {
+            TaskScheduler scheduler = mock(TaskScheduler.class);
+            ScheduledFuture<?> future = mock(ScheduledFuture.class);
+            doReturn(future).when(scheduler).schedule(any(Runnable.class), any(org.springframework.scheduling.Trigger.class));
+            doReturn(future).when(scheduler).schedule(any(Runnable.class), any(Instant.class));
+            doReturn(future).when(scheduler).scheduleAtFixedRate(any(Runnable.class), any(Instant.class), any(Duration.class));
+            doReturn(future).when(scheduler).scheduleAtFixedRate(any(Runnable.class), any(Duration.class));
+            doReturn(future).when(scheduler).scheduleWithFixedDelay(any(Runnable.class), any(Instant.class), any(Duration.class));
+            doReturn(future).when(scheduler).scheduleWithFixedDelay(any(Runnable.class), any(Duration.class));
+            return scheduler;
         }
     }
 
-    static final class TwoPageGoogleFixtureClient implements GoogleCalendarSyncClient {
-        private List<GoogleCalendarSyncEvent> firstPage = List.of();
-        private List<GoogleCalendarSyncEvent> secondPage = List.of();
-        private int servedPages;
-
-        void pages(List<GoogleCalendarSyncEvent> firstPage, List<GoogleCalendarSyncEvent> secondPage) {
-            this.firstPage = List.copyOf(firstPage);
-            this.secondPage = List.copyOf(secondPage);
-            this.servedPages = 0;
-        }
-
-        int servedPages() {
-            return servedPages;
-        }
-
-        @Override
-        public Optional<GoogleSyncBatch> fetchAll(String accessToken, String syncToken, Instant now) {
-            if (Thread.currentThread().getName().contains("scheduling")) {
-                return Optional.of(new GoogleSyncBatch(List.of(), "task10-scheduled-token"));
-            }
-            servedPages = 2;
-            List<GoogleCalendarSyncEvent> events = new ArrayList<>(firstPage);
-            events.addAll(secondPage);
-            return Optional.of(new GoogleSyncBatch(events, "task10-sync-token"));
-        }
+    record GoogleCalendarFixture(MockRestServiceServer server, DefaultGoogleCalendarSyncClient client) {
     }
 
     @org.springframework.beans.factory.annotation.Autowired private CalendarSyncService syncService;
@@ -119,7 +120,7 @@ class EventClassificationFlowIntegrationTest {
     @org.springframework.beans.factory.annotation.Autowired private EventService eventService;
     @org.springframework.beans.factory.annotation.Autowired private BytesEncryptor encryptor;
     @org.springframework.beans.factory.annotation.Autowired private RestClient flowCalendarRestClient;
-    @org.springframework.beans.factory.annotation.Autowired private TwoPageGoogleFixtureClient twoPageGoogleFixtureClient;
+    @org.springframework.beans.factory.annotation.Autowired private GoogleCalendarFixture googleCalendarFixture;
     @org.springframework.beans.factory.annotation.Autowired private OpenAiEventClassifier openAiEventClassifier;
 
     private MockRestServiceServer openAiServer;
@@ -141,6 +142,7 @@ class EventClassificationFlowIntegrationTest {
         RestClient.Builder builder = RestClient.builder().baseUrl("https://openai.fixture/v1");
         openAiServer = MockRestServiceServer.bindTo(builder).build();
         ReflectionTestUtils.setField(openAiEventClassifier, "restClient", builder.build());
+        googleCalendarFixture.server().reset();
     }
 
     @Test
@@ -148,15 +150,15 @@ class EventClassificationFlowIntegrationTest {
         User user = saveUser();
         agree(user);
         CalendarConnection connection = saveConnection(user);
-        twoPageGoogleFixtureClient.pages(
-                List.of(googleEvent("google-page-1", "온라인 기획 회의", 1)),
-                List.of(googleEvent("google-page-2", "대면 고객 미팅", 2)));
+        expectTwoGooglePages(
+                googleEvent("google-page-1", "온라인 기획 회의", 1),
+                googleEvent("google-page-2", "대면 고객 미팅", 2));
         expectClassifier("online");
         expectClassifier("offline");
 
         sync(connection, true);
 
-        assertThat(twoPageGoogleFixtureClient.servedPages()).isEqualTo(2);
+        googleCalendarFixture.server().verify();
         List<Event> events = eventRepository.findAll().stream()
                 .filter(event -> user.getUserId().equals(event.getUserId()))
                 .filter(event -> event.getExternalEventId() != null && event.getExternalEventId().startsWith("google-page"))
@@ -184,8 +186,9 @@ class EventClassificationFlowIntegrationTest {
     void consent_revoke_provider_failure_malformed_duplicate_sync_and_user_patch_never_auto_change_event() {
         User noConsent = saveUser();
         CalendarConnection noConsentConnection = saveConnection(noConsent);
-        twoPageGoogleFixtureClient.pages(List.of(googleEvent("no-consent", "온라인 회의", 1)), List.of());
+        expectSingleGooglePage(googleEvent("no-consent", "온라인 회의", 1));
         sync(noConsentConnection, true);
+        verifyAndResetGoogleServer();
         Event noConsentEvent = eventFor(noConsent, "no-consent");
         assertUndecidedWithoutReview(noConsentEvent);
 
@@ -193,8 +196,9 @@ class EventClassificationFlowIntegrationTest {
         agree(revoked);
         revoke(revoked);
         CalendarConnection revokedConnection = saveConnection(revoked);
-        twoPageGoogleFixtureClient.pages(List.of(googleEvent("revoked", "온라인 회의", 1)), List.of());
+        expectSingleGooglePage(googleEvent("revoked", "온라인 회의", 1));
         sync(revokedConnection, true);
+        verifyAndResetGoogleServer();
         assertUndecidedWithoutReview(eventFor(revoked, "revoked"));
 
         User timeout = saveUser();
@@ -205,25 +209,30 @@ class EventClassificationFlowIntegrationTest {
         openAiServer.expect(requestTo("https://openai.fixture/v1/responses"))
                 .andRespond(withSuccess("{\"status\":\"completed\",\"model\":\"gpt-4o-mini-2024-07-18\",\"output\":[]}", MediaType.APPLICATION_JSON));
         expectClassifier("online");
-        twoPageGoogleFixtureClient.pages(List.of(googleEvent("timeout", "온라인 회의", 1)), List.of());
+        expectSingleGooglePage(googleEvent("timeout", "온라인 회의", 1));
         sync(timeoutConnection, true);
+        verifyAndResetGoogleServer();
         assertUndecidedWithoutReview(eventFor(timeout, "timeout"));
 
         User malformed = saveUser();
         agree(malformed);
         CalendarConnection malformedConnection = saveConnection(malformed);
-        twoPageGoogleFixtureClient.pages(List.of(googleEvent("malformed", "대면 회의", 1)), List.of());
+        expectSingleGooglePage(googleEvent("malformed", "대면 회의", 1));
         sync(malformedConnection, true);
+        verifyAndResetGoogleServer();
         assertUndecidedWithoutReview(eventFor(malformed, "malformed"));
 
         User duplicate = saveUser();
         agree(duplicate);
         CalendarConnection duplicateConnection = saveConnection(duplicate);
-        twoPageGoogleFixtureClient.pages(List.of(googleEvent("duplicate", "온라인 회의", 1)), List.of());
+        expectSingleGooglePage(googleEvent("duplicate", "온라인 회의", 1));
         sync(duplicateConnection, true);
+        verifyAndResetGoogleServer();
         Event duplicateEvent = eventFor(duplicate, "duplicate");
         EventClassificationReview review = reviewRepository.findFirstByEventIdAndAnsweredAtIsNullOrderByAskedAtDesc(duplicateEvent.getEventId()).orElseThrow();
+        expectGooglePage(googleEvent("duplicate", "온라인 회의", 1), null, "task10-sync-token", null, "task10-sync-token");
         sync(duplicateConnection, true);
+        verifyAndResetGoogleServer();
         assertThat(reviewRepository.findAll().stream().filter(item -> duplicateEvent.getEventId().equals(item.getEventId()))).hasSize(1);
         assertThat(duplicateEvent.getLocationState()).isEqualTo("undecided");
 
@@ -243,14 +252,15 @@ class EventClassificationFlowIntegrationTest {
         User user = saveUser();
         agree(user);
         CalendarConnection connection = saveConnection(user);
-        twoPageGoogleFixtureClient.pages(
-                List.of(googleEvent("canary-review", canary, 1)),
-                List.of(googleEvent("canary-failure", "일정 " + canary, 2)));
+        expectTwoGooglePages(
+                googleEvent("canary-review", canary, 1),
+                googleEvent("canary-failure", "일정 " + canary, 2));
         expectClassifier("online");
         openAiServer.expect(requestTo("https://openai.fixture/v1/responses"))
                 .andRespond(request -> { throw new java.net.SocketTimeoutException(canary + " provider-body"); });
 
         sync(connection, true);
+        verifyAndResetGoogleServer();
 
         List<Event> events = eventRepository.findAll().stream().filter(event -> user.getUserId().equals(event.getUserId())).toList();
         assertThat(events).allSatisfy(event -> assertThat(java.util.stream.Stream.of(
@@ -267,6 +277,63 @@ class EventClassificationFlowIntegrationTest {
     private void expectClassifier(String expected) {
         openAiServer.expect(requestTo("https://openai.fixture/v1/responses"))
                 .andRespond(withSuccess(completedResponse(expected), MediaType.APPLICATION_JSON));
+    }
+
+    private void verifyAndResetGoogleServer() {
+        googleCalendarFixture.server().verify();
+        googleCalendarFixture.server().reset();
+    }
+
+    private void expectSingleGooglePage(GoogleCalendarSyncEvent event) {
+        expectGooglePage(event, null, "task10-sync-token", null, null);
+    }
+
+    private void expectTwoGooglePages(GoogleCalendarSyncEvent first, GoogleCalendarSyncEvent second) {
+        expectGooglePage(first, "task10-page-2", null, null, null);
+        expectGooglePage(second, null, "task10-sync-token", "task10-page-2", null);
+    }
+
+    private void expectGooglePage(
+            GoogleCalendarSyncEvent event, String nextPageToken, String nextSyncToken,
+            String expectedPageToken, String expectedSyncToken) {
+        googleCalendarFixture.server().expect(request -> assertGooglePageRequest(request, expectedPageToken, expectedSyncToken))
+                .andRespond(withSuccess(googlePageResponse(event, nextPageToken, nextSyncToken), MediaType.APPLICATION_JSON));
+    }
+
+    private void assertGooglePageRequest(
+            org.springframework.http.client.ClientHttpRequest request, String expectedPageToken, String expectedSyncToken) {
+        var query = UriComponentsBuilder.fromUri(request.getURI()).build().getQueryParams();
+        assertThat(request.getURI().getPath()).isEqualTo("/calendar/v3/calendars/primary/events");
+        assertThat(query.getFirst("fields"))
+                .isEqualTo("items(id,status,summary,start(dateTime),end(dateTime)),nextPageToken,nextSyncToken");
+        if (expectedSyncToken == null) {
+            assertThat(query.getFirst("singleEvents")).isEqualTo("true");
+            assertThat(query.getFirst("orderBy")).isEqualTo("startTime");
+            assertThat(query.getFirst("timeMin")).isNotBlank();
+            assertThat(query.getFirst("timeMax")).isNotBlank();
+        } else {
+            assertThat(query.getFirst("syncToken")).isEqualTo(expectedSyncToken);
+            assertThat(query).doesNotContainKeys("singleEvents", "orderBy", "timeMin", "timeMax");
+        }
+        assertThat(query.getFirst("pageToken")).isEqualTo(expectedPageToken);
+        assertThat(request.getHeaders().getFirst("Authorization")).isEqualTo("Bearer access-token");
+    }
+
+    private String googlePageResponse(GoogleCalendarSyncEvent event, String nextPageToken, String nextSyncToken) {
+        try {
+            java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            payload.put("items", List.of(java.util.Map.of(
+                    "id", event.id(),
+                    "status", event.status(),
+                    "summary", event.summary(),
+                    "start", java.util.Map.of("dateTime", event.start().dateTime().toString()),
+                    "end", java.util.Map.of("dateTime", event.end().dateTime().toString()))));
+            payload.put("nextPageToken", nextPageToken);
+            payload.put("nextSyncToken", nextSyncToken);
+            return OBJECT_MAPPER.writeValueAsString(payload);
+        } catch (Exception exception) {
+            throw new AssertionError("Google fixture JSON serialization failed", exception);
+        }
     }
 
     private void sync(CalendarConnection connection, boolean classificationAllowed) {

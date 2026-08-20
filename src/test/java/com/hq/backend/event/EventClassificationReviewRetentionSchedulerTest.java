@@ -12,9 +12,13 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.scheduling.annotation.Scheduled;
 
+@ExtendWith(OutputCaptureExtension.class)
 class EventClassificationReviewRetentionSchedulerTest {
 
     private static final Instant NOW = Instant.parse("2026-08-21T00:00:00Z");
@@ -57,6 +61,20 @@ class EventClassificationReviewRetentionSchedulerTest {
         assertThatCode(scheduler::purgeTitles).doesNotThrowAnyException();
 
         verify(service, times(2)).purgeTitles(NOW.minusSeconds(86_400), 500);
+    }
+
+    @Test
+    void scheduler_failure_log은_예외에_섞인_개인정보를_기록하지_않는다(CapturedOutput output) {
+        String canary = "TASK10_RETENTION_LOG_CANARY_7d2ac1";
+        EventClassificationReviewRetentionService service = mock(EventClassificationReviewRetentionService.class);
+        when(service.deleteExpired(NOW.minusSeconds(90L * 86_400), 500))
+                .thenThrow(new IllegalStateException(canary));
+        EventClassificationReviewRetentionScheduler scheduler = new EventClassificationReviewRetentionScheduler(
+                service, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        scheduler.deleteExpired();
+
+        assertThat(output).doesNotContain(canary);
     }
 
     @Test

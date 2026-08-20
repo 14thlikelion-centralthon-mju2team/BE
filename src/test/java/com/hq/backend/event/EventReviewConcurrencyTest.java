@@ -1,12 +1,15 @@
 package com.hq.backend.event;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.hq.backend.common.exception.ApiException;
 import com.hq.backend.event.dto.EventReviewRequest;
 import com.hq.backend.event.dto.EventUpdateRequest;
 import com.hq.backend.user.User;
 import com.hq.backend.user.UserRepository;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -18,7 +21,7 @@ import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest
@@ -31,7 +34,6 @@ class EventReviewConcurrencyTest {
     @Autowired private EventClassificationReviewRepository reviewRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private TransactionTemplate transactionTemplate;
-    @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
     void 같은_review에_동시에_두번_답하면_정확히_하나만_성공한다() throws Exception {
@@ -64,7 +66,10 @@ class EventReviewConcurrencyTest {
         ExecutorService executor = Executors.newFixedThreadPool(3);
         CountDownLatch lockHeld = new CountDownLatch(1);
         CountDownLatch releaseLock = new CountDownLatch(1);
-        CountDownLatch patchStarted = new CountDownLatch(1);
+        CountDownLatch patchWantsEventLock = new CountDownLatch(1);
+        EventRepository originalRepository = eventRepository;
+        EventRepository lockAwareRepository = lockAwareRepository(originalRepository, fixture, patchWantsEventLock);
+        ReflectionTestUtils.setField(eventService, "eventRepository", lockAwareRepository);
         try {
             Future<?> holder = executor.submit(() -> transactionTemplate.executeWithoutResult(status -> {
                 eventRepository.findByIdForUpdate(fixture.eventId()).orElseThrow();
@@ -73,15 +78,12 @@ class EventReviewConcurrencyTest {
             }));
             await(lockHeld);
             Future<?> patch = executor.submit(() -> {
-                patchStarted.countDown();
                 eventService.update(fixture.userId(), fixture.eventId(), new EventUpdateRequest(
                         null, null, null, null, null, null, "https://meeting.example", null, null, null));
             });
-            await(patchStarted);
-            awaitCondition(() -> jdbcTemplate.queryForObject("""
-                    select count(*) from pg_stat_activity
-                    where wait_event_type = 'Lock' and query ilike '%from event%'
-                    """, Integer.class) > 0, "PATCH가 Event row lock 대기열에 진입");
+            await(patchWantsEventLock);
+            assertThatThrownBy(() -> patch.get(200, java.util.concurrent.TimeUnit.MILLISECONDS))
+                    .isInstanceOf(java.util.concurrent.TimeoutException.class);
             Future<Object> answer = executor.submit(() -> answer(fixture));
             releaseLock.countDown();
             holder.get(5, java.util.concurrent.TimeUnit.SECONDS);
@@ -97,6 +99,7 @@ class EventReviewConcurrencyTest {
             assertThat(review.getUserAnswer()).isNull();
         } finally {
             releaseLock.countDown();
+            ReflectionTestUtils.setField(eventService, "eventRepository", originalRepository);
             executor.shutdownNow();
         }
     }
@@ -113,6 +116,24 @@ class EventReviewConcurrencyTest {
         } catch (ApiException exception) {
             return exception;
         }
+    }
+
+    private EventRepository lockAwareRepository(
+            EventRepository delegate, Fixture fixture, CountDownLatch patchWantsEventLock) {
+        return (EventRepository) Proxy.newProxyInstance(
+                EventRepository.class.getClassLoader(), new Class<?>[]{EventRepository.class}, (proxy, method, args) -> {
+                    if ("findOwnedForUpdate".equals(method.getName())
+                            && args.length == 2
+                            && fixture.eventId().equals(args[0])
+                            && fixture.userId().equals(args[1])) {
+                        patchWantsEventLock.countDown();
+                    }
+                    try {
+                        return method.invoke(delegate, args);
+                    } catch (InvocationTargetException exception) {
+                        throw exception.getCause();
+                    }
+                });
     }
 
     private Fixture fixture() {
@@ -140,21 +161,6 @@ class EventReviewConcurrencyTest {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(exception);
-        }
-    }
-
-    private void awaitCondition(java.util.function.BooleanSupplier condition, String description) {
-        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
-        while (!condition.getAsBoolean()) {
-            if (System.nanoTime() >= deadline) {
-                throw new AssertionError(description + "을 기다리다 시간 초과했습니다.");
-            }
-            try {
-                Thread.sleep(10);
-            } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException(exception);
-            }
         }
     }
 
