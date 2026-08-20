@@ -4,7 +4,6 @@ import com.hq.backend.calendar.dto.GoogleCalendarSyncEvent;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -15,21 +14,24 @@ public class CalendarEventWriter {
 
     public Optional<CalendarUpsertResult> upsert(
             UUID userId, UUID connectionId, GoogleCalendarSyncEvent externalEvent) {
-        if (externalEvent.id() == null || externalEvent.start() == null
-                || externalEvent.start().dateTime() == null) {
+        if (externalEvent.id() == null) {
+            return Optional.empty();
+        }
+        if (!"cancelled".equals(externalEvent.status())
+                && (externalEvent.start() == null || externalEvent.start().dateTime() == null)) {
             return Optional.empty();
         }
         try {
             return Optional.of(transactionWriter.upsertOnce(userId, connectionId, externalEvent));
         } catch (CalendarEventTransactionWriter.CalendarEventNotFoundForCancellationException exception) {
             return Optional.empty();
-        } catch (DataIntegrityViolationException exception) {
+        } catch (CalendarEventTransactionWriter.ExternalEventInsertConflictException exception) {
             Optional<CalendarUpsertResult> existing =
                     transactionWriter.findExistingAfterConflict(connectionId, externalEvent.id());
             if (existing.isPresent()) {
                 return existing;
             }
-            throw exception;
+            throw exception.getCause();
         }
     }
 }

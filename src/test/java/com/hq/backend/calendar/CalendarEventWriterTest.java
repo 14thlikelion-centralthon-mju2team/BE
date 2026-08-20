@@ -1,6 +1,7 @@
 package com.hq.backend.calendar;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.hq.backend.calendar.dto.GoogleCalendarSyncEvent;
 import com.hq.backend.calendar.dto.GoogleEventDateTime;
@@ -72,13 +73,13 @@ class CalendarEventWriterTest {
     }
 
     @Test
-    void 취소된_기존_일정은_CANCELLED로_반환하고_없는_일정은_skip한다() {
+    void 시간_없는_취소_tombstone은_기존_일정을_CANCELLED로_반환하고_없는_일정은_skip한다() {
         CalendarConnection connection = saveConnection();
         CalendarUpsertResult created = calendarEventWriter.upsert(
                 connection.getUserId(), connection.getCalendarConnectionId(), event("cancel", "confirmed", 0)).orElseThrow();
 
         CalendarUpsertResult cancelled = calendarEventWriter.upsert(
-                connection.getUserId(), connection.getCalendarConnectionId(), event("cancel", "cancelled", 0)).orElseThrow();
+                connection.getUserId(), connection.getCalendarConnectionId(), cancellationTombstone("cancel")).orElseThrow();
 
         assertThat(cancelled.changeType()).isEqualTo(CalendarChangeType.CANCELLED);
         assertThat(eventRepository.findById(created.eventId()).orElseThrow().getStatus()).isEqualTo("cancelled");
@@ -94,6 +95,19 @@ class CalendarEventWriterTest {
 
         assertThat(calendarEventWriter.upsert(
                 connection.getUserId(), connection.getCalendarConnectionId(), allDay)).isEmpty();
+    }
+
+    @Test
+    void 기존_일정의_잘못된_시간_업데이트는_UNCHANGED로_숨기지_않고_DB_오류를_전파한다() {
+        CalendarConnection connection = saveConnection();
+        calendarEventWriter.upsert(connection.getUserId(), connection.getCalendarConnectionId(), event("bad-time", "confirmed", 0));
+        Instant start = Instant.parse("2026-08-20T01:00:00Z");
+        GoogleCalendarSyncEvent invalidUpdate = new GoogleCalendarSyncEvent("bad-time", "confirmed", "title",
+                new GoogleEventDateTime(start.plusSeconds(7200)), new GoogleEventDateTime(start));
+
+        assertThatThrownBy(() -> calendarEventWriter.upsert(
+                connection.getUserId(), connection.getCalendarConnectionId(), invalidUpdate))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
 
     @Test
@@ -165,5 +179,9 @@ class CalendarEventWriterTest {
         return new GoogleCalendarSyncEvent(
                 id, status, "never-persist-this-title", new GoogleEventDateTime(start),
                 new GoogleEventDateTime(start.plusSeconds(3600)));
+    }
+
+    private GoogleCalendarSyncEvent cancellationTombstone(String id) {
+        return new GoogleCalendarSyncEvent(id, "cancelled", null, null, null);
     }
 }

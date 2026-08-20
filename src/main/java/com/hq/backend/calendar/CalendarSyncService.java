@@ -128,7 +128,7 @@ public class CalendarSyncService {
     }
 
     /** Task 6 injects classifier/review orchestration here; this task intentionally creates no AI dependency. */
-    private void processCreatedCandidates(List<CalendarUpsertResult> results, boolean classificationAllowed) {
+    void processCreatedCandidates(List<CalendarUpsertResult> results, boolean classificationAllowed) {
         if (!classificationAllowed || results.stream().noneMatch(CalendarUpsertResult::isCreated)) return;
     }
 

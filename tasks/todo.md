@@ -24,6 +24,9 @@
   - [x] Add RED orchestration tests for mutex, 410 recovery, token ordering, manual no-AI
   - [x] Refactor sync orchestration outside transactions and verify focused/PostgreSQL/full regressions
   - [x] Self-review, diff check, report, and commit
+  - [x] Review fix: accept id-only cancellation tombstones
+  - [x] Review fix: normalize only external-event unique insert conflicts
+  - [x] Review fix: exercise manual false classification gate after CREATED upsert
 - [ ] Task 4: 분류 계약, 입력 정규화, 동의·롤아웃 게이트
 - [ ] Task 5: OpenAI Responses API strict client
 - [ ] Task 6: 신규 일정 분류와 review 저장 orchestration

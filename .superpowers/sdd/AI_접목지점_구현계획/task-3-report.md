@@ -50,3 +50,25 @@ Both commands used JDK 21, PostgreSQL 16, and the CI security environment variab
 ## Concerns
 
 - Task 6 has not introduced the classifier/review orchestration dependency yet. This task preserves its scheduled/manual gate at the package-private orchestration boundary but intentionally performs no AI call.
+
+## Independent review fixes
+
+### RED
+
+After the independent review, the focused suite failed with the expected two behavioral reproductions:
+
+- an id-only `cancelled` Google tombstone returned `Optional.empty()` before the transaction writer and therefore did not cancel the existing Event;
+- an existing Event update with `endsAt < startsAt` violated `ck_event_time_order`, but the broad facade catch re-read that Event and returned `UNCHANGED`.
+
+The initial manual-gate observability test also exposed that the hook was private. It was made package-private solely as the focused orchestration seam, then the runtime reproductions above were executed.
+
+### GREEN
+
+- `CalendarEventWriter` now accepts any id-bearing cancellation before timed-event validation. Missing cancelled Events still return the permitted normal skip.
+- `CalendarEventTransactionWriter` wraps only the new Event insert's PostgreSQL `23505` / `uq_event_external` conflict. The facade alone normalizes that marker after its separate re-read; update constraints and all other database errors propagate.
+- The manual sync test now completes a CREATED upsert with a non-null final token, verifies `processCreatedCandidates(..., false)`, and verifies token advance. The no-op hook remains intentionally empty until Task 6 supplies the classifier dependency.
+
+```text
+./gradlew test --tests '*CalendarEventWriterTest' --tests '*CalendarSyncServiceTest' --console=plain
+BUILD SUCCESSFUL in 5s
+```

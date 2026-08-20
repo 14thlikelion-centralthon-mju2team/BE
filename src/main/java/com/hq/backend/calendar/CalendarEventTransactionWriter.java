@@ -4,6 +4,7 @@ import com.hq.backend.calendar.dto.GoogleCalendarSyncEvent;
 import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
 import java.time.Instant;
+import java.sql.SQLException;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -60,11 +61,19 @@ public class CalendarEventTransactionWriter {
             return new CalendarUpsertResult(event.getEventId(), CalendarChangeType.UPDATED, true);
         }
 
-        Event created = eventRepository.saveAndFlush(Event.builder()
-                .userId(userId).calendarSourceId(source.getCalendarSourceId()).externalEventId(externalEvent.id())
-                .sourceType("external").startsAt(startsAt).endsAt(endsAt).isAllDay(false)
-                .locationState("undecided").autoManageExcluded(false).excludedFromLearning(false)
-                .status("planned").createdAt(Instant.now()).updatedAt(Instant.now()).build());
+        Event created;
+        try {
+            created = eventRepository.saveAndFlush(Event.builder()
+                    .userId(userId).calendarSourceId(source.getCalendarSourceId()).externalEventId(externalEvent.id())
+                    .sourceType("external").startsAt(startsAt).endsAt(endsAt).isAllDay(false)
+                    .locationState("undecided").autoManageExcluded(false).excludedFromLearning(false)
+                    .status("planned").createdAt(Instant.now()).updatedAt(Instant.now()).build());
+        } catch (org.springframework.dao.DataIntegrityViolationException exception) {
+            if (isExternalEventUniqueConflict(exception)) {
+                throw new ExternalEventInsertConflictException(exception);
+            }
+            throw exception;
+        }
         return new CalendarUpsertResult(created.getEventId(), CalendarChangeType.CREATED, false);
     }
 
@@ -82,6 +91,31 @@ public class CalendarEventTransactionWriter {
                 .orElseThrow();
     }
 
+    private boolean isExternalEventUniqueConflict(org.springframework.dao.DataIntegrityViolationException exception) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof SQLException sqlException
+                    && "23505".equals(sqlException.getSQLState())
+                    && sqlException.getMessage() != null
+                    && sqlException.getMessage().contains("uq_event_external")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
     static final class CalendarEventNotFoundForCancellationException extends RuntimeException {
+    }
+
+    static final class ExternalEventInsertConflictException extends RuntimeException {
+        ExternalEventInsertConflictException(org.springframework.dao.DataIntegrityViolationException cause) {
+            super(cause);
+        }
+
+        @Override
+        public org.springframework.dao.DataIntegrityViolationException getCause() {
+            return (org.springframework.dao.DataIntegrityViolationException) super.getCause();
+        }
     }
 }

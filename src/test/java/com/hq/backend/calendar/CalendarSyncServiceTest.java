@@ -2,7 +2,10 @@ package com.hq.backend.calendar;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -172,17 +175,20 @@ class CalendarSyncServiceTest {
     }
 
     @Test
-    void 최종_sync_token이_없으면_전진시키지_않고_수동_sync도_외부_호출_트랜잭션_밖에서_수행한다() {
+    void 수동_sync는_CREATED를_처리한뒤_false_분류_gate를_전달하고_token을_전진시킨다() {
         CalendarConnection connection = connection(null);
-        service = service((accessToken, token, now) -> {
+        service = spy(service((accessToken, token, now) -> {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
-            return Optional.of(new GoogleSyncBatch(List.of(event()), null));
-        });
+            return Optional.of(new GoogleSyncBatch(List.of(event()), "next"));
+        }));
         when(connectionRepository.findByUserIdAndProvider(connection.getUserId(), "google")).thenReturn(Optional.of(connection));
         when(connectionRepository.findById(connection.getCalendarConnectionId())).thenReturn(Optional.of(connection));
+        when(calendarEventWriter.upsert(any(), any(), any())).thenReturn(Optional.of(
+                new CalendarUpsertResult(UUID.randomUUID(), CalendarChangeType.CREATED, false)));
         service.syncForUser(connection.getUserId());
 
-        verify(syncStateWriter, never()).advanceSyncToken(any(), any(), any());
+        verify(service).processCreatedCandidates(anyList(), eq(false));
+        verify(syncStateWriter).advanceSyncToken(connection.getCalendarConnectionId(), null, "next");
     }
 
     private CalendarSyncService service(GoogleCalendarSyncClient client) {
