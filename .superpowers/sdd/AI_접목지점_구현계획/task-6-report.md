@@ -21,3 +21,7 @@
 ## Scope note
 
 The current `EventService.update()` does not yet use a pessimistic Event lock; that endpoint synchronization is explicitly Task 7 scope. The Task 6 PostgreSQL race test models the required Event-first writer interaction through `TransactionTemplate` and `findByIdForUpdate`, without claiming that the Task 7 PATCH race is already solved.
+
+## Root follow-up verification
+
+The unrelated Wellness failure was traced to a same-day fixture created at 23:41 KST: `now + 30 minutes` crossed midnight, so production correctly excluded the next-day schedule. The test-only fixture was pinned to noon in separate commit `19cfc86`. After that correction, the complete JDK 21/PostgreSQL 16 suite passed (`BUILD SUCCESSFUL in 17s`, 214 tests).
