@@ -18,6 +18,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -57,6 +58,7 @@ class EventReviewConcurrencyTest {
             assertThat(review.getAnsweredAt()).isNotNull();
         } finally {
             executor.shutdownNow();
+            executor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS);
         }
     }
 
@@ -67,8 +69,11 @@ class EventReviewConcurrencyTest {
         CountDownLatch lockHeld = new CountDownLatch(1);
         CountDownLatch releaseLock = new CountDownLatch(1);
         CountDownLatch patchWantsEventLock = new CountDownLatch(1);
+        CountDownLatch patchHasEventLock = new CountDownLatch(1);
+        CountDownLatch allowPatchToProceed = new CountDownLatch(1);
         EventRepository originalRepository = eventRepository;
-        EventRepository lockAwareRepository = lockAwareRepository(originalRepository, fixture, patchWantsEventLock);
+        EventRepository lockAwareRepository = lockAwareRepository(
+                originalRepository, fixture, patchWantsEventLock, patchHasEventLock, allowPatchToProceed);
         ReflectionTestUtils.setField(eventService, "eventRepository", lockAwareRepository);
         try {
             Future<?> holder = executor.submit(() -> transactionTemplate.executeWithoutResult(status -> {
@@ -84,9 +89,11 @@ class EventReviewConcurrencyTest {
             await(patchWantsEventLock);
             assertThatThrownBy(() -> patch.get(200, java.util.concurrent.TimeUnit.MILLISECONDS))
                     .isInstanceOf(java.util.concurrent.TimeoutException.class);
-            Future<Object> answer = executor.submit(() -> answer(fixture));
             releaseLock.countDown();
             holder.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            await(patchHasEventLock);
+            Future<Object> answer = executor.submit(() -> answer(fixture));
+            allowPatchToProceed.countDown();
             patch.get(5, java.util.concurrent.TimeUnit.SECONDS);
 
             Object answerOutcome = answer.get(5, java.util.concurrent.TimeUnit.SECONDS);
@@ -99,8 +106,10 @@ class EventReviewConcurrencyTest {
             assertThat(review.getUserAnswer()).isNull();
         } finally {
             releaseLock.countDown();
+            allowPatchToProceed.countDown();
             ReflectionTestUtils.setField(eventService, "eventRepository", originalRepository);
             executor.shutdownNow();
+            executor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS);
         }
     }
 
@@ -119,17 +128,29 @@ class EventReviewConcurrencyTest {
     }
 
     private EventRepository lockAwareRepository(
-            EventRepository delegate, Fixture fixture, CountDownLatch patchWantsEventLock) {
+            EventRepository delegate,
+            Fixture fixture,
+            CountDownLatch patchWantsEventLock,
+            CountDownLatch patchHasEventLock,
+            CountDownLatch allowPatchToProceed) {
+        AtomicBoolean firstMatchingInvocation = new AtomicBoolean(true);
         return (EventRepository) Proxy.newProxyInstance(
                 EventRepository.class.getClassLoader(), new Class<?>[]{EventRepository.class}, (proxy, method, args) -> {
-                    if ("findOwnedForUpdate".equals(method.getName())
+                    boolean controlsPatch = "findOwnedForUpdate".equals(method.getName())
                             && args.length == 2
                             && fixture.eventId().equals(args[0])
-                            && fixture.userId().equals(args[1])) {
+                            && fixture.userId().equals(args[1])
+                            && firstMatchingInvocation.compareAndSet(true, false);
+                    if (controlsPatch) {
                         patchWantsEventLock.countDown();
                     }
                     try {
-                        return method.invoke(delegate, args);
+                        Object result = method.invoke(delegate, args);
+                        if (controlsPatch) {
+                            patchHasEventLock.countDown();
+                            await(allowPatchToProceed);
+                        }
+                        return result;
                     } catch (InvocationTargetException exception) {
                         throw exception.getCause();
                     }

@@ -14,6 +14,7 @@
 - RED: the golden contract initially failed because `/ai/event-online-golden-v1.jsonl` did not exist. After adding the synthetic resource, `EventClassificationGoldenSetTest` passed.
 - RED: replacing the flow fake first failed because the test fixture tried to serialize Java-time DTOs with an unconfigured mapper; the fixture now serves raw Google API JSON, and the real client regression passes.
 - GREEN: detailed provider usage is exposed only through a stateless package-private live-evaluation seam; the production meter contract remains exactly `input|output`. No Event user-field behavior changed.
+- Final fresh-clean RED: `EventReviewConcurrencyTest` occasionally allowed the answer transaction to acquire the Event lock before PATCH because its ordering latch fired before the repository invocation. The deterministic fix signals only after PATCH has returned from `findOwnedForUpdate`, starts answer while PATCH owns the lock, and then releases PATCH; the focused concurrency suite passed after the change.
 
 ## Verification
 
