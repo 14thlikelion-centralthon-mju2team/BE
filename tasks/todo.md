@@ -52,7 +52,7 @@
   - [x] GREEN: native CTE repository methods, isolated batch writer, mutation-driven service drain
   - [x] RED/GREEN: ApplicationReady/fixed-delay/UTC-cron scheduler and retry-boundary contracts
   - [x] Verify PostgreSQL-focused, adjacent, full suites; diff, report and commit
-- [ ] Task 9: 저카디널리티 관측성과 배포 설정
+- [ ] Task 9: 저카디널리티 관측성과 배포 설정 (in progress)
 - [ ] Task 10: 골든셋, 통합 회귀, 출시 증거
 
 ## Review
@@ -75,3 +75,4 @@
 - Task 6 independent review: APPROVED (Critical 0, Important 0, Minor 0).
 - Task 7 independent review: APPROVED (Spec Critical/Important/Minor 0; Quality Critical/Important 0, Minor 3). Bounded concurrency waits and full tie-break coverage are deferred to Task 10 final regressions.
 - Task 8: Exact PostgreSQL CTE batches purge stale title snapshots without touching answers and delete both pending/answered reviews after 90 days. Focused, adjacent, and full PostgreSQL suites passed before commit.
+- Task 8 independent review: APPROVED (Spec Critical/Important/Minor 0; Quality Critical/Important 0, Minor 3). Deterministic concurrency and exact-500 test hardening are deferred to Task 10.

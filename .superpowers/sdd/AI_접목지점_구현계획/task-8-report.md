@@ -26,3 +26,7 @@ All commands use JDK 21, local PostgreSQL 16, and CI-safe security environment v
 
 - No distributed lock was introduced. `FOR UPDATE SKIP LOCKED` makes simultaneous local workers safe at row/batch scope, and a temporarily locked row is retried by a later scheduled pass.
 - Retention metrics are intentionally deferred to Task 9. No IDs, title snapshots, or sensitive values are emitted by the new retention code.
+
+## Independent review
+
+Spec review was APPROVED with Critical 0, Important 0, Minor 0. Quality review found three non-blocking test-hardening items (deterministic answer/purge start, real answer/delete integration, and exact-500/scheduler metadata/privacy coverage), tracked for Task 10.
