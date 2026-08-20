@@ -71,4 +71,39 @@ public interface EventClassificationReviewRepository extends JpaRepository<Event
             @Param("classifierVersion") String classifierVersion,
             @Param("promptVersion") String promptVersion,
             @Param("schemaVersion") String schemaVersion);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            WITH batch AS (
+                SELECT review_id
+                FROM event_classification_review
+                WHERE title_snapshot IS NOT NULL AND asked_at <= :cutoff
+                ORDER BY asked_at, review_id
+                FOR UPDATE SKIP LOCKED
+                LIMIT :batchSize
+            )
+            UPDATE event_classification_review r
+            SET title_snapshot = NULL, title_purged_at = :purgedAt
+            FROM batch
+            WHERE r.review_id = batch.review_id AND r.title_snapshot IS NOT NULL
+            """, nativeQuery = true)
+    int purgeTitleSnapshots(@Param("cutoff") Instant cutoff,
+                            @Param("purgedAt") Instant purgedAt,
+                            @Param("batchSize") int batchSize);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            WITH batch AS (
+                SELECT review_id
+                FROM event_classification_review
+                WHERE asked_at < :cutoff
+                ORDER BY asked_at, review_id
+                FOR UPDATE SKIP LOCKED
+                LIMIT :batchSize
+            )
+            DELETE FROM event_classification_review r
+            USING batch
+            WHERE r.review_id = batch.review_id
+            """, nativeQuery = true)
+    int deleteExpiredReviews(@Param("cutoff") Instant cutoff, @Param("batchSize") int batchSize);
 }

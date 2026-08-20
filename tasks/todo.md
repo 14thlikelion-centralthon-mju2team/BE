@@ -46,7 +46,12 @@
   - [x] GREEN: Event-first lock workflow, review closure, and validation boundaries
   - [x] RED/GREEN: PostgreSQL double-answer and PATCH-first races
   - [x] Verify focused, adjacent Task 6, full suite, diff check; self-review, report, and commit
-- [ ] Task 8: 24시간 방어 purge와 90일 review 삭제 (in progress)
+- [x] Task 8: 24시간 방어 purge와 90일 review 삭제
+  - [x] RED: PostgreSQL cutoff, 500-row stable batch, pending/answered and idempotency contracts
+  - [x] RED: answer/purge and delete/SKIP LOCKED concurrency contracts
+  - [x] GREEN: native CTE repository methods, isolated batch writer, mutation-driven service drain
+  - [x] RED/GREEN: ApplicationReady/fixed-delay/UTC-cron scheduler and retry-boundary contracts
+  - [x] Verify PostgreSQL-focused, adjacent, full suites; diff, report and commit
 - [ ] Task 9: 저카디널리티 관측성과 배포 설정
 - [ ] Task 10: 골든셋, 통합 회귀, 출시 증거
 
@@ -69,3 +74,4 @@
 - Task 6: review-only orchestration, atomic title-free review insert, scheduled-only gating, and provider-call budgeting verified with PostgreSQL and the complete 214-test suite.
 - Task 6 independent review: APPROVED (Critical 0, Important 0, Minor 0).
 - Task 7 independent review: APPROVED (Spec Critical/Important/Minor 0; Quality Critical/Important 0, Minor 3). Bounded concurrency waits and full tie-break coverage are deferred to Task 10 final regressions.
+- Task 8: Exact PostgreSQL CTE batches purge stale title snapshots without touching answers and delete both pending/answered reviews after 90 days. Focused, adjacent, and full PostgreSQL suites passed before commit.
