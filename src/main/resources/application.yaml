@@ -56,6 +56,9 @@ openai:
     classifier-version: event-online-review-v1
     prompt-version: event-online-ko-v1
     schema-version: event-online-v1
+    retention:
+      purge-delay-ms: ${OPENAI_CLASSIFICATION_RETENTION_PURGE_DELAY_MS:300000}
+      delete-cron: ${OPENAI_CLASSIFICATION_RETENTION_DELETE_CRON:0 30 3 * * *}
 
 provider:
   odsay:

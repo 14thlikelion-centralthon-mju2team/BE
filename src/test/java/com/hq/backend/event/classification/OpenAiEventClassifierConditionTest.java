@@ -6,13 +6,18 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 class OpenAiEventClassifierConditionTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withInitializer(new ConfigDataApplicationContextInitializer())
-            .withUserConfiguration(AiClassificationConfig.class, OpenAiClientConfig.class, NoOpEventClassifier.class)
-            .withBean(ObjectMapper.class, ObjectMapper::new);
+            .withUserConfiguration(
+                    AiClassificationConfig.class, OpenAiClientConfig.class,
+                    NoOpEventClassifier.class, AiClassificationMetrics.class)
+            .withBean(ObjectMapper.class, ObjectMapper::new)
+            .withBean(MeterRegistry.class, SimpleMeterRegistry::new);
 
     @Test
     void incomplete_configuration_keeps_the_no_op_classifier() {

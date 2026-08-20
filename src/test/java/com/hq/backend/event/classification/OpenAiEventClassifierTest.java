@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.SocketTimeoutException;
 import java.util.stream.Stream;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -180,7 +181,7 @@ class OpenAiEventClassifierTest {
     }
 
     private OpenAiEventClassifier classifier(RestClient restClient) {
-        return new OpenAiEventClassifier(restClient, OBJECT_MAPPER, properties());
+        return new OpenAiEventClassifier(restClient, OBJECT_MAPPER, properties(), new AiClassificationMetrics(new SimpleMeterRegistry()));
     }
 
     private AiClassificationProperties properties() {

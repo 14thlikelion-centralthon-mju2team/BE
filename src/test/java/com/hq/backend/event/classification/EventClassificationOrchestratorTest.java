@@ -25,6 +25,7 @@ class EventClassificationOrchestratorTest {
     @Mock private AiClassificationConcurrencyGuard concurrencyGuard;
     @Mock private EventClassifier classifier;
     @Mock private EventClassificationReviewWriter reviewWriter;
+    @Mock private AiClassificationMetrics metrics;
 
     @Test
     void budget_is_checked_before_every_other_step() {
@@ -109,7 +110,7 @@ class EventClassificationOrchestratorTest {
     }
 
     private EventClassificationOrchestrator orchestrator() {
-        return new EventClassificationOrchestrator(gate, titleNormalizer, concurrencyGuard, classifier, reviewWriter);
+        return new EventClassificationOrchestrator(gate, titleNormalizer, concurrencyGuard, classifier, reviewWriter, metrics);
     }
 
     private EventClassificationResult result() {

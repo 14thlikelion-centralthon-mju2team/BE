@@ -17,10 +17,13 @@ public class AiClassificationGate {
 
     private final UserConsentRepository consentRepository;
     private final AiClassificationProperties properties;
+    private final AiClassificationMetrics metrics;
 
-    public AiClassificationGate(UserConsentRepository consentRepository, AiClassificationProperties properties) {
+    public AiClassificationGate(
+            UserConsentRepository consentRepository, AiClassificationProperties properties, AiClassificationMetrics metrics) {
         this.consentRepository = consentRepository;
         this.properties = properties;
+        this.metrics = metrics;
     }
 
     public AiGateOutcome evaluate(UUID userId) {
@@ -28,16 +31,22 @@ public class AiClassificationGate {
             return AiGateOutcome.DISABLED;
         }
         if (userId == null) {
+            metrics.recordCall(AiCallOutcome.SKIPPED_CONSENT);
             return AiGateOutcome.SKIPPED_CONSENT;
         }
         if (rolloutBucket(userId) >= properties.classification().rolloutPercent()) {
+            metrics.recordCall(AiCallOutcome.SKIPPED_ROLLOUT);
             return AiGateOutcome.SKIPPED_ROLLOUT;
         }
 
-        return consentRepository
+        AiGateOutcome outcome = consentRepository
                 .findFirstByUserIdAndConsentTypeOrderByRecordedAtDescConsentEventIdDesc(userId, PRIVACY_CONSENT_TYPE)
                 .filter(this::isExactAgreement)
                 .isPresent() ? AiGateOutcome.ALLOWED : AiGateOutcome.SKIPPED_CONSENT;
+        if (outcome == AiGateOutcome.SKIPPED_CONSENT) {
+            metrics.recordCall(AiCallOutcome.SKIPPED_CONSENT);
+        }
+        return outcome;
     }
 
     static int rolloutBucket(UUID userId) {

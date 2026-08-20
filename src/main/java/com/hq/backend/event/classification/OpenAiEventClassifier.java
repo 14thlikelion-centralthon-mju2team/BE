@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hq.backend.event.classification.dto.OpenAiResponsesRequest;
 import com.hq.backend.event.classification.dto.OpenAiResponsesResponse;
 import java.math.BigDecimal;
+import java.net.SocketTimeoutException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -25,12 +27,15 @@ public class OpenAiEventClassifier implements EventClassifier {
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final AiClassificationProperties properties;
+    private final AiClassificationMetrics metrics;
 
     public OpenAiEventClassifier(
-            RestClient restClient, ObjectMapper objectMapper, AiClassificationProperties properties) {
+            RestClient restClient, ObjectMapper objectMapper, AiClassificationProperties properties,
+            AiClassificationMetrics metrics) {
         this.restClient = restClient;
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.metrics = metrics;
     }
 
     @Override
@@ -39,6 +44,8 @@ public class OpenAiEventClassifier implements EventClassifier {
             return empty(FailureReason.INVALID_INPUT);
         }
 
+        long startedAt = System.nanoTime();
+        AiCallOutcome outcome = AiCallOutcome.INVALID_SCHEMA;
         try {
             OpenAiResponsesResponse response = restClient.post()
                     .uri("/responses")
@@ -47,13 +54,21 @@ public class OpenAiEventClassifier implements EventClassifier {
                     .body(requestFor(input.title()))
                     .retrieve()
                     .body(OpenAiResponsesResponse.class);
-            return parseResponse(response);
+            addUsage(response);
+            ParsedResponse parsed = parseResponse(response);
+            outcome = parsed.outcome();
+            return parsed.result();
         } catch (RestClientResponseException exception) {
+            outcome = exception.getStatusCode().is4xxClientError() ? AiCallOutcome.HTTP_4XX : AiCallOutcome.HTTP_5XX;
             return empty(FailureReason.HTTP, exception.getStatusCode().value());
         } catch (RestClientException | IllegalStateException exception) {
+            outcome = isTimeout(exception) ? AiCallOutcome.TIMEOUT : AiCallOutcome.INVALID_SCHEMA;
             return empty(FailureReason.TRANSPORT);
         } catch (JsonProcessingException exception) {
             return empty(FailureReason.REQUEST_SERIALIZATION);
+        } finally {
+            metrics.recordCall(outcome);
+            metrics.recordLatency(Duration.ofNanos(System.nanoTime() - startedAt));
         }
     }
 
@@ -86,15 +101,17 @@ public class OpenAiEventClassifier implements EventClassifier {
                                                 BigDecimal.ONE))))));
     }
 
-    private Optional<EventClassificationResult> parseResponse(OpenAiResponsesResponse response) {
+    private ParsedResponse parseResponse(OpenAiResponsesResponse response) {
         if (response == null
-                || !"completed".equals(response.status())
                 || response.error() != null
-                || response.incompleteDetails() != null
                 || !hasText(response.model())
                 || response.output() == null
                 || response.output().size() != 1) {
-            return empty(FailureReason.RESPONSE_INVALID);
+            return invalidResponse();
+        }
+        if (!"completed".equals(response.status()) || response.incompleteDetails() != null) {
+            empty(FailureReason.RESPONSE_INVALID);
+            return new ParsedResponse(Optional.empty(), AiCallOutcome.INCOMPLETE);
         }
 
         OpenAiResponsesResponse.Output message = response.output().getFirst();
@@ -103,23 +120,27 @@ public class OpenAiEventClassifier implements EventClassifier {
                 || !"assistant".equals(message.role())
                 || message.content() == null
                 || message.content().size() != 1) {
-            return empty(FailureReason.RESPONSE_INVALID);
+            return invalidResponse();
         }
 
         OpenAiResponsesResponse.Content content = message.content().getFirst();
-        if (content == null
-                || !"output_text".equals(content.type())
-                || content.refusal() != null
-                || !hasText(content.text())) {
-            return empty(FailureReason.RESPONSE_INVALID);
+        if (content == null) {
+            return invalidResponse();
+        }
+        if (content.refusal() != null || "refusal".equals(content.type())) {
+            empty(FailureReason.RESPONSE_INVALID);
+            return new ParsedResponse(Optional.empty(), AiCallOutcome.REFUSAL);
+        }
+        if (!"output_text".equals(content.type()) || !hasText(content.text())) {
+            return invalidResponse();
         }
 
         try {
             JsonNode result = objectMapper.readTree(content.text());
             if (!isStrictResult(result)) {
-                return empty(FailureReason.RESPONSE_INVALID);
+                return invalidResponse();
             }
-            return Optional.of(new EventClassificationResult(
+            return new ParsedResponse(Optional.of(new EventClassificationResult(
                     result.path("questionType").textValue(),
                     result.path("suggestedValue").textValue(),
                     result.path("confidence").decimalValue(),
@@ -127,10 +148,35 @@ public class OpenAiEventClassifier implements EventClassifier {
                     response.model(),
                     properties.classification().classifierVersion(),
                     properties.classification().promptVersion(),
-                    properties.classification().schemaVersion()));
+                    properties.classification().schemaVersion())), AiCallOutcome.SUCCESS);
         } catch (JsonProcessingException exception) {
-            return empty(FailureReason.RESPONSE_PARSE);
+            empty(FailureReason.RESPONSE_PARSE);
+            return new ParsedResponse(Optional.empty(), AiCallOutcome.INVALID_SCHEMA);
         }
+    }
+
+    private ParsedResponse invalidResponse() {
+        empty(FailureReason.RESPONSE_INVALID);
+        return new ParsedResponse(Optional.empty(), AiCallOutcome.INVALID_SCHEMA);
+    }
+
+    private void addUsage(OpenAiResponsesResponse response) {
+        if (response == null || response.usage() == null) return;
+        metrics.addTokens(TokenDirection.INPUT, safeTokenCount(response.usage().inputTokens()));
+        metrics.addTokens(TokenDirection.OUTPUT, safeTokenCount(response.usage().outputTokens()));
+    }
+
+    private long safeTokenCount(Integer count) {
+        return count == null ? 0 : Math.max(0, count.longValue());
+    }
+
+    private boolean isTimeout(Exception exception) {
+        Throwable cause = exception;
+        while (cause != null) {
+            if (cause instanceof SocketTimeoutException) return true;
+            cause = cause.getCause();
+        }
+        return false;
     }
 
     private boolean isStrictResult(JsonNode result) {
@@ -178,5 +224,8 @@ public class OpenAiEventClassifier implements EventClassifier {
         FailureReason(String wireValue) {
             this.wireValue = wireValue;
         }
+    }
+
+    private record ParsedResponse(Optional<EventClassificationResult> result, AiCallOutcome outcome) {
     }
 }

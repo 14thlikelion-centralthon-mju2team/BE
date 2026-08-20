@@ -15,10 +15,12 @@ public class EventClassificationOrchestrator {
     private final AiClassificationConcurrencyGuard concurrencyGuard;
     private final EventClassifier classifier;
     private final EventClassificationReviewWriter reviewWriter;
+    private final AiClassificationMetrics metrics;
 
     public ClassificationAttemptOutcome classifyCreated(
             UUID userId, UUID eventId, String rawTitle, int remainingProviderCalls) {
         if (remainingProviderCalls <= 0) {
+            metrics.recordCall(AiCallOutcome.SKIPPED_BUDGET);
             return ClassificationAttemptOutcome.SKIPPED_BUDGET;
         }
         AiGateOutcome gateOutcome = gate.evaluate(userId);
@@ -30,6 +32,7 @@ public class EventClassificationOrchestrator {
             return ClassificationAttemptOutcome.SKIPPED_INVALID_INPUT;
         }
         if (!concurrencyGuard.tryAcquire()) {
+            metrics.recordCall(AiCallOutcome.SKIPPED_BUSY);
             return ClassificationAttemptOutcome.SKIPPED_BUSY;
         }
         try {

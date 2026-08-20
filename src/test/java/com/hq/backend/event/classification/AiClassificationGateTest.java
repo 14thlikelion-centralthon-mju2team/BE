@@ -27,7 +27,7 @@ class AiClassificationGateTest {
     @Test
     void disabled_configuration_fails_closed_without_reading_consent() {
         AiClassificationGate gate = new AiClassificationGate(
-                consentRepository, properties(false, "key", "privacy-ai-v1", 100, "gpt-4o-mini-2024-07-18"));
+                consentRepository, properties(false, "key", "privacy-ai-v1", 100, "gpt-4o-mini-2024-07-18"), metrics());
 
         assertThat(gate.evaluate(USER_ID)).isEqualTo(AiGateOutcome.DISABLED);
         verifyNoInteractions(consentRepository);
@@ -102,7 +102,11 @@ class AiClassificationGateTest {
     }
 
     private AiClassificationGate gate(AiClassificationProperties properties) {
-        return new AiClassificationGate(consentRepository, properties);
+        return new AiClassificationGate(consentRepository, properties, metrics());
+    }
+
+    private AiClassificationMetrics metrics() {
+        return new AiClassificationMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
     }
 
     private AiClassificationProperties properties(

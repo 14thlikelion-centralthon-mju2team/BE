@@ -15,6 +15,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -30,6 +31,7 @@ class EventClassificationReviewWriterTest {
     @Autowired private EventClassificationReviewRepository reviewRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private TransactionTemplate transactionTemplate;
+    @Autowired private MeterRegistry meterRegistry;
 
     @Test
     void eligible_event_creates_a_purged_review_with_complete_provenance() {
@@ -64,6 +66,23 @@ class EventClassificationReviewWriterTest {
                 .isEqualTo(CreateReviewOutcome.DUPLICATE);
         assertThat(reviewRepository.findFirstByEventIdAndAnsweredAtIsNullOrderByAskedAtDesc(stale.getEventId()))
                 .isEmpty();
+    }
+
+    @Test
+    void records_each_persisted_review_writer_outcome_once() {
+        Event stale = saveEvent("not_required", "planned", false, null);
+        Event eligible = saveEvent("undecided", "planned", false, null);
+        double createdBefore = reviewCount("created");
+        double duplicateBefore = reviewCount("duplicate");
+        double staleBefore = reviewCount("stale");
+
+        writer.createIfEligible(stale.getEventId(), classificationResult(), ASKED_AT);
+        writer.createIfEligible(eligible.getEventId(), classificationResult(), ASKED_AT);
+        writer.createIfEligible(eligible.getEventId(), classificationResult(), ASKED_AT.plusSeconds(1));
+
+        assertThat(reviewCount("stale")).isEqualTo(staleBefore + 1);
+        assertThat(reviewCount("created")).isEqualTo(createdBefore + 1);
+        assertThat(reviewCount("duplicate")).isEqualTo(duplicateBefore + 1);
     }
 
     @Test
@@ -120,5 +139,11 @@ class EventClassificationReviewWriterTest {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(exception);
         }
+    }
+
+    private double reviewCount(String outcome) {
+        io.micrometer.core.instrument.Counter counter = meterRegistry.find("ai_classification_reviews_total")
+                .tag("outcome", outcome).counter();
+        return counter == null ? 0 : counter.count();
     }
 }

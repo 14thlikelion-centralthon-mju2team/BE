@@ -34,7 +34,8 @@ public class OpenAiClientConfig {
     OpenAiEventClassifier openAiEventClassifier(
             @Qualifier("openAiRestClient") RestClient restClient,
             ObjectMapper objectMapper,
-            AiClassificationProperties properties) {
-        return new OpenAiEventClassifier(restClient, objectMapper, properties);
+            AiClassificationProperties properties,
+            AiClassificationMetrics metrics) {
+        return new OpenAiEventClassifier(restClient, objectMapper, properties, metrics);
     }
 }

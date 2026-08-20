@@ -7,6 +7,8 @@ import com.hq.backend.event.dto.EventReviewRequest;
 import com.hq.backend.event.dto.EventReviewResponse;
 import com.hq.backend.event.dto.EventUpdateRequest;
 import com.hq.backend.event.dto.PendingEventReviewResponse;
+import com.hq.backend.event.classification.AiReviewMetricEvent;
+import com.hq.backend.event.classification.AiReviewOutcome;
 import com.hq.backend.plan.PlanCreationService;
 import com.hq.backend.plan.PlanRevision;
 import com.hq.backend.plan.dto.PlanResponse;
@@ -22,6 +24,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,6 +41,7 @@ public class EventService {
     private final UserRepository userRepository;
     private final PlanCreationService planCreationService;
     private final RouteSearchService routeSearchService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(readOnly = true)
     public List<EventResponse> list(UUID userId, Instant from, Instant to) {
@@ -170,8 +174,9 @@ public class EventService {
             event.setUpdatedAt(Instant.now());
         }
 
-        if (!isClassificationEligible(event)) {
-            closePendingReviewForUserChange(event.getEventId(), Instant.now());
+        if (!isClassificationEligible(event)
+                && closePendingReviewForUserChange(event.getEventId(), Instant.now())) {
+            eventPublisher.publishEvent(new AiReviewMetricEvent(AiReviewOutcome.CLOSED_BY_USER_PATCH));
         }
 
         return EventResponse.from(event, timezoneOf(userId));
@@ -230,6 +235,8 @@ public class EventService {
         if (resolved == LocationState.NOT_REQUIRED) {
             event.setMeetingUrl(null);
         }
+        eventPublisher.publishEvent(new AiReviewMetricEvent(
+                resolved == LocationState.NOT_REQUIRED ? AiReviewOutcome.ANSWERED_ONLINE : AiReviewOutcome.ANSWERED_OFFLINE));
 
         return new EventReviewResponse(eventId, resolved, true);
     }
@@ -270,15 +277,16 @@ public class EventService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "EVENT_NOT_FOUND", "일정을 찾을 수 없습니다."));
     }
 
-    private void closePendingReviewForUserChange(UUID eventId, Instant now) {
-        classificationReviewRepository.findPendingByEventIdForUpdate(eventId, PageRequest.of(0, 1)).stream()
+    private boolean closePendingReviewForUserChange(UUID eventId, Instant now) {
+        return classificationReviewRepository.findPendingByEventIdForUpdate(eventId, PageRequest.of(0, 1)).stream()
                 .findFirst()
-                .ifPresent(review -> {
+                .map(review -> {
                     review.setTitleSnapshot(null);
                     review.setTitlePurgedAt(review.getTitlePurgedAt() != null ? review.getTitlePurgedAt() : now);
                     review.setUserAnswer(null);
                     review.setAnsweredAt(now);
-                });
+                    return true;
+                }).orElse(false);
     }
 
     private boolean isClassificationEligible(Event event) {
