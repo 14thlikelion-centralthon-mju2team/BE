@@ -1,8 +1,6 @@
 package com.hq.backend.personalization;
 
 import com.hq.backend.common.exception.ApiException;
-import com.hq.backend.event.Event;
-import com.hq.backend.event.EventRepository;
 import com.hq.backend.metrics.ProductEventService;
 import com.hq.backend.personalization.dto.PersonalizationResponse;
 import com.hq.backend.personalization.dto.PrepEstimateResponse;
@@ -30,7 +28,6 @@ public class PersonalizationService {
 
     private final UserPrepEstimateRepository userPrepEstimateRepository;
     private final UserWellnessPrefRepository userWellnessPrefRepository;
-    private final EventRepository eventRepository;
     private final ProductEventService productEventService;
 
     @Transactional(readOnly = true)
@@ -52,13 +49,10 @@ public class PersonalizationService {
         productEventService.record(userId, "personalization_reset", Map.of());
     }
 
-    // §15.3 — 값 복원에 그치지 않고 해당 이벤트의 표본을 학습에서 영구 제외한다(그러지 않으면
-    // 다음 틱에서 같은 보정이 재발한다). MVP는 global 스코프만 다룬다(§15.1과 동일 제약).
+    // 개인화 설정 화면은 특정 일정 문맥 없이 global 스코프의 직전 보정 하나를 되돌린다.
+    // 원본 event 제외는 USER_PREP_ESTIMATE에 source event를 저장하는 migration 이후에만 정확히 수행할 수 있다.
     @Transactional
-    public PersonalizationResponse revert(UUID userId, UUID eventId) {
-        Event event = eventRepository.findByEventIdAndUserId(eventId, userId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "EVENT_NOT_FOUND", "일정을 찾을 수 없습니다."));
-
+    public PersonalizationResponse revert(UUID userId) {
         List<UserPrepEstimate> history =
                 userPrepEstimateRepository.findByUserIdAndScopeTypeOrderByValidFromDesc(userId, SCOPE_GLOBAL);
         if (history.size() < 2) {
@@ -82,8 +76,7 @@ public class PersonalizationService {
                 .validFrom(now)
                 .build());
 
-        event.setExcludedFromLearning(true);
-        productEventService.record(userId, "personalization_reverted", Map.of("eventId", eventId.toString()));
+        productEventService.record(userId, "personalization_reverted", Map.of("scope", SCOPE_GLOBAL));
 
         return get(userId);
     }

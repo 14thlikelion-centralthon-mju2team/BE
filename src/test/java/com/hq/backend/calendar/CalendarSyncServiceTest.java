@@ -11,11 +11,13 @@ import static org.mockito.Mockito.when;
 
 import com.hq.backend.calendar.dto.GoogleCalendarSyncEvent;
 import com.hq.backend.calendar.dto.GoogleEventDateTime;
+import com.hq.backend.event.Event;
 import com.hq.backend.event.EventRepository;
 import com.hq.backend.event.classification.AiClassificationProperties;
 import com.hq.backend.event.classification.ClassificationAttemptOutcome;
 import com.hq.backend.event.classification.EventClassificationOrchestrator;
 import com.hq.backend.plan.PlanCreationService;
+import com.hq.backend.plan.PlanRevision;
 import com.hq.backend.plan.PlanRevisionRepository;
 import java.time.Instant;
 import java.util.List;
@@ -300,6 +302,59 @@ class CalendarSyncServiceTest {
                 .syncToken(syncToken)
                 .build();
         return connection;
+    }
+
+    // #208 P0 회귀 방지 — recompute이 새 revision을 만들지 못했을 때 기존 active plan이
+    // superseded로 남으면 해당 event에 active plan이 하나도 없게 된다.
+    @Test
+    void recompute이_빈결과면_기존_active_plan을_복원하고_token은_전진시킨다() {
+        CalendarConnection connection = connection(null);
+        UUID eventId = UUID.randomUUID();
+        UUID originPlaceId = UUID.randomUUID();
+        Event event = Event.builder().eventId(eventId).userId(connection.getUserId())
+                .startsAt(Instant.parse("2026-08-20T01:00:00Z")).build();
+        PlanRevision activePlan = PlanRevision.builder().eventId(eventId).originPlaceId(originPlaceId)
+                .revisionNo(1).inputHash("previous-input").planStatus("active").build();
+
+        service = service((accessToken, token, now) -> Optional.of(new GoogleSyncBatch(List.of(event()), "next")));
+        when(connectionRepository.findById(connection.getCalendarConnectionId())).thenReturn(Optional.of(connection));
+        when(calendarEventWriter.upsert(any(), any(), any())).thenReturn(Optional.of(
+                new CalendarUpsertResult(eventId, CalendarChangeType.UPDATED, true)));
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(planRevisionRepository.findByEventIdAndPlanStatus(eventId, "active")).thenReturn(Optional.of(activePlan));
+        when(planCreationService.recompute(connection.getUserId(), event, originPlaceId, 2, "previous-input", null))
+                .thenReturn(new PlanCreationService.RecomputeResult(Optional.empty(), false));
+
+        service.syncConnection(connection.getCalendarConnectionId(), true);
+
+        assertThat(activePlan.getPlanStatus()).isEqualTo("active");
+        verify(planRevisionRepository, times(2)).saveAndFlush(activePlan);
+        verify(syncStateWriter).advanceSyncToken(connection.getCalendarConnectionId(), null, "next");
+    }
+
+    @Test
+    void recompute이_예외를_던지면_기존_active_plan을_복원한다() {
+        CalendarConnection connection = connection(null);
+        UUID eventId = UUID.randomUUID();
+        UUID originPlaceId = UUID.randomUUID();
+        Event event = Event.builder().eventId(eventId).userId(connection.getUserId())
+                .startsAt(Instant.parse("2026-08-20T01:00:00Z")).build();
+        PlanRevision activePlan = PlanRevision.builder().eventId(eventId).originPlaceId(originPlaceId)
+                .revisionNo(1).inputHash("previous-input").planStatus("active").build();
+
+        service = service((accessToken, token, now) -> Optional.of(new GoogleSyncBatch(List.of(event()), "next")));
+        when(connectionRepository.findById(connection.getCalendarConnectionId())).thenReturn(Optional.of(connection));
+        when(calendarEventWriter.upsert(any(), any(), any())).thenReturn(Optional.of(
+                new CalendarUpsertResult(eventId, CalendarChangeType.UPDATED, true)));
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(planRevisionRepository.findByEventIdAndPlanStatus(eventId, "active")).thenReturn(Optional.of(activePlan));
+        when(planCreationService.recompute(connection.getUserId(), event, originPlaceId, 2, "previous-input", null))
+                .thenThrow(new IllegalStateException("recompute blew up"));
+
+        service.syncConnection(connection.getCalendarConnectionId(), true);
+
+        assertThat(activePlan.getPlanStatus()).isEqualTo("active");
+        verify(planRevisionRepository, times(2)).saveAndFlush(activePlan);
     }
 
     private GoogleCalendarSyncEvent event() {

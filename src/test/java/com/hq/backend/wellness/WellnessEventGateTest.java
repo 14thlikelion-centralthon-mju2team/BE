@@ -117,6 +117,8 @@ class WellnessEventGateTest {
     @Test
     void stop_today_응답은_DB제약을_통과하고_동일_action의_미발송_schedule을_취소한다() throws Exception {
         UUID userId = extractUserId(signupAndLogin());
+        // stop_today는 KST 당일 범위만 취소한다. CI가 자정 직전에 실행돼 30분 뒤 fixture가
+        // 다음 날로 넘어가지 않도록, 실제 실행일의 KST 정오를 기준으로 만든다.
         Instant now = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))
                 .atTime(12, 0)
                 .atZone(java.time.ZoneId.of("Asia/Seoul"))

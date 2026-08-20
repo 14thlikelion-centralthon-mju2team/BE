@@ -1,9 +1,7 @@
 package com.hq.backend.personalization;
 
 import com.hq.backend.common.auth.CurrentUserId;
-import com.hq.backend.personalization.dto.PersonalizationRevertRequest;
 import com.hq.backend.personalization.dto.PersonalizationResponse;
-import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -33,9 +31,12 @@ public class PersonalizationController {
         personalizationService.reset(userId);
     }
 
+    /**
+     * 개인화 설정 화면은 특정 일정 문맥이 없으므로 사용자 자신의 global 추정 이력만 되돌린다.
+     * estimate와 원본 event를 정석적으로 연결하는 migration 전까지 eventId를 요구하지 않는다.
+     */
     @PostMapping("/revert")
-    public PersonalizationResponse revert(
-            @CurrentUserId UUID userId, @Valid @RequestBody PersonalizationRevertRequest request) {
-        return personalizationService.revert(userId, request.eventId());
+    public PersonalizationResponse revert(@CurrentUserId UUID userId) {
+        return personalizationService.revert(userId);
     }
 }

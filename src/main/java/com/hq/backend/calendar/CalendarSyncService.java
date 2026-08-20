@@ -8,6 +8,7 @@ import com.hq.backend.event.classification.AiClassificationProperties;
 import com.hq.backend.event.classification.ClassificationAttemptOutcome;
 import com.hq.backend.event.classification.EventClassificationOrchestrator;
 import com.hq.backend.plan.PlanCreationService;
+import com.hq.backend.plan.PlanRevision;
 import com.hq.backend.plan.PlanRevisionRepository;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -165,14 +166,32 @@ public class CalendarSyncService {
             Event event = eventRepository.findById(eventId).orElse(null);
             if (event == null) return;
             planRevisionRepository.findByEventIdAndPlanStatus(eventId, "active").ifPresent(activePlan -> {
-                activePlan.setPlanStatus("superseded");
-                planRevisionRepository.saveAndFlush(activePlan);
-                planCreationService.recompute(userId, event, activePlan.getOriginPlaceId(),
-                        activePlan.getRevisionNo() + 1, activePlan.getInputHash(), null);
+                String originalStatus = activePlan.getPlanStatus();
+                try {
+                    // uq_active_plan_per_event 제약상 새 revision INSERT 전에 기존 active를 비활성화한다.
+                    activePlan.setPlanStatus("superseded");
+                    planRevisionRepository.saveAndFlush(activePlan);
+                    PlanCreationService.RecomputeResult result = planCreationService.recompute(userId, event,
+                            activePlan.getOriginPlaceId(), activePlan.getRevisionNo() + 1,
+                            activePlan.getInputHash(), null);
+                    // #208 P0: 새 active revision이 생기지 않았는데 기존 것을 superseded로 두면
+                    // 해당 event에 active plan이 하나도 남지 않는다. 반드시 되돌린다.
+                    if (result.revision().isEmpty()) {
+                        restoreActivePlan(activePlan, originalStatus);
+                    }
+                } catch (RuntimeException recomputeFailure) {
+                    restoreActivePlan(activePlan, originalStatus);
+                    throw recomputeFailure;
+                }
             });
         } catch (Exception exception) {
             log.warn("[CalendarSync] plan recompute failed");
         }
+    }
+
+    private void restoreActivePlan(PlanRevision activePlan, String originalStatus) {
+        activePlan.setPlanStatus(originalStatus);
+        planRevisionRepository.saveAndFlush(activePlan);
     }
 
     private String refreshAccessToken(CalendarConnection connection) {
