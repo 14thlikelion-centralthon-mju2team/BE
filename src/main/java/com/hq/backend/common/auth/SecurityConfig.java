@@ -39,9 +39,26 @@ public class SecurityConfig {
             "/error"
     };
 
+    /**
+     * Browser clients are hosted on Firebase Hosting. Keep this exact allowlist in sync with
+     * deployed frontend origins; the API origin itself is not a cross-origin browser client.
+     */
+    private static final List<String> ALLOWED_CORS_ORIGINS = List.of(
+            "https://ensom-10da2.web.app",
+            "https://ensom-10da2.firebaseapp.com"
+    );
+
+    private static final List<String> ALLOWED_CORS_HEADERS = List.of(
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            "X-App-Version"
+    );
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(unauthorizedEntryPoint()))
@@ -52,6 +69,21 @@ public class SecurityConfig {
                 .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    @Bean
+    public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
+        var config = new org.springframework.web.cors.CorsConfiguration();
+        config.setAllowedOrigins(ALLOWED_CORS_ORIGINS);
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(ALLOWED_CORS_HEADERS);
+        config.setExposedHeaders(List.of("Authorization", "Idempotency-Key"));
+        // ENSOM uses Bearer tokens rather than browser cookies; do not permit credentialed CORS.
+        config.setAllowCredentials(false);
+        config.setMaxAge(3600L);
+        var source = new org.springframework.web.cors.UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 
     @Bean
