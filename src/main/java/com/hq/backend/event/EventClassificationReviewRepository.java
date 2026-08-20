@@ -1,8 +1,10 @@
 package com.hq.backend.event;
 
+import com.hq.backend.event.dto.PendingEventReviewResponse;
 import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.Modifying;
@@ -10,6 +12,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Pageable;
 
 public interface EventClassificationReviewRepository extends JpaRepository<EventClassificationReview, UUID> {
 
@@ -18,6 +21,27 @@ public interface EventClassificationReviewRepository extends JpaRepository<Event
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from EventClassificationReview r where r.reviewId = :reviewId and r.eventId = :eventId")
     Optional<EventClassificationReview> findByReviewIdAndEventIdForUpdate(UUID reviewId, UUID eventId);
+
+    @Query("""
+            select new com.hq.backend.event.dto.PendingEventReviewResponse(
+                r.reviewId, e.eventId, e.startsAt, r.questionType,
+                r.suggestedValue, r.classificationConfidence, r.askedAt)
+            from EventClassificationReview r join Event e on e.eventId = r.eventId
+            where e.userId = :userId and e.startsAt >= :from and e.startsAt < :to
+              and r.answeredAt is null and e.locationState = 'undecided'
+              and e.status = 'planned'
+              and e.autoManageExcluded = false and e.meetingUrl is null
+            order by e.startsAt, r.askedAt, r.reviewId
+            """)
+    List<PendingEventReviewResponse> findPendingReviews(UUID userId, Instant from, Instant to);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select r from EventClassificationReview r
+            where r.eventId = :eventId and r.answeredAt is null
+            order by r.askedAt, r.reviewId
+            """)
+    List<EventClassificationReview> findPendingByEventIdForUpdate(UUID eventId, Pageable pageable);
 
     boolean existsByEventIdAndAnsweredAtIsNull(UUID eventId);
 

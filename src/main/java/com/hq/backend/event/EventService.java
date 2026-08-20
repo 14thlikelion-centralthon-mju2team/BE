@@ -6,6 +6,7 @@ import com.hq.backend.event.dto.EventResponse;
 import com.hq.backend.event.dto.EventReviewRequest;
 import com.hq.backend.event.dto.EventReviewResponse;
 import com.hq.backend.event.dto.EventUpdateRequest;
+import com.hq.backend.event.dto.PendingEventReviewResponse;
 import com.hq.backend.plan.PlanCreationService;
 import com.hq.backend.plan.PlanRevision;
 import com.hq.backend.plan.dto.PlanResponse;
@@ -14,11 +15,13 @@ import com.hq.backend.route.SelectedRouteSearch;
 import com.hq.backend.user.User;
 import com.hq.backend.user.UserRepository;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,6 +60,15 @@ public class EventService {
     @Transactional(readOnly = true)
     public EventResponse get(UUID userId, UUID eventId) {
         return EventResponse.from(findOwned(userId, eventId), timezoneOf(userId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PendingEventReviewResponse> listPendingReviews(UUID userId, Instant from, Instant to) {
+        if (from == null || to == null || !from.isBefore(to) || to.isAfter(from.plus(31, ChronoUnit.DAYS))) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR",
+                    "조회 기간은 최대 31일의 유효한 [from, to) 범위여야 합니다.");
+        }
+        return classificationReviewRepository.findPendingReviews(userId, from, to);
     }
 
     @Transactional
@@ -112,7 +124,7 @@ public class EventService {
 
     @Transactional
     public EventResponse update(UUID userId, UUID eventId, EventUpdateRequest request) {
-        Event event = findOwned(userId, eventId);
+        Event event = findOwnedForUpdate(userId, eventId);
         boolean planInputChanged = false;
 
         if (request.startsAt() != null) {
@@ -158,27 +170,43 @@ public class EventService {
             event.setUpdatedAt(Instant.now());
         }
 
+        if (!isClassificationEligible(event)) {
+            closePendingReviewForUserChange(event.getEventId(), Instant.now());
+        }
+
         return EventResponse.from(event, timezoneOf(userId));
     }
 
     @Transactional
     public void delete(UUID userId, UUID eventId) {
         // ERD event에는 deleted_at이 없다 — 삭제는 status='cancelled'로만 표현한다(V6 마이그레이션 참고).
-        Event event = findOwned(userId, eventId);
+        Event event = findOwnedForUpdate(userId, eventId);
         event.setStatus(EventStatus.CANCELLED.name().toLowerCase());
     }
 
     @Transactional
     public EventReviewResponse answerReview(UUID userId, UUID eventId, EventReviewRequest request) {
-        Event event = findOwned(userId, eventId);
+        if (request.reviewId() == null || request.questionType() == null || request.questionType().isBlank()
+                || request.userAnswer() == null || request.userAnswer().isBlank()) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", "reviewId, questionType, userAnswer는 필수입니다.");
+        }
+        Event event = findOwnedForUpdate(userId, eventId);
         EventClassificationReview review = classificationReviewRepository
-                .findFirstByEventIdAndAnsweredAtIsNullOrderByAskedAtDesc(eventId)
+                .findByReviewIdAndEventIdForUpdate(request.reviewId(), eventId)
                 .orElseThrow(() -> new ApiException(
-                        HttpStatus.NOT_FOUND, "REVIEW_NOT_FOUND", "답변할 분류 확인 질문이 없습니다."));
+                        HttpStatus.NOT_FOUND, "REVIEW_NOT_FOUND", "분류 확인 질문을 찾을 수 없습니다."));
 
-        if (!QUESTION_TYPE_IS_ONLINE.equals(request.questionType())) {
+        if (review.getAnsweredAt() != null) {
+            throw new ApiException(HttpStatus.CONFLICT, "REVIEW_ALREADY_CLOSED", "이미 답변이 완료된 분류 확인 질문입니다.");
+        }
+
+        if (!QUESTION_TYPE_IS_ONLINE.equals(request.questionType())
+                || !request.questionType().equals(review.getQuestionType())) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR",
                     "지원하지 않는 questionType입니다.");
+        }
+        if (!isClassificationEligible(event)) {
+            throw new ApiException(HttpStatus.CONFLICT, "REVIEW_STALE", "더 이상 답변할 수 없는 분류 확인 질문입니다.");
         }
         LocationState resolved;
         if ("offline".equals(request.userAnswer())) {
@@ -199,6 +227,9 @@ public class EventService {
         review.setAnsweredAt(now);
 
         event.setLocationState(resolved.name().toLowerCase());
+        if (resolved == LocationState.NOT_REQUIRED) {
+            event.setMeetingUrl(null);
+        }
 
         return new EventReviewResponse(eventId, resolved, true);
     }
@@ -232,6 +263,29 @@ public class EventService {
     private Event findOwned(UUID userId, UUID eventId) {
         return eventRepository.findByEventIdAndUserId(eventId, userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "EVENT_NOT_FOUND", "일정을 찾을 수 없습니다."));
+    }
+
+    private Event findOwnedForUpdate(UUID userId, UUID eventId) {
+        return eventRepository.findOwnedForUpdate(eventId, userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "EVENT_NOT_FOUND", "일정을 찾을 수 없습니다."));
+    }
+
+    private void closePendingReviewForUserChange(UUID eventId, Instant now) {
+        classificationReviewRepository.findPendingByEventIdForUpdate(eventId, PageRequest.of(0, 1)).stream()
+                .findFirst()
+                .ifPresent(review -> {
+                    review.setTitleSnapshot(null);
+                    review.setTitlePurgedAt(review.getTitlePurgedAt() != null ? review.getTitlePurgedAt() : now);
+                    review.setUserAnswer(null);
+                    review.setAnsweredAt(now);
+                });
+    }
+
+    private boolean isClassificationEligible(Event event) {
+        return "undecided".equals(event.getLocationState())
+                && "planned".equals(event.getStatus())
+                && !event.isAutoManageExcluded()
+                && event.getMeetingUrl() == null;
     }
 
     // ck_event_destination_pair — 미리 걸러내지 않으면 DB 제약 위반으로 422가 아니라 500이 난다.

@@ -42,6 +42,10 @@
   - [x] GREEN: isolated writer, nonblocking guard, orchestration, sync integration
   - [x] Verify focused PostgreSQL/orchestrator/sync, full suite, diff, review, report, commit
 - [ ] Task 7: pending 조회와 stale-safe 답변 API (in progress)
+  - [x] RED: pending projection ownership/range/privacy and stale-safe answer/PATCH controller contracts
+  - [x] GREEN: Event-first lock workflow, review closure, and validation boundaries
+  - [x] RED/GREEN: PostgreSQL double-answer and PATCH-first races
+  - [ ] Verify focused, adjacent Task 6, full suite, diff check; self-review, report, and commit
 - [ ] Task 8: 24시간 방어 purge와 90일 review 삭제
 - [ ] Task 9: 저카디널리티 관측성과 배포 설정
 - [ ] Task 10: 골든셋, 통합 회귀, 출시 증거

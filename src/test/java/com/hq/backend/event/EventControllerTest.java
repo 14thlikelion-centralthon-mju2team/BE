@@ -1,5 +1,6 @@
 package com.hq.backend.event;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -27,6 +28,9 @@ class EventControllerTest {
 
     @Autowired
     private EventClassificationReviewRepository eventClassificationReviewRepository;
+
+    @Autowired
+    private EventRepository eventRepository;
 
     @Test
     void 일정을_생성하면_201과_displayLabel을_표시명으로_반환한다() throws Exception {
@@ -163,22 +167,192 @@ class EventControllerTest {
     @Test
     void 분류_확인_응답에_online_offline이_아닌_값을_보내면_422() throws Exception {
         String accessToken = signupAndLogin();
-        String eventId = createEvent(accessToken, "2026-08-25T10:00:00+09:00");
-        eventClassificationReviewRepository.save(EventClassificationReview.builder()
-                .eventId(UUID.fromString(eventId))
-                .questionType("is_online")
-                .titleSnapshot("점심 약속")
-                .askedAt(Instant.now())
-                .build());
+        String eventId = createUndecidedEvent(accessToken, "2026-08-25T10:00:00+09:00");
+        EventClassificationReview review = savePendingReview(UUID.fromString(eventId), Instant.now());
 
         mockMvc.perform(post("/events/" + eventId + "/review")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"questionType":"is_online","userAnswer":"글쎄요"}
-                                """))
+                                {"reviewId":"%s","questionType":"is_online","userAnswer":"글쎄요"}
+                                """.formatted(review.getReviewId())))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void pending_review는_소유자_범위_및_상태에_맞는_title없는_projection만_반환한다() throws Exception {
+        String ownerToken = signupAndLogin();
+        String eligibleId = createUndecidedEvent(ownerToken, "2026-08-21T10:00:00+09:00");
+        EventClassificationReview eligible = savePendingReview(UUID.fromString(eligibleId), Instant.parse("2026-08-20T03:00:00Z"));
+        String answeredId = createUndecidedEvent(ownerToken, "2026-08-21T11:00:00+09:00");
+        EventClassificationReview answered = savePendingReview(UUID.fromString(answeredId), Instant.parse("2026-08-20T03:01:00Z"));
+        answered.setUserAnswer("online");
+        answered.setAnsweredAt(Instant.parse("2026-08-20T04:00:00Z"));
+        eventClassificationReviewRepository.saveAndFlush(answered);
+        String ineligibleId = createEvent(ownerToken, "2026-08-21T12:00:00+09:00");
+        savePendingReview(UUID.fromString(ineligibleId), Instant.parse("2026-08-20T03:02:00Z"));
+        String boundaryId = createUndecidedEvent(ownerToken, "2026-08-27T00:00:00+09:00");
+        savePendingReview(UUID.fromString(boundaryId), Instant.parse("2026-08-20T03:03:00Z"));
+        String excludedId = createUndecidedEvent(ownerToken, "2026-08-21T13:00:00+09:00");
+        savePendingReview(UUID.fromString(excludedId), Instant.parse("2026-08-20T03:04:00Z"));
+        Event excluded = eventRepository.findById(UUID.fromString(excludedId)).orElseThrow();
+        excluded.setAutoManageExcluded(true);
+        eventRepository.saveAndFlush(excluded);
+        String meetingId = createUndecidedEvent(ownerToken, "2026-08-21T14:00:00+09:00");
+        savePendingReview(UUID.fromString(meetingId), Instant.parse("2026-08-20T03:05:00Z"));
+        Event meeting = eventRepository.findById(UUID.fromString(meetingId)).orElseThrow();
+        meeting.setMeetingUrl("https://meeting.example");
+        eventRepository.saveAndFlush(meeting);
+        String otherToken = signupAndLogin();
+        String otherEventId = createUndecidedEvent(otherToken, "2026-08-21T09:00:00+09:00");
+        savePendingReview(UUID.fromString(otherEventId), Instant.parse("2026-08-20T03:06:00Z"));
+
+        mockMvc.perform(get("/events/reviews/pending")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .param("from", "2026-08-20T00:00:00+09:00")
+                        .param("to", "2026-08-27T00:00:00+09:00"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].reviewId").value(eligible.getReviewId().toString()))
+                .andExpect(jsonPath("$[0].eventId").value(eligibleId))
+                .andExpect(jsonPath("$[0].questionType").value("is_online"))
+                .andExpect(jsonPath("$[0].suggestedValue").value("online"))
+                .andExpect(jsonPath("$[0].classificationConfidence").value(0.94))
+                .andExpect(jsonPath("$[0].title").doesNotExist())
+                .andExpect(jsonPath("$[0].titleSnapshot").doesNotExist())
+                .andExpect(jsonPath("$[0].modelVersion").doesNotExist())
+                .andExpect(jsonPath("$[0].provider").doesNotExist())
+                .andExpect(jsonPath("$[0].classifierVersion").doesNotExist());
+    }
+
+    @Test
+    void pending_review는_startsAt_askedAt_reviewId_순으로_정렬하고_유효하지않은_기간은_422이다() throws Exception {
+        String token = signupAndLogin();
+        String laterId = createUndecidedEvent(token, "2026-08-21T11:00:00+09:00");
+        EventClassificationReview later = savePendingReview(UUID.fromString(laterId), Instant.parse("2026-08-20T03:00:00Z"));
+        String firstId = createUndecidedEvent(token, "2026-08-21T10:00:00+09:00");
+        EventClassificationReview first = savePendingReview(UUID.fromString(firstId), Instant.parse("2026-08-20T04:00:00Z"));
+
+        mockMvc.perform(get("/events/reviews/pending")
+                        .header("Authorization", "Bearer " + token)
+                        .param("from", "2026-08-20T00:00:00+09:00")
+                        .param("to", "2026-08-27T00:00:00+09:00"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].reviewId").value(first.getReviewId().toString()))
+                .andExpect(jsonPath("$[1].reviewId").value(later.getReviewId().toString()));
+
+        mockMvc.perform(get("/events/reviews/pending")
+                        .header("Authorization", "Bearer " + token)
+                        .param("from", "2026-08-27T00:00:00+09:00")
+                        .param("to", "2026-08-20T00:00:00+09:00"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+        mockMvc.perform(get("/events/reviews/pending")
+                        .header("Authorization", "Bearer " + token)
+                        .param("from", "2026-08-01T00:00:00+09:00")
+                        .param("to", "2026-09-02T00:00:00+09:00"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void reviewId가_다른_event에_속하거나_다른_사용자면_404이다() throws Exception {
+        String token = signupAndLogin();
+        String eventId = createUndecidedEvent(token, "2026-08-21T10:00:00+09:00");
+        String otherEventId = createUndecidedEvent(token, "2026-08-21T11:00:00+09:00");
+        EventClassificationReview otherEventReview = savePendingReview(UUID.fromString(otherEventId), Instant.now());
+        String otherToken = signupAndLogin();
+        String foreignEventId = createUndecidedEvent(otherToken, "2026-08-21T12:00:00+09:00");
+        EventClassificationReview foreignReview = savePendingReview(UUID.fromString(foreignEventId), Instant.now().plusSeconds(1));
+
+        assertReviewError(token, eventId, otherEventReview.getReviewId(), "REVIEW_NOT_FOUND", 404);
+        assertReviewError(token, eventId, foreignReview.getReviewId(), "REVIEW_NOT_FOUND", 404);
+    }
+
+    @Test
+    void review_요청의_필수값이_비어있으면_422_validation_error이다() throws Exception {
+        String token = signupAndLogin();
+        String eventId = createUndecidedEvent(token, "2026-08-21T10:00:00+09:00");
+
+        mockMvc.perform(post("/events/" + eventId + "/review")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"questionType\":\"is_online\",\"userAnswer\":\"online\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void 닫힌_review는_409이고_현재_분류대상이_아닌_event는_stale_409이다() throws Exception {
+        String token = signupAndLogin();
+        String closedEventId = createUndecidedEvent(token, "2026-08-21T10:00:00+09:00");
+        EventClassificationReview closed = savePendingReview(UUID.fromString(closedEventId), Instant.now());
+        closed.setUserAnswer("online");
+        closed.setAnsweredAt(Instant.now());
+        eventClassificationReviewRepository.saveAndFlush(closed);
+        String staleEventId = createEvent(token, "2026-08-21T11:00:00+09:00");
+        EventClassificationReview stale = savePendingReview(UUID.fromString(staleEventId), Instant.now().plusSeconds(1));
+
+        assertReviewError(token, closedEventId, closed.getReviewId(), "REVIEW_ALREADY_CLOSED", 409);
+        assertReviewError(token, staleEventId, stale.getReviewId(), "REVIEW_STALE", 409);
+    }
+
+    @Test
+    void online_offline_답변은_event와_review를_같이_확정한다() throws Exception {
+        String token = signupAndLogin();
+        String onlineEventId = createUndecidedEvent(token, "2026-08-21T10:00:00+09:00");
+        EventClassificationReview online = savePendingReview(UUID.fromString(onlineEventId), Instant.now());
+        String offlineEventId = createUndecidedEvent(token, "2026-08-21T11:00:00+09:00");
+        EventClassificationReview offline = savePendingReview(UUID.fromString(offlineEventId), Instant.now().plusSeconds(1));
+
+        answer(token, onlineEventId, online.getReviewId(), "online")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.locationState").value("NOT_REQUIRED"));
+        answer(token, offlineEventId, offline.getReviewId(), "offline")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.locationState").value("REQUIRED_MISSING"));
+
+        EventClassificationReview reloadedOnline = eventClassificationReviewRepository.findById(online.getReviewId()).orElseThrow();
+        EventClassificationReview reloadedOffline = eventClassificationReviewRepository.findById(offline.getReviewId()).orElseThrow();
+        assertThat(eventRepository.findById(UUID.fromString(onlineEventId)).orElseThrow().getMeetingUrl()).isNull();
+        assertThat(reloadedOnline.getUserAnswer()).isEqualTo("online");
+        assertThat(reloadedOnline.getAnsweredAt()).isNotNull();
+        assertThat(reloadedOffline.getUserAnswer()).isEqualTo("offline");
+        assertThat(reloadedOffline.getAnsweredAt()).isNotNull();
+    }
+
+    @Test
+    void 사용자_PATCH가_분류_eligibility를_제거하면_pending_review를_사용자_답변없이_닫는다() throws Exception {
+        String token = signupAndLogin();
+        String eventId = createUndecidedEvent(token, "2026-08-21T10:00:00+09:00");
+        EventClassificationReview review = savePendingReview(UUID.fromString(eventId), Instant.now());
+
+        mockMvc.perform(patch("/events/" + eventId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{" + "\"autoManageExcluded\":true}"))
+                .andExpect(status().isOk());
+
+        EventClassificationReview reloaded = eventClassificationReviewRepository.findById(review.getReviewId()).orElseThrow();
+        assertThat(reloaded.getAnsweredAt()).isNotNull();
+        assertThat(reloaded.getUserAnswer()).isNull();
+        assertThat(reloaded.getTitleSnapshot()).isNull();
+    }
+
+    @Test
+    void 취소된_event의_pending_review는_닫지않고_답변을_stale_409으로_거절한다() throws Exception {
+        String token = signupAndLogin();
+        String eventId = createUndecidedEvent(token, "2026-08-21T10:00:00+09:00");
+        EventClassificationReview review = savePendingReview(UUID.fromString(eventId), Instant.now());
+
+        mockMvc.perform(delete("/events/" + eventId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        assertReviewError(token, eventId, review.getReviewId(), "REVIEW_STALE", 409);
+        EventClassificationReview reloaded = eventClassificationReviewRepository.findById(review.getReviewId()).orElseThrow();
+        assertThat(reloaded.getAnsweredAt()).isNull();
+        assertThat(reloaded.getUserAnswer()).isNull();
     }
 
     @Test
@@ -209,6 +383,47 @@ class EventControllerTest {
                 .getResponse()
                 .getContentAsString();
         return JsonPath.read(response, "$.eventId");
+    }
+
+    private String createUndecidedEvent(String accessToken, String startsAt) throws Exception {
+        String body = """
+                {"startsAt":"%s","locationState":"UNDECIDED","sourceType":"INTERNAL"}
+                """.formatted(startsAt);
+        String response = mockMvc.perform(post("/events")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return JsonPath.read(response, "$.eventId");
+    }
+
+    private EventClassificationReview savePendingReview(UUID eventId, Instant askedAt) {
+        return eventClassificationReviewRepository.saveAndFlush(EventClassificationReview.builder()
+                .eventId(eventId).questionType("is_online").suggestedValue("online")
+                .classificationConfidence(new java.math.BigDecimal("0.9400"))
+                .askedAt(askedAt).titlePurgedAt(askedAt)
+                .provider("openai").modelVersion("gpt-5-mini")
+                .classifierVersion("classifier-v1").promptVersion("prompt-v1").schemaVersion("schema-v1")
+                .build());
+    }
+
+    private org.springframework.test.web.servlet.ResultActions answer(
+            String token, String eventId, UUID reviewId, String userAnswer) throws Exception {
+        return mockMvc.perform(post("/events/" + eventId + "/review")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"reviewId":"%s","questionType":"is_online","userAnswer":"%s"}
+                        """.formatted(reviewId, userAnswer)));
+    }
+
+    private void assertReviewError(String token, String eventId, UUID reviewId, String code, int expectedStatus) throws Exception {
+        answer(token, eventId, reviewId, "online")
+                .andExpect(status().is(expectedStatus))
+                .andExpect(jsonPath("$.error.code").value(code));
     }
 
     private String signupAndLogin() throws Exception {
