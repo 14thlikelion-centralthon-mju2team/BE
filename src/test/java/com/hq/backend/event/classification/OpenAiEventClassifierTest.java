@@ -62,6 +62,14 @@ class OpenAiEventClassifierTest {
                             .isEqualByComparingTo("0");
                     assertThat(body.at("/text/format/schema/properties/confidence/maximum").decimalValue())
                             .isEqualByComparingTo("1");
+                    JsonNode questionType = body.at("/text/format/schema/properties/questionType");
+                    JsonNode suggestedValue = body.at("/text/format/schema/properties/suggestedValue");
+                    JsonNode confidence = body.at("/text/format/schema/properties/confidence");
+                    assertThat(questionType.has("minimum")).isFalse();
+                    assertThat(questionType.has("maximum")).isFalse();
+                    assertThat(suggestedValue.has("minimum")).isFalse();
+                    assertThat(suggestedValue.has("maximum")).isFalse();
+                    assertThat(confidence.has("enum")).isFalse();
                 })
                 .andRespond(withSuccess(completedResponse("gpt-4o-mini-2024-08-06", resultJson("online", "0.94")),
                         MediaType.APPLICATION_JSON));
@@ -123,15 +131,19 @@ class OpenAiEventClassifierTest {
     }
 
     @Test
-    void classify_returns_empty_without_retry_for_a_transport_timeout() {
+    void classify_returns_empty_without_retry_or_sensitive_timeout_logs(CapturedOutput output) {
+        String title = "secret calendar title";
+        String responseBody = "secret response body";
         RestClient.Builder builder = RestClient.builder().baseUrl("https://openai.test/v1");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(requestTo("https://openai.test/v1/responses"))
                 .andRespond(request -> {
-                    throw new SocketTimeoutException("client-timeout-detail");
+                    throw new SocketTimeoutException("client-timeout-detail " + responseBody);
                 });
 
-        assertThat(classifier(builder.build()).classify(new EventClassificationInput("private title"))).isEmpty();
+        assertThat(classifier(builder.build()).classify(new EventClassificationInput(title))).isEmpty();
+        assertThat(output).contains("failureReason=transport")
+                .doesNotContain(title, responseBody, "client-timeout-detail", "test-api-key", "Authorization");
         server.verify();
     }
 
@@ -148,7 +160,7 @@ class OpenAiEventClassifierTest {
         assertThat(classifier(builder.build()).classify(new EventClassificationInput(title))).isEmpty();
 
         assertThat(output).contains("failureReason=http", "status=500")
-                .doesNotContain(title, "secret response body", "test-api-key", "Authorization", "client-timeout-detail");
+                .doesNotContain(title, "secret response body", "test-api-key", "Authorization");
         server.verify();
     }
 

@@ -1,5 +1,6 @@
 package com.hq.backend.event.classification.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,7 @@ public record OpenAiResponsesRequest(
             Map<String, Property> properties) {
     }
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Property(
             String type,
             @JsonProperty("enum") List<String> enumValues,

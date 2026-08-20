@@ -55,3 +55,4 @@
 - Task 4 independent review: APPROVED (Critical 0, Important 0, Minor 0).
 - Task 5: Added a strict, fail-closed OpenAI Responses client that sends only the normalized calendar-title JSON; focused contract tests, context validation, and full suite passed before commit.
 - Task 5 independent review: APPROVED (Critical 0, Important 0). Added direct regressions for both enum domains and confidence bounds after review.
+- Task 5 root follow-up: DTO-scoped null omission fixes the exact JSON Schema payload; actual timeout-path log capture proves exception and sensitive sentinels remain absent.
