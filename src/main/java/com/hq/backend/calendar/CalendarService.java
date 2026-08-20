@@ -2,6 +2,7 @@ package com.hq.backend.calendar;
 
 import com.hq.backend.calendar.dto.BusyBlockResponse;
 import com.hq.backend.calendar.dto.CalendarConnectionResponse;
+import com.hq.backend.calendar.dto.CalendarConnectionStatusResponse;
 import com.hq.backend.calendar.dto.ConnectCalendarRequest;
 import com.hq.backend.calendar.dto.DensityResponse;
 import com.hq.backend.calendar.dto.GoogleBusyEventsResponse;
@@ -149,6 +150,14 @@ public class CalendarService {
                 .orElseThrow(() -> new ApiException(
                         HttpStatus.NOT_FOUND, "CALENDAR_NOT_CONNECTED", "연결된 구글 캘린더가 없습니다."));
         connection.setRevokedAt(Instant.now());
+    }
+
+    @Transactional(readOnly = true)
+    public CalendarConnectionStatusResponse getGoogleConnectionStatus(UUID userId) {
+        boolean connected = calendarConnectionRepository.findByUserIdAndProvider(userId, PROVIDER_GOOGLE)
+                .filter(connection -> connection.getRevokedAt() == null)
+                .isPresent();
+        return new CalendarConnectionStatusResponse(connected);
     }
 
     public DensityResponse getDensity(UUID userId, LocalDate date) {

@@ -409,6 +409,39 @@ class CalendarServiceTest {
         verify(requestHeadersUriSpec, times(2)).uri(any(URI.class));
     }
 
+    @Test
+    void 활성_구글_연결의_status는_connected다() {
+        UUID userId = UUID.randomUUID();
+        when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google"))
+                .thenReturn(Optional.of(connectedGoogleCalendar(userId)));
+
+        var result = calendarService.getGoogleConnectionStatus(userId);
+
+        assertThat(result.connected()).isTrue();
+    }
+
+    @Test
+    void 연결이_없으면_status는_disconnected다() {
+        UUID userId = UUID.randomUUID();
+        when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.empty());
+
+        var result = calendarService.getGoogleConnectionStatus(userId);
+
+        assertThat(result.connected()).isFalse();
+    }
+
+    @Test
+    void 해제된_연결의_status는_disconnected다() {
+        UUID userId = UUID.randomUUID();
+        CalendarConnection revoked = connectedGoogleCalendar(userId);
+        revoked.setRevokedAt(Instant.now());
+        when(calendarConnectionRepository.findByUserIdAndProvider(userId, "google")).thenReturn(Optional.of(revoked));
+
+        var result = calendarService.getGoogleConnectionStatus(userId);
+
+        assertThat(result.connected()).isFalse();
+    }
+
     private CalendarConnection connectedGoogleCalendar(UUID userId) {
         return CalendarConnection.builder()
                 .calendarConnectionId(UUID.randomUUID())
