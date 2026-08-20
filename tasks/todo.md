@@ -61,7 +61,7 @@
 - [x] Task 10: 골든셋, 통합 회귀, 출시 증거
   - [x] Add the synthetic 200-row Korean golden set and deterministic strict-provider contract test
   - [x] Add PostgreSQL two-page sync → title-free review → user-answer and privacy/failure integration regressions
-  - [x] Exclude opt-in `openai-eval` tagged execution from default Gradle tests; exact approval/key/pricing/model/request/cost preflight and per-call quality/token/latency/cost limits guard live evaluation
+  - [x] Exclude opt-in `openai-eval` tagged execution from default Gradle tests; exact approval/key/pricing/model/request/cost preflight, bounded HTTP client, and complete per-call usage/quality/token/latency/cost limits guard live evaluation
   - [x] Exercise production Google HTTP pagination and final sync token with two real fixture pages; use bounded real Task 7/8 lock races and scheduler privacy canary
   - [x] Run clean Java/build/Compose/Python verification and record exact SHA `07970c3` evidence (Python uses explicit CPython 3.13)
   - [x] Self-review, force-track release evidence, commit Task 10
@@ -90,4 +90,4 @@
 - Task 9: Added only low-cardinality AI classification counters/timers, transaction-after-commit review metrics, safe rollout configuration, and a private-scrape operating runbook. Focused, adjacent, full Gradle, and both Compose render checks passed before commit.
 - Task 9 review follow-up: fixed JDK timeout/incomplete outcome mapping, real backlog lag and partial-batch retention accounting, writer AFTER_COMMIT metrics, identifier-free sync failure logs, and the operating controls required for staged rollout/rollback.
 - Task 9 final scoped review: APPROVED (Critical 0, Important 0).
-- Task 10: verified implementation SHA `07970c3` with 260 Java tests (0 failures/errors), build, both Compose renders, and opt-in evaluator preflight. Final release evidence retains explicit "not executed" markers for unapproved live provider evaluation and does not infer F1, latency, tokens, cost cap, or provider approval. Independent review could not be allocated because all agent slots were occupied.
+- Task 10: initial implementation SHA `07970c3` and re-review fix SHA `122bc23` each verified with 260 Java tests (0 failures/errors), build, both Compose renders, and opt-in evaluator preflight. Python CPython 3.13 evidence is 474 collected/passed plus Ruff/mypy success. Final release evidence retains explicit "not executed" markers for unapproved live provider evaluation and does not infer F1, latency, tokens, cost cap, or provider approval. Independent review could not be allocated because all agent slots were occupied.
