@@ -7,7 +7,7 @@
 - privacy-policy exact-match와 기본 no-op/fail-closed를 유지한다.
 - Event와 review의 잠금 순서는 항상 Event → review다.
 - 테스트를 먼저 실패시키고 기대한 Red임을 확인한 뒤 production code를 작성한다.
-- 로컬 Java 17로 Java 21 Gradle 검증이 불가능하므로 각 commit의 CI 결과를 필수 증거로 남긴다.
+- Homebrew JDK 21 경로와 CI 보안 환경변수를 명시하고 PostgreSQL 16 컨테이너를 사용해 각 Task를 검증한다.
 
 ## Checklist
 
@@ -27,4 +27,4 @@
 
 - Draft PR: https://github.com/14thlikelion-centralthon-mju2team/BE/pull/204
 - Self-review: https://github.com/14thlikelion-centralthon-mju2team/BE/pull/204#issuecomment-5355635832
-- Baseline: Java 17 확인. Gradle 첫 실행은 sandbox의 wrapper lock 접근 제한으로 중단됨.
+- Baseline: JDK 21 + PostgreSQL 16에서 `./gradlew test` 138 tests, 0 failures.
