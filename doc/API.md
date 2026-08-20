@@ -1,6 +1,6 @@
 # ENSOM Backend API 명세서
 
-> **Source of truth:** BE commit `f98f2371582356bf1ce9fcfc3daae66a3462e617`. 이 문서는 `tools/generate_api_spec.py`가 Spring MVC controller, DTO, Bean Validation, Jackson enum annotation에서 생성한다.
+> **Source of truth:** BE commit `a32075e1a9c9b2766290bf4c01d721e003bcddf5`. 이 문서는 `tools/generate_api_spec.py`가 Spring MVC controller, DTO, Bean Validation, Jackson enum annotation에서 생성한다.
 > 생성: `python3 tools/generate_api_spec.py` · endpoint count 검증: `python3 tools/generate_api_spec.py --check`.
 
 ## 1. 적용 범위와 전송 규약

@@ -142,7 +142,9 @@ def main() -> None:
     parser.add_argument("--check", action="store_true", help="fail if doc/API.md is stale")
     check = parser.parse_args().check
     endpoints = find_endpoints()
-    sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    sha = subprocess.check_output(
+        ["git", "log", "-1", "--format=%H", "--", "src/main/java"], cwd=ROOT, text=True
+    ).strip()
     dto_names = set()
     for e in endpoints:
         if e["body"]: dto_names.add(e["body"])
