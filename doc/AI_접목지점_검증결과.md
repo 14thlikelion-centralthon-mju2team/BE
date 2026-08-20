@@ -2,11 +2,11 @@
 
 ## 검증 범위와 실행 환경
 
-- 검증한 구현 커밋: `122bc23` (`fix: harden AI release evaluation verification`). 아래 명령 증적은 이 SHA에서 실행했다. 선행 Task 10 구현 증거는 `07970c3`에 있다.
+- 검증한 구현 커밋: `3cf2f40` (`fix: isolate live evaluation usage details`). 아래 명령 증적은 이 SHA에서 실행했다. 선행 Task 10 구현 증거는 `07970c3`, re-review hardening은 `122bc23`에 있다.
 - Java: Homebrew OpenJDK 21, 데이터베이스: PostgreSQL 16.
 - 골든셋: `src/test/resources/ai/event-online-golden-v1.jsonl`의 원문 재배포 위험이 없는 합성 한국어 200건이다. 필드는 `id`, `title`, `expected`, `validInput`, `category`만 사용한다. 유효 160건은 online/offline 각 80건이고, 무효 40건은 blank/control/501 code point/unpaired surrogate 각 10건이다.
 - 기본 CI는 OpenAI 네트워크 호출을 하지 않는다. `openAiEvalTest`는 `openai-eval` 태그를 명시적으로 선택할 때만 실행되며, `OPENAI_EVAL_ENABLED=true`인 경우 정확한 정책·전용 키·가격 승인, pinned model, 160-request, 비용 cap이 모두 없으면 provider 호출 전 실패한다.
-- 실제 평가의 성공 응답은 pinned model, 양수 input/output token, 양수 total token 및 `total = input + output`을 각각 만족해야 한다. 누락된 usage 또는 0 증가량은 비용/F1 통과로 취급하지 않고 즉시 실패한다. HTTP connect timeout은 3초, read timeout은 10초다.
+- 실제 평가의 성공 응답은 package-private 상세 평가 결과의 pinned model, 양수 input/output/total token 및 `total = input + output`을 각각 만족해야 한다. 누락된 usage 또는 0 증가량은 비용/F1 통과로 취급하지 않고 즉시 실패한다. 운영 `ai_classification_tokens_total` meter의 direction 계약은 정확히 `input|output`이며, total은 meter tag로 기록하지 않는다. HTTP connect timeout은 3초, read timeout은 10초다.
 
 ## 오프라인 계약 증거
 
@@ -60,4 +60,4 @@ OPENAI_EVAL_OUTPUT_USD_PER_1M=... \
 | `cd ai/plan-engine && uv run --python 3.13 --extra dev pytest -q` | exit 0 | 474 passed |
 | `cd ai/plan-engine && uv run --python 3.13 --extra dev ruff check .` | exit 0 | `All checks passed!` |
 | `cd ai/plan-engine && uv run --python 3.13 --extra dev mypy app` | exit 0 | `Success: no issues found in 61 source files` |
-| `git diff --check` | exit 0 | 구현 SHA `122bc23`에서 공백 오류 없음 |
+| `git diff --check` | exit 0 | 구현 SHA `3cf2f40`에서 공백 오류 없음 |

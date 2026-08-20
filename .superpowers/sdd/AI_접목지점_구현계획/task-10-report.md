@@ -6,18 +6,18 @@
 - Added a strict Responses-fixture golden contract: schema-valid response rate 100%, post-validation 160/160, and no provider calls for invalid input.
 - Replaced the synthetic concatenating Google client in the PostgreSQL flow with the production `DefaultGoogleCalendarSyncClient` backed by two `MockRestServiceServer` HTTP pages. The regression asserts query fields, initial sync parameters, second-page `pageToken`, Authorization, and the final `nextSyncToken` CAS path.
 - Hardened Task 7/8 with bounded real Event/review lock races for answer/purge and answer/delete, including Future 5-second bounds for purge/delete while locks are held, cancellation/shutdown cleanup, a bounded PATCH wait without direct DB polling, and a scheduler failure-log privacy canary.
-- Added an `openai-eval` tagged Gradle task excluded from normal CI. It makes real classifier calls only after exact policy/dedicated-key/pricing approvals, pinned model, fixed 160-request authorization, conservative pre-network cost budget, and a production-equivalent 3-second connect/10-second read HTTP client. Every accepted live result must have the pinned resolved model and positive, internally consistent input/output/total usage deltas; missing usage fails closed before cost/F1 can pass. It then requires macro F1 >= 0.90, latency p95 <= 5 seconds, output-token p95 <= 50, and the approved cost cap.
+- Added an `openai-eval` tagged Gradle task excluded from normal CI. It makes real classifier calls only after exact policy/dedicated-key/pricing approvals, pinned model, fixed 160-request authorization, conservative pre-network cost budget, and a production-equivalent 3-second connect/10-second read HTTP client. Every accepted live result must have the pinned resolved model and positive, internally consistent raw input/output/total usage in a package-private detailed evaluation result; missing usage fails closed before cost/F1 can pass. Operational meters retain the exact `input|output` direction contract and record no total tag. It then requires macro F1 >= 0.90, latency p95 <= 5 seconds, output-token p95 <= 50, and the approved cost cap.
 - Added a provider-response privacy regression: an exact raw canary inside malformed Responses output traverses parser failure while canary/body text remains absent from captured logs, Event fields, and review fields.
 
 ## RED / GREEN
 
 - RED: the golden contract initially failed because `/ai/event-online-golden-v1.jsonl` did not exist. After adding the synthetic resource, `EventClassificationGoldenSetTest` passed.
 - RED: replacing the flow fake first failed because the test fixture tried to serialize Java-time DTOs with an unconfigured mapper; the fixture now serves raw Google API JSON, and the real client regression passes.
-- GREEN: the release verifier is test-scope except for the low-cardinality `total` token metric needed to prove provider usage accounting. No Event user-field behavior changed.
+- GREEN: detailed provider usage is exposed only through a stateless package-private live-evaluation seam; the production meter contract remains exactly `input|output`. No Event user-field behavior changed.
 
 ## Verification
 
-- Initial implementation SHA: `07970c3` (`test: complete AI release verification`); re-review fix SHA: `122bc23` (`fix: harden AI release evaluation verification`).
+- Initial implementation SHA: `07970c3` (`test: complete AI release verification`); re-review hardening SHA: `122bc23` (`fix: harden AI release evaluation verification`); usage-seam fix SHA: `3cf2f40` (`fix: isolate live evaluation usage details`).
 - Focused golden/integration/API/concurrency/retention suite: exit 0.
 - `./gradlew --no-daemon clean test --console=plain`: exit 0, 260 tests, 0 failures, 0 errors, JDK 21/PostgreSQL 16.
 - `./gradlew build --console=plain`: exit 0.
