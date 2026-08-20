@@ -27,7 +27,10 @@
   - [x] Review fix: accept id-only cancellation tombstones
   - [x] Review fix: normalize only external-event unique insert conflicts
   - [x] Review fix: exercise manual false classification gate after CREATED upsert
-- [ ] Task 4: 분류 계약, 입력 정규화, 동의·롤아웃 게이트 (in progress)
+- [x] Task 4: 분류 계약, 입력 정규화, 동의·롤아웃 게이트
+  - [x] Write focused RED tests for title normalization, policy gate, configuration binding, and NoOp selection
+  - [x] Add minimal fail-closed classification contracts, properties, normalizer, and consent/rollout gate
+  - [x] Verify focused tests, application context, full regression, diff; write report and commit
 - [ ] Task 5: OpenAI Responses API strict client
 - [ ] Task 6: 신규 일정 분류와 review 저장 orchestration
 - [ ] Task 7: pending 조회와 stale-safe 답변 API
@@ -45,3 +48,4 @@
 - Task 2 independent review: two pagination findings fixed with TDD; scoped re-review APPROVED (Critical 0, Important 0).
 - Task 3: Event/source writes and sync-token CAS now use isolated `REQUIRES_NEW` writers; focused PostgreSQL tests and the full Gradle suite passed before commit.
 - Task 3 independent review: two data-loss findings fixed with TDD; scoped re-review APPROVED (Critical 0, Important 0).
+- Task 4: Added a fail-closed title normalizer, exact privacy-consent gate, stable rollout, validated configuration, and unconditional NoOp classifier. Focused PostgreSQL/context tests and the full Gradle suite passed before commit.

@@ -41,11 +41,21 @@ plan-engine:
   base-url: ${PLAN_ENGINE_BASE_URL:http://localhost:8000}
 
 openai:
-  # 일정 텍스트 분류 등 외부 AI 기능에 사용한다. 키가 비어 있으면 규칙 기반 폴백으로 동작한다.
+  # 일정 텍스트 분류는 기본적으로 비활성화하며, 정확한 privacy 동의와 pinned model을 함께 요구한다.
+  base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
   api-key: ${OPENAI_API_KEY:}
-  model: ${OPENAI_MODEL:gpt-4o-mini}
-  connect-timeout-ms: ${OPENAI_CONNECT_TIMEOUT_MS:5000}
+  model: ${OPENAI_MODEL:gpt-4o-mini-2024-07-18}
+  connect-timeout-ms: ${OPENAI_CONNECT_TIMEOUT_MS:3000}
   read-timeout-ms: ${OPENAI_READ_TIMEOUT_MS:10000}
+  classification:
+    enabled: ${OPENAI_CLASSIFICATION_ENABLED:false}
+    rollout-percent: ${OPENAI_CLASSIFICATION_ROLLOUT_PERCENT:0}
+    max-per-sync: ${OPENAI_CLASSIFICATION_MAX_PER_SYNC:5}
+    max-concurrency: ${OPENAI_CLASSIFICATION_MAX_CONCURRENCY:2}
+    privacy-policy-version: ${OPENAI_AI_PRIVACY_POLICY_VERSION:}
+    classifier-version: event-online-review-v1
+    prompt-version: event-online-ko-v1
+    schema-version: event-online-v1
 
 provider:
   odsay:
