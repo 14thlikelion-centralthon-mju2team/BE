@@ -167,6 +167,7 @@ public class OpenAiEventClassifier implements EventClassifier {
         if (response == null || response.usage() == null) return;
         metrics.addTokens(TokenDirection.INPUT, safeTokenCount(response.usage().inputTokens()));
         metrics.addTokens(TokenDirection.OUTPUT, safeTokenCount(response.usage().outputTokens()));
+        metrics.addTokens(TokenDirection.TOTAL, safeTokenCount(response.usage().totalTokens()));
     }
 
     private long safeTokenCount(Integer count) {

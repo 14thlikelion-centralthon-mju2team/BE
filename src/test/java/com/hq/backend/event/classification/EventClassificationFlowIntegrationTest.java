@@ -253,11 +253,12 @@ class EventClassificationFlowIntegrationTest {
         agree(user);
         CalendarConnection connection = saveConnection(user);
         expectTwoGooglePages(
-                googleEvent("canary-review", canary, 1),
-                googleEvent("canary-failure", "일정 " + canary, 2));
-        expectClassifier("online");
+                googleEvent("canary-response", "안전한 온라인 회의", 1),
+                googleEvent("canary-failure", "안전한 대면 회의", 2));
         openAiServer.expect(requestTo("https://openai.fixture/v1/responses"))
-                .andRespond(request -> { throw new java.net.SocketTimeoutException(canary + " provider-body"); });
+                .andRespond(withSuccess(completedResponseText(canary), MediaType.APPLICATION_JSON));
+        openAiServer.expect(requestTo("https://openai.fixture/v1/responses"))
+                .andRespond(request -> { throw new java.net.SocketTimeoutException("provider-body"); });
 
         sync(connection, true);
         verifyAndResetGoogleServer();

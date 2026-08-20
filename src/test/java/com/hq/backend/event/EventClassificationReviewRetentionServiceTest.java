@@ -138,22 +138,26 @@ class EventClassificationReviewRetentionServiceTest {
     void answer가_review_lock을_기다리는동안_purge는_skip_locked로_건너뛰고_답변필드를_유실하지_않는다() throws Exception {
         Event event = saveEvent();
         EventClassificationReview review = saveTitleReview(event.getEventId(), NOW.minus(25, ChronoUnit.HOURS));
-        ExecutorService executor = Executors.newFixedThreadPool(2);
+        ExecutorService executor = Executors.newFixedThreadPool(3);
         CountDownLatch locked = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
+        Future<?> holder = null;
+        Future<?> answer = null;
+        Future<RetentionBatchResult> purge = null;
         try {
-            Future<?> holder = executor.submit(() -> transactionTemplate.executeWithoutResult(status -> {
+            holder = executor.submit(() -> transactionTemplate.executeWithoutResult(status -> {
                 reviewRepository.findByReviewIdAndEventIdForUpdate(review.getReviewId(), event.getEventId()).orElseThrow();
                 locked.countDown();
                 await(release);
             }));
             await(locked);
 
-            Future<?> answer = executor.submit(() -> eventService.answerReview(
+            answer = executor.submit(() -> eventService.answerReview(
                     event.getUserId(), event.getEventId(),
                     new EventReviewRequest(review.getReviewId(), "is_online", "online")));
 
-            assertThat(retentionService.purgeTitles(NOW.minus(24, ChronoUnit.HOURS), 500).processed()).isZero();
+            purge = executor.submit(() -> retentionService.purgeTitles(NOW.minus(24, ChronoUnit.HOURS), 500));
+            assertThat(purge.get(5, java.util.concurrent.TimeUnit.SECONDS).processed()).isZero();
             release.countDown();
             holder.get(5, java.util.concurrent.TimeUnit.SECONDS);
             answer.get(5, java.util.concurrent.TimeUnit.SECONDS);
@@ -165,6 +169,9 @@ class EventClassificationReviewRetentionServiceTest {
             assertThat(saved.getTitleSnapshot()).isNull();
         } finally {
             release.countDown();
+            if (purge != null) purge.cancel(true);
+            if (answer != null) answer.cancel(true);
+            if (holder != null) holder.cancel(true);
             executor.shutdownNow();
         }
     }
@@ -173,18 +180,21 @@ class EventClassificationReviewRetentionServiceTest {
     void delete는_잠긴_만료_review을_skip_locked로_건너뛰고_다음실행에서_삭제한다() throws Exception {
         Event event = saveEvent();
         EventClassificationReview review = savePurgedReview(event.getEventId(), NOW.minus(91, ChronoUnit.DAYS));
-        ExecutorService executor = Executors.newSingleThreadExecutor();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch locked = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
+        Future<?> holder = null;
+        Future<Integer> deleteWhileLocked = null;
         try {
-            Future<?> holder = executor.submit(() -> transactionTemplate.executeWithoutResult(status -> {
+            holder = executor.submit(() -> transactionTemplate.executeWithoutResult(status -> {
                 reviewRepository.findByReviewIdAndEventIdForUpdate(review.getReviewId(), event.getEventId()).orElseThrow();
                 locked.countDown();
                 await(release);
             }));
             await(locked);
 
-            assertThat(batchWriter.deleteBatch(NOW.minus(90, ChronoUnit.DAYS), 500)).isZero();
+            deleteWhileLocked = executor.submit(() -> batchWriter.deleteBatch(NOW.minus(90, ChronoUnit.DAYS), 500));
+            assertThat(deleteWhileLocked.get(5, java.util.concurrent.TimeUnit.SECONDS)).isZero();
             assertThat(reviewRepository.existsById(review.getReviewId())).isTrue();
             release.countDown();
             holder.get(5, java.util.concurrent.TimeUnit.SECONDS);
@@ -193,6 +203,8 @@ class EventClassificationReviewRetentionServiceTest {
             assertThat(reviewRepository.existsById(review.getReviewId())).isFalse();
         } finally {
             release.countDown();
+            if (deleteWhileLocked != null) deleteWhileLocked.cancel(true);
+            if (holder != null) holder.cancel(true);
             executor.shutdownNow();
         }
     }
@@ -205,15 +217,18 @@ class EventClassificationReviewRetentionServiceTest {
         CountDownLatch eventLocked = new CountDownLatch(1);
         CountDownLatch releaseEvent = new CountDownLatch(1);
         CountDownLatch answerStarted = new CountDownLatch(1);
+        Future<?> holder = null;
+        Future<Object> answer = null;
+        Future<RetentionBatchResult> deletion = null;
         try {
-            Future<?> holder = executor.submit(() -> transactionTemplate.executeWithoutResult(status -> {
+            holder = executor.submit(() -> transactionTemplate.executeWithoutResult(status -> {
                 eventRepository.findByIdForUpdate(event.getEventId()).orElseThrow();
                 eventLocked.countDown();
                 await(releaseEvent);
             }));
             await(eventLocked);
 
-            Future<Object> answer = executor.submit(() -> {
+            answer = executor.submit(() -> {
                 answerStarted.countDown();
                 try {
                     return eventService.answerReview(event.getUserId(), event.getEventId(),
@@ -223,7 +238,7 @@ class EventClassificationReviewRetentionServiceTest {
                 }
             });
             await(answerStarted);
-            Future<RetentionBatchResult> deletion = executor.submit(() ->
+            deletion = executor.submit(() ->
                     retentionService.deleteExpired(NOW.minus(90, ChronoUnit.DAYS), 500));
 
             assertThat(deletion.get(5, java.util.concurrent.TimeUnit.SECONDS).processed()).isEqualTo(1);
@@ -236,6 +251,9 @@ class EventClassificationReviewRetentionServiceTest {
             assertThat(((ApiException) answerOutcome).getCode()).isEqualTo("REVIEW_NOT_FOUND");
         } finally {
             releaseEvent.countDown();
+            if (deletion != null) deletion.cancel(true);
+            if (answer != null) answer.cancel(true);
+            if (holder != null) holder.cancel(true);
             executor.shutdownNow();
         }
     }

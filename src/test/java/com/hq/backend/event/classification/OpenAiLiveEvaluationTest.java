@@ -13,6 +13,7 @@ import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -22,6 +23,9 @@ import java.util.Map;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -52,6 +56,27 @@ class OpenAiLiveEvaluationTest {
     }
 
     @Test
+    void accepted_provider_result_without_usage_counters_fails_the_live_evaluation() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://openai.fixture/v1");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(request -> { })
+                .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess("""
+                        {"status":"completed","model":"gpt-4o-mini-2024-07-18","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"{\\"questionType\\":\\"is_online\\",\\"suggestedValue\\":\\"online\\",\\"confidence\\":0.95}"}]}]}
+                        """, MediaType.APPLICATION_JSON));
+        OpenAiEventClassifier classifier = new OpenAiEventClassifier(builder.build(), OBJECT_MAPPER,
+                evaluationProperties(), new AiClassificationMetrics(registry));
+
+        var result = classifier.classify(new EventClassificationInput("합성 온라인 회의"));
+
+        assertThat(result).isPresent();
+        assertThatThrownBy(() -> requireCompleteMeasuredUsage(result.orElseThrow(), 0, 0, 0))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("usage");
+        server.verify();
+    }
+
+    @Test
     void enabled_live_evaluation_calls_the_real_classifier_and_enforces_quality_latency_tokens_requests_and_cost() throws Exception {
         Assumptions.assumeTrue("true".equals(System.getenv("OPENAI_EVAL_ENABLED")),
                 "set OPENAI_EVAL_ENABLED=true to opt in to live evaluation");
@@ -64,7 +89,7 @@ class OpenAiLiveEvaluationTest {
 
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         OpenAiEventClassifier classifier = new OpenAiEventClassifier(
-                RestClient.builder().baseUrl("https://api.openai.com/v1").build(),
+                liveRestClient(),
                 OBJECT_MAPPER,
                 new AiClassificationProperties(
                         URI.create("https://api.openai.com/v1"), policy.apiKey(), AiClassificationGate.PINNED_MODEL,
@@ -87,16 +112,20 @@ class OpenAiLiveEvaluationTest {
             GoldenCase goldenCase = validCases.get(requestIndex);
             long beforeOutput = counterCount(registry, "ai_classification_tokens_total", "direction", "output");
             long beforeInput = counterCount(registry, "ai_classification_tokens_total", "direction", "input");
+            long beforeTotal = counterCount(registry, "ai_classification_tokens_total", "direction", "total");
             long startedAt = System.nanoTime();
             var result = classifier.classify(new EventClassificationInput(goldenCase.title()));
             latencyMillis.add(Duration.ofNanos(System.nanoTime() - startedAt).toMillis());
             long outputDelta = counterCount(registry, "ai_classification_tokens_total", "direction", "output") - beforeOutput;
             long inputDelta = counterCount(registry, "ai_classification_tokens_total", "direction", "input") - beforeInput;
+            long totalDelta = counterCount(registry, "ai_classification_tokens_total", "direction", "total") - beforeTotal;
             outputTokens.add(outputDelta);
-            observedCost = observedCost.add(policy.costFor(inputDelta, outputDelta));
 
             assertThat(result).as("synthetic golden case %s must have a strict classifier response", goldenCase.id()).isPresent();
-            String actual = result.orElseThrow().suggestedValue();
+            EventClassificationResult accepted = result.orElseThrow();
+            requireCompleteMeasuredUsage(accepted, inputDelta, outputDelta, totalDelta);
+            observedCost = observedCost.add(policy.costFor(inputDelta, outputDelta));
+            String actual = accepted.suggestedValue();
             if ("online".equals(goldenCase.expected())) {
                 if ("online".equals(actual)) onlineTruePositive++;
                 else onlineFalseNegative++;
@@ -138,6 +167,31 @@ class OpenAiLiveEvaluationTest {
     private long counterCount(SimpleMeterRegistry registry, String name, String tag, String value) {
         Counter counter = registry.find(name).tag(tag, value).counter();
         return counter == null ? 0L : Math.round(counter.count());
+    }
+
+    private void requireCompleteMeasuredUsage(
+            EventClassificationResult result, long inputTokens, long outputTokens, long totalTokens) {
+        if (!AiClassificationGate.PINNED_MODEL.equals(result.resolvedModel())) {
+            throw new IllegalStateException("provider resolved model is not the pinned model");
+        }
+        if (inputTokens <= 0 || outputTokens <= 0 || totalTokens <= 0
+                || totalTokens != inputTokens + outputTokens) {
+            throw new IllegalStateException("provider usage counters must be complete, positive, and internally consistent");
+        }
+    }
+
+    private AiClassificationProperties evaluationProperties() {
+        return new AiClassificationProperties(
+                URI.create("https://openai.fixture/v1"), "fixture-api-key", AiClassificationGate.PINNED_MODEL,
+                3_000, 10_000, new AiClassificationProperties.Classification(true, 100, REQUIRED_REQUESTS, 1,
+                "live-eval-only", "event-online-review-v1", "event-online-ko-v1", "event-online-v1"));
+    }
+
+    private RestClient liveRestClient() {
+        HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(Duration.ofSeconds(10));
+        return RestClient.builder().baseUrl("https://api.openai.com/v1").requestFactory(requestFactory).build();
     }
 
     private long percentile95(List<Long> values) {
