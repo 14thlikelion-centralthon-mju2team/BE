@@ -9,5 +9,8 @@ public interface PlanWellnessActionRepository extends JpaRepository<PlanWellness
 
     List<PlanWellnessAction> findByPlanId(UUID planId);
 
+    // 주간 요약이 한 주치 계획의 웰니스 제안을 한 번에 읽는다.
+    List<PlanWellnessAction> findByPlanIdIn(List<UUID> planIds);
+
     Optional<PlanWellnessAction> findByWellnessActionIdAndPlanId(UUID wellnessActionId, UUID planId);
 }
