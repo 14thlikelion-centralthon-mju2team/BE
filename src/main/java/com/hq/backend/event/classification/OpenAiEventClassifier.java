@@ -41,8 +41,13 @@ public class OpenAiEventClassifier implements EventClassifier {
 
     @Override
     public Optional<EventClassificationResult> classify(EventClassificationInput input) {
+        return classifyDetailed(input).result();
+    }
+
+    /** Package-private, stateless live-evaluation seam; it never changes the EventClassifier port or meter tags. */
+    DetailedClassification classifyDetailed(EventClassificationInput input) {
         if (input == null || input.title() == null) {
-            return empty(FailureReason.INVALID_INPUT);
+            return detailed(empty(FailureReason.INVALID_INPUT), null);
         }
 
         long startedAt = System.nanoTime();
@@ -58,19 +63,27 @@ public class OpenAiEventClassifier implements EventClassifier {
             addUsage(response);
             ParsedResponse parsed = parseResponse(response);
             outcome = parsed.outcome();
-            return parsed.result();
+            return detailed(parsed.result(), response);
         } catch (RestClientResponseException exception) {
             outcome = exception.getStatusCode().is4xxClientError() ? AiCallOutcome.HTTP_4XX : AiCallOutcome.HTTP_5XX;
-            return empty(FailureReason.HTTP, exception.getStatusCode().value());
+            return detailed(empty(FailureReason.HTTP, exception.getStatusCode().value()), null);
         } catch (RestClientException | IllegalStateException exception) {
             outcome = isTimeout(exception) ? AiCallOutcome.TIMEOUT : AiCallOutcome.INVALID_SCHEMA;
-            return empty(FailureReason.TRANSPORT);
+            return detailed(empty(FailureReason.TRANSPORT), null);
         } catch (JsonProcessingException exception) {
-            return empty(FailureReason.REQUEST_SERIALIZATION);
+            return detailed(empty(FailureReason.REQUEST_SERIALIZATION), null);
         } finally {
             metrics.recordCall(outcome);
             metrics.recordLatency(Duration.ofNanos(System.nanoTime() - startedAt));
         }
+    }
+
+    private DetailedClassification detailed(Optional<EventClassificationResult> result, OpenAiResponsesResponse response) {
+        OpenAiResponsesResponse.Usage usage = response == null ? null : response.usage();
+        return new DetailedClassification(result,
+                usage == null ? null : usage.inputTokens(),
+                usage == null ? null : usage.outputTokens(),
+                usage == null ? null : usage.totalTokens());
     }
 
     private OpenAiResponsesRequest requestFor(String title) throws JsonProcessingException {
@@ -167,7 +180,6 @@ public class OpenAiEventClassifier implements EventClassifier {
         if (response == null || response.usage() == null) return;
         metrics.addTokens(TokenDirection.INPUT, safeTokenCount(response.usage().inputTokens()));
         metrics.addTokens(TokenDirection.OUTPUT, safeTokenCount(response.usage().outputTokens()));
-        metrics.addTokens(TokenDirection.TOTAL, safeTokenCount(response.usage().totalTokens()));
     }
 
     private long safeTokenCount(Integer count) {
@@ -231,5 +243,9 @@ public class OpenAiEventClassifier implements EventClassifier {
     }
 
     private record ParsedResponse(Optional<EventClassificationResult> result, AiCallOutcome outcome) {
+    }
+
+    record DetailedClassification(
+            Optional<EventClassificationResult> result, Integer inputTokens, Integer outputTokens, Integer totalTokens) {
     }
 }

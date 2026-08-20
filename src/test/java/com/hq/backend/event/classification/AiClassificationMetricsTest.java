@@ -35,7 +35,6 @@ class AiClassificationMetricsTest {
         metrics.recordLatency(Duration.ofMillis(12));
         metrics.addTokens(TokenDirection.INPUT, 17);
         metrics.addTokens(TokenDirection.OUTPUT, 5);
-        metrics.addTokens(TokenDirection.TOTAL, 22);
         metrics.recordReview(AiReviewOutcome.CREATED);
         metrics.addPurged(3);
         metrics.addDeleted(2);
@@ -43,7 +42,7 @@ class AiClassificationMetricsTest {
 
         assertThat(registry.getMeters()).extracting(meter -> meter.getId().getName()).containsExactlyInAnyOrder(
                 "ai_classification_calls_total", "ai_classification_latency_seconds",
-                "ai_classification_tokens_total", "ai_classification_tokens_total", "ai_classification_tokens_total",
+                "ai_classification_tokens_total", "ai_classification_tokens_total",
                 "ai_classification_reviews_total", "ai_classification_retention_purge_total",
                 "ai_classification_retention_delete_total", "ai_classification_retention_lag_seconds");
         assertThat(registry.get("ai_classification_calls_total").counter().count()).isEqualTo(1);
@@ -56,7 +55,7 @@ class AiClassificationMetricsTest {
                 .allSatisfy(tag -> assertThat(tag.getKey()).isIn("outcome", "direction")));
         assertThat(registry.getMeters()).flatExtracting(meter -> meter.getId().getTags())
                 .extracting(tag -> tag.getValue())
-                .allMatch(value -> Set.of("success", "input", "output", "total", "created").contains(value));
+                .allMatch(value -> Set.of("success", "input", "output", "created").contains(value));
     }
 
     @Test
@@ -77,7 +76,7 @@ class AiClassificationMetricsTest {
         assertThat(registry.get("ai_classification_latency_seconds").timer().count()).isEqualTo(1);
         assertThat(registry.get("ai_classification_tokens_total").tag("direction", "input").counter().count()).isEqualTo(12);
         assertThat(registry.get("ai_classification_tokens_total").tag("direction", "output").counter().count()).isEqualTo(7);
-        assertThat(registry.get("ai_classification_tokens_total").tag("direction", "total").counter().count()).isEqualTo(19);
+        assertThat(registry.find("ai_classification_tokens_total").tag("direction", "total").counter()).isNull();
         assertThat(registry.getMeters()).flatExtracting(meter -> meter.getId().getTags())
                 .extracting(tag -> tag.getValue())
                 .doesNotContain("private calendar title", "gpt-4o-mini-2024-07-18");

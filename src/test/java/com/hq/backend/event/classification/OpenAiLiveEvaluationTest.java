@@ -67,10 +67,10 @@ class OpenAiLiveEvaluationTest {
         OpenAiEventClassifier classifier = new OpenAiEventClassifier(builder.build(), OBJECT_MAPPER,
                 evaluationProperties(), new AiClassificationMetrics(registry));
 
-        var result = classifier.classify(new EventClassificationInput("합성 온라인 회의"));
+        var result = classifier.classifyDetailed(new EventClassificationInput("합성 온라인 회의"));
 
-        assertThat(result).isPresent();
-        assertThatThrownBy(() -> requireCompleteMeasuredUsage(result.orElseThrow(), 0, 0, 0))
+        assertThat(result.result()).isPresent();
+        assertThatThrownBy(() -> requireCompleteMeasuredUsage(result))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("usage");
         server.verify();
@@ -112,18 +112,18 @@ class OpenAiLiveEvaluationTest {
             GoldenCase goldenCase = validCases.get(requestIndex);
             long beforeOutput = counterCount(registry, "ai_classification_tokens_total", "direction", "output");
             long beforeInput = counterCount(registry, "ai_classification_tokens_total", "direction", "input");
-            long beforeTotal = counterCount(registry, "ai_classification_tokens_total", "direction", "total");
             long startedAt = System.nanoTime();
-            var result = classifier.classify(new EventClassificationInput(goldenCase.title()));
+            var result = classifier.classifyDetailed(new EventClassificationInput(goldenCase.title()));
             latencyMillis.add(Duration.ofNanos(System.nanoTime() - startedAt).toMillis());
             long outputDelta = counterCount(registry, "ai_classification_tokens_total", "direction", "output") - beforeOutput;
             long inputDelta = counterCount(registry, "ai_classification_tokens_total", "direction", "input") - beforeInput;
-            long totalDelta = counterCount(registry, "ai_classification_tokens_total", "direction", "total") - beforeTotal;
             outputTokens.add(outputDelta);
 
-            assertThat(result).as("synthetic golden case %s must have a strict classifier response", goldenCase.id()).isPresent();
-            EventClassificationResult accepted = result.orElseThrow();
-            requireCompleteMeasuredUsage(accepted, inputDelta, outputDelta, totalDelta);
+            assertThat(result.result()).as("synthetic golden case %s must have a strict classifier response", goldenCase.id()).isPresent();
+            EventClassificationResult accepted = result.result().orElseThrow();
+            requireCompleteMeasuredUsage(result);
+            assertThat(inputDelta).isEqualTo(result.inputTokens());
+            assertThat(outputDelta).isEqualTo(result.outputTokens());
             observedCost = observedCost.add(policy.costFor(inputDelta, outputDelta));
             String actual = accepted.suggestedValue();
             if ("online".equals(goldenCase.expected())) {
@@ -169,13 +169,14 @@ class OpenAiLiveEvaluationTest {
         return counter == null ? 0L : Math.round(counter.count());
     }
 
-    private void requireCompleteMeasuredUsage(
-            EventClassificationResult result, long inputTokens, long outputTokens, long totalTokens) {
-        if (!AiClassificationGate.PINNED_MODEL.equals(result.resolvedModel())) {
+    private void requireCompleteMeasuredUsage(OpenAiEventClassifier.DetailedClassification result) {
+        EventClassificationResult accepted = result.result().orElseThrow();
+        if (!AiClassificationGate.PINNED_MODEL.equals(accepted.resolvedModel())) {
             throw new IllegalStateException("provider resolved model is not the pinned model");
         }
-        if (inputTokens <= 0 || outputTokens <= 0 || totalTokens <= 0
-                || totalTokens != inputTokens + outputTokens) {
+        if (result.inputTokens() == null || result.outputTokens() == null || result.totalTokens() == null
+                || result.inputTokens() <= 0 || result.outputTokens() <= 0 || result.totalTokens() <= 0
+                || !result.totalTokens().equals(result.inputTokens() + result.outputTokens())) {
             throw new IllegalStateException("provider usage counters must be complete, positive, and internally consistent");
         }
     }

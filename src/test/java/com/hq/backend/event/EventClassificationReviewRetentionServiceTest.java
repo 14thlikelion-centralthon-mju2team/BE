@@ -172,7 +172,7 @@ class EventClassificationReviewRetentionServiceTest {
             if (purge != null) purge.cancel(true);
             if (answer != null) answer.cancel(true);
             if (holder != null) holder.cancel(true);
-            executor.shutdownNow();
+            shutdown(executor);
         }
     }
 
@@ -205,7 +205,7 @@ class EventClassificationReviewRetentionServiceTest {
             release.countDown();
             if (deleteWhileLocked != null) deleteWhileLocked.cancel(true);
             if (holder != null) holder.cancel(true);
-            executor.shutdownNow();
+            shutdown(executor);
         }
     }
 
@@ -254,7 +254,7 @@ class EventClassificationReviewRetentionServiceTest {
             if (deletion != null) deletion.cancel(true);
             if (answer != null) answer.cancel(true);
             if (holder != null) holder.cancel(true);
-            executor.shutdownNow();
+            shutdown(executor);
         }
     }
 
@@ -314,6 +314,18 @@ class EventClassificationReviewRetentionServiceTest {
         try {
             if (!latch.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
                 throw new AssertionError("retention 동시성 latch 대기 시간이 5초를 초과했습니다.");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    private void shutdown(ExecutorService executor) {
+        executor.shutdownNow();
+        try {
+            if (!executor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new AssertionError("retention 동시성 executor 종료가 5초를 초과했습니다.");
             }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
