@@ -97,8 +97,27 @@ public class KmaEnvironmentProvider implements EnvironmentProvider {
                 .map(item -> Integer.parseInt(item.fcstValue()))
                 .orElseThrow();
 
-        log.debug("[KMA] 조회 성공: grid=({},{}), TMP={}, POP={}", grid[0], grid[1], tempC, precipitationProb);
-        return new EnvironmentSnapshot(-1.0, -1, tempC, precipitationProb, at, "kma");
+        // SKY는 없을 수 있다(발표 시각에 따라 항목이 빠짐) — 없으면 null로 두고 날씨 위젯이 생략한다.
+        String sky = items.stream()
+                .filter(item -> "SKY".equals(item.category()))
+                .findFirst()
+                .map(item -> skyFor(item.fcstValue()))
+                .orElse(null);
+
+        log.debug("[KMA] 조회 성공: grid=({},{}), TMP={}, POP={}, SKY={}",
+                grid[0], grid[1], tempC, precipitationProb, sky);
+        return new EnvironmentSnapshot(-1.0, -1, tempC, precipitationProb, at, "kma",
+                null, null, null, null, null, sky, null, null);
+    }
+
+    /** 기상청 SKY 코드(1 맑음 / 3 구름많음 / 4 흐림). 2는 예보 항목에서 쓰이지 않는다. */
+    private String skyFor(String fcstValue) {
+        return switch (fcstValue == null ? "" : fcstValue.trim()) {
+            case "1" -> "clear";
+            case "3" -> "partly_cloudy";
+            case "4" -> "cloudy";
+            default -> null;
+        };
     }
 
     private int[] toGrid(double lat, double lng) {

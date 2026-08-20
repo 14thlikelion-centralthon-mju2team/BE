@@ -13,6 +13,7 @@ public class StubEnvironmentProvider implements EnvironmentProvider {
     public EnvironmentSnapshot fetch(GeoPoint point, Instant at) {
         return new EnvironmentSnapshot(
                 3.0, 40, 22.0, 10, at, "stub",
-                20, "moderate", 17.0, 27.0, "stub-air");
+                20, "moderate", 17.0, 27.0, "stub-air",
+                "partly_cloudy", "moderate", "moderate");
     }
 }
