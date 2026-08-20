@@ -1,6 +1,8 @@
 package com.hq.backend.user;
 
 import com.hq.backend.common.auth.CurrentUserId;
+import com.hq.backend.common.exception.ApiException;
+import com.hq.backend.common.ratelimit.EndpointRateLimiter;
 import com.hq.backend.common.util.TokenHashUtil;
 import com.hq.backend.user.dto.AccountDeletionResponse;
 import com.hq.backend.user.dto.ChangeNicknameRequest;
@@ -8,6 +10,7 @@ import com.hq.backend.user.dto.ChangeNicknameResponse;
 import com.hq.backend.user.dto.ChangePasswordRequest;
 import com.hq.backend.user.dto.EmailChangeConfirmRequest;
 import com.hq.backend.user.dto.EmailChangeRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +31,7 @@ public class UserController {
 
     private final UserService userService;
     private final AccountService accountService;
+    private final EndpointRateLimiter rateLimiter;
 
     @DeleteMapping
     public AccountDeletionResponse withdraw(@CurrentUserId UUID userId) {
@@ -54,8 +58,14 @@ public class UserController {
     @PostMapping("/email/change-request")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void requestEmailChange(@CurrentUserId UUID userId,
-                                   @Valid @RequestBody EmailChangeRequest request) {
-        // TODO: rate-limit
+                                   @Valid @RequestBody EmailChangeRequest request,
+                                   HttpServletRequest httpRequest) {
+        String ip = httpRequest.getHeader("X-Real-IP");
+        if (ip == null) ip = httpRequest.getRemoteAddr();
+        if (!rateLimiter.tryAcquire(ip + ":email-change", 3, 600)) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "RATE_LIMITED",
+                    "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+        }
         accountService.requestEmailChange(userId, request.newEmail(), request.password());
     }
 

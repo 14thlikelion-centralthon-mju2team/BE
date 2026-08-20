@@ -11,7 +11,10 @@ import com.hq.backend.auth.dto.SignupResponse;
 import com.hq.backend.auth.dto.TokenResponse;
 import com.hq.backend.auth.dto.VerifyEmailRequest;
 import com.hq.backend.common.auth.CurrentUserId;
+import com.hq.backend.common.exception.ApiException;
+import com.hq.backend.common.ratelimit.EndpointRateLimiter;
 import com.hq.backend.user.AccountService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
@@ -35,6 +38,7 @@ public class AuthController {
     private final AuthService authService;
     private final PasswordResetService passwordResetService;
     private final AccountService accountService;
+    private final EndpointRateLimiter rateLimiter;
 
     @PostMapping("/email/signup")
     @ResponseStatus(HttpStatus.CREATED)
@@ -89,8 +93,9 @@ public class AuthController {
 
     @PostMapping("/password/reset-request")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public void requestPasswordReset(@Valid @RequestBody PasswordResetRequest request) {
-        // TODO: rate-limit
+    public void requestPasswordReset(@Valid @RequestBody PasswordResetRequest request,
+                                     HttpServletRequest httpRequest) {
+        enforceRateLimit(httpRequest, "reset-request", 3, 600);
         passwordResetService.requestReset(request.email());
     }
 
@@ -101,9 +106,20 @@ public class AuthController {
     }
 
     @GetMapping("/check-nickname")
-    public CheckNicknameResponse checkNickname(@RequestParam String value) {
-        // TODO: rate-limit
+    public CheckNicknameResponse checkNickname(@RequestParam String value,
+                                               HttpServletRequest httpRequest) {
+        enforceRateLimit(httpRequest, "check-nickname", 10, 60);
         boolean available = accountService.isNicknameAvailable(value);
         return new CheckNicknameResponse(available);
+    }
+
+    private void enforceRateLimit(HttpServletRequest request, String endpoint, int max, int windowSec) {
+        String ip = request.getHeader("X-Real-IP");
+        if (ip == null) ip = request.getRemoteAddr();
+        String key = ip + ":" + endpoint;
+        if (!rateLimiter.tryAcquire(key, max, windowSec)) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "RATE_LIMITED",
+                    "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+        }
     }
 }
