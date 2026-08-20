@@ -65,13 +65,13 @@
   - [x] Exercise production Google HTTP pagination and final sync token with two real fixture pages; use bounded real Task 7/8 lock races and scheduler privacy canary
   - [x] Run clean Java/build/Compose/Python verification and record exact SHA `07970c3` evidence (Python uses explicit CPython 3.13)
   - [x] Self-review, force-track release evidence, commit Task 10
-- [ ] Final review hardening
+- [x] Final review hardening
   - [x] RED/GREEN: serialize calendar existing-event updates on the Event lock so user PATCH fields cannot be overwritten
   - [x] RED/GREEN: keep density Google pagination outside a long-lived database transaction
   - [x] RED/GREEN: discard classifications when Event changed after the CREATED sync snapshot
   - [x] RED/GREEN: fail closed unless the configured base URL is the approved HTTPS OpenAI endpoint
   - [x] RED/GREEN: enforce the documented live-evaluation input-token p95 <= 300
-  - [ ] Re-run focused, clean full, build, Compose, Python, independent review, and update PR evidence
+  - [x] Re-run focused, clean full, build, Compose, Python, independent review, and update PR evidence
 
 ## Review
 
@@ -97,4 +97,6 @@
 - Task 9: Added only low-cardinality AI classification counters/timers, transaction-after-commit review metrics, safe rollout configuration, and a private-scrape operating runbook. Focused, adjacent, full Gradle, and both Compose render checks passed before commit.
 - Task 9 review follow-up: fixed JDK timeout/incomplete outcome mapping, real backlog lag and partial-batch retention accounting, writer AFTER_COMMIT metrics, identifier-free sync failure logs, and the operating controls required for staged rollout/rollback.
 - Task 9 final scoped review: APPROVED (Critical 0, Important 0).
-- Task 10: initial implementation SHA `07970c3`, re-review hardening SHA `122bc23`, and live-usage seam fix SHA `3cf2f40` verified with 260 Java tests (0 failures/errors), build, both Compose renders, and opt-in evaluator preflight. The operational token meter direction contract is exactly input/output; the package-private live-evaluation seam alone validates raw total consistency. Python CPython 3.13 evidence is 474 collected/passed plus Ruff/mypy success. Final release evidence retains explicit "not executed" markers for unapproved live provider evaluation and does not infer F1, latency, tokens, cost cap, or provider approval.
+- Task 10: initial implementation SHA `07970c3`, re-review hardening SHA `122bc23`, live-usage seam fix SHA `3cf2f40`, and final review-gap hardening SHA `3e51c65` are covered by 265 Java tests (0 failures/errors), build, both Compose renders, and opt-in evaluator preflight. The operational token meter direction contract is exactly input/output; the package-private live-evaluation seam alone validates raw total consistency. Python CPython 3.13 evidence is 474 collected/passed plus Ruff/mypy success. Final release evidence retains explicit "not executed" markers for unapproved live provider evaluation and does not infer F1, latency, tokens, cost cap, or provider approval.
+- Final independent branch review at `3e51c65`: READY, Critical 0, Important 0. The two documentation-only Minor findings were corrected in the following evidence-only commit.
+- Final verification at implementation SHA `3e51c65`: Java 265/265, Gradle build, disabled/no-network `openAiEvalTest`, both Compose renders, Python 474/474, Ruff, mypy, and diff checks passed. Live provider evaluation remains explicitly unexecuted pending external approvals/key/cost cap.

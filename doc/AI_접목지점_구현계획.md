@@ -200,7 +200,8 @@ public final class GoogleSyncTokenExpiredException extends RuntimeException {}
 public enum CalendarChangeType { CREATED, UPDATED, CANCELLED, UNCHANGED }
 
 public record CalendarUpsertResult(
-        UUID eventId, CalendarChangeType changeType, boolean requiresPlanRecompute) {
+        UUID eventId, CalendarChangeType changeType,
+        boolean requiresPlanRecompute, Long eventRevision) {
     public boolean isCreated() { return changeType == CalendarChangeType.CREATED; }
 }
 
@@ -871,7 +872,7 @@ void eligible_Event에는_원문없는_review만_생성한다() {
 void AI_시도_뒤에만_sync_token을_전진한다() {
     syncService.syncConnection(connectionId, true);
     InOrder order = inOrder(orchestrator, syncStateWriter);
-    order.verify(orchestrator).classifyCreated(userId, eventId, "온라인 회의", 5);
+    order.verify(orchestrator).classifyCreated(userId, eventId, eventRevision, "온라인 회의", 5);
     order.verify(syncStateWriter).advanceSyncToken(connectionId, oldToken, nextToken);
 }
 
