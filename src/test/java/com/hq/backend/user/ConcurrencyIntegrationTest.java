@@ -55,7 +55,7 @@ class ConcurrencyIntegrationTest {
     @Test
     void 동시에_두_provider를_해제하면_하나는_LAST_IDENTITY로_실패한다() throws Exception {
         // Given: 사용자 + email identity + google identity
-        UUID userId = createTestUser("concurrency-provider@test.com");
+        UUID userId = createTestUser("concurrency-provider-" + UUID.randomUUID().toString().substring(0, 8) + "@test.com");
         UUID emailIdentityId = createIdentity(userId, "email", "concurrency-provider@test.com");
         UUID googleIdentityId = createIdentity(userId, "google", "google-uid-concurrent");
 
@@ -104,7 +104,7 @@ class ConcurrencyIntegrationTest {
     @Test
     void 동시에_같은_토큰으로_비밀번호_재설정하면_하나만_성공한다() throws Exception {
         // Given: 사용자 + credential + reset token
-        UUID userId = createTestUser("concurrency-reset@test.com");
+        UUID userId = createTestUser("concurrency-reset-" + UUID.randomUUID().toString().substring(0, 8) + "@test.com");
         createCredential(userId, "OldPassword123!");
         String rawToken = UUID.randomUUID().toString();
         createResetToken(userId, rawToken);
@@ -115,9 +115,10 @@ class ConcurrencyIntegrationTest {
         AtomicInteger successCount = new AtomicInteger(0);
         AtomicInteger failCount = new AtomicInteger(0);
 
+        List<Future<?>> futures = new java.util.ArrayList<>();
         for (int i = 0; i < 2; i++) {
             final String newPassword = "NewPassword" + i + "!!";
-            executor.submit(() -> {
+            futures.add(executor.submit(() -> {
                 try {
                     latch.await();
                     passwordResetService.executeReset(rawToken, newPassword);
@@ -125,11 +126,11 @@ class ConcurrencyIntegrationTest {
                 } catch (Exception e) {
                     failCount.incrementAndGet();
                 }
-            });
+            }));
         }
 
         latch.countDown();
-        Thread.sleep(2000); // 동시 실행 대기
+        for (Future<?> f : futures) { f.get(); }
         executor.shutdown();
 
         // Then: 하나만 성공
