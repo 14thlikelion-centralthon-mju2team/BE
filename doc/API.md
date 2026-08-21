@@ -1,6 +1,6 @@
 # ENSOM Backend API 명세서
 
-> **Source of truth:** BE commit `a32075e1a9c9b2766290bf4c01d721e003bcddf5`. 이 문서는 `tools/generate_api_spec.py`가 Spring MVC controller, DTO, Bean Validation, Jackson enum annotation에서 생성한다.
+> **Source of truth:** BE commit `62ae0e0e4d9db937d8a55c0267b72a39d0de6094`. 이 문서는 `tools/generate_api_spec.py`가 Spring MVC controller, DTO, Bean Validation, Jackson enum annotation에서 생성한다.
 > 생성: `python3 tools/generate_api_spec.py` · endpoint count 검증: `python3 tools/generate_api_spec.py --check`.
 
 ## 1. 적용 범위와 전송 규약
@@ -9,7 +9,7 @@
 - 요청/응답은 별도 표기가 없으면 JSON (`application/json`)이다. UUID는 RFC 4122 문자열, 시간은 ISO-8601 (`Instant`/`OffsetDateTime`), 날짜는 `YYYY-MM-DD` (`LocalDate`)다.
 - `Bearer JWT` endpoint는 `Authorization: Bearer <access-token>`이 필수다. `/auth/**`와 health endpoint만 public이며, 그 외 token 누락/무효는 `401 UNAUTHENTICATED`다.
 - Enum은 아래 schema 표의 wire value를 사용한다. `@JsonValue` enum은 lower-snake-case로 직렬화된다.
-- 현재 `/environment/current`, `/summary/weekly`는 구현되지 않아 이 명세에 없다 (#218, #219).
+- 이 문서는 controller source에서 생성되므로 구현된 endpoint만 담는다. 여기 없는 경로는 아직 없는 경로다.
 
 ## 2. 오류 응답
 
@@ -32,7 +32,7 @@
 
 ## 3. Endpoint
 
-생성 기준 public endpoint 수: **75**.
+생성 기준 public endpoint 수: **77**.
 
 ### auth
 
@@ -65,6 +65,12 @@
 | Method | Path | Auth | 입력 | Success | Response | Handler |
 |---|---|---|---|---|---|---|
 | POST | `/v1/consents` | Bearer JWT | header `Idempotency-Key`: `UUID`, body `request`: `ConsentRequest` | `201 CREATED` | `ConsentResponse` | `ConsentController.java#record` |
+
+### environment
+
+| Method | Path | Auth | 입력 | Success | Response | Handler |
+|---|---|---|---|---|---|---|
+| GET | `/v1/environment/current` | Bearer JWT | — | `200 OK` | `EnvironmentResponse` | `EnvironmentController.java#current` |
 
 ### events
 
@@ -168,6 +174,7 @@
 |---|---|---|---|---|---|---|
 | GET | `/v1/summary/daily` | Bearer JWT | query `date`: `LocalDate` | `200 OK` | `DailySummaryResponse` | `DailySummaryController.java#get` |
 | POST | `/v1/summary/daily/{summaryId}/viewed` | Bearer JWT | path `summaryId`: `UUID` | `200 OK` | `DailySummaryResponse` | `DailySummaryController.java#markViewed` |
+| GET | `/v1/summary/weekly` | Bearer JWT | query `date`: `LocalDate` | `200 OK` | `WeeklySummaryResponse` | `WeeklySummaryController.java#get` |
 
 ## 4. Request / response schema
 
@@ -220,6 +227,7 @@
 
 | Field | Java type | Validation |
 |---|---|---|
+| `user` | `UserSummary` | — |
 | `settings` | `SettingsSummary` | — |
 | `permissions` | `List<PermissionResponse>` | — |
 | `places` | `List<PlaceSummary>` | — |
@@ -276,7 +284,7 @@
 
 | Field | Java type | Validation |
 |---|---|---|
-| `consentType` | `ConsentType` | NotNull |
+| `consentType` | `ConsentType` — enum: `terms, privacy, location, marketing` | NotNull |
 | `agreed` | `Boolean` | NotNull |
 | `policyVersion` | `String` | NotBlank |
 
@@ -285,7 +293,7 @@
 | Field | Java type | Validation |
 |---|---|---|
 | `id` | `UUID` | — |
-| `consentType` | `ConsentType` | — |
+| `consentType` | `ConsentType` — enum: `terms, privacy, location, marketing` | — |
 | `agreed` | `Boolean` | — |
 | `recordedAt` | `Instant` | — |
 
@@ -324,19 +332,29 @@
 | `newEmail` | `String` | NotBlank; Email |
 | `password` | `String` | NotBlank |
 
+### `EnvironmentResponse`
+
+| Field | Java type | Validation |
+|---|---|---|
+| `temperature` | `Integer` | — |
+| `sky` | `String` | — |
+| `pm10Grade` | `String` | — |
+| `pm25Grade` | `String` | — |
+| `uvIndex` | `Integer` | — |
+
 ### `EventCreateRequest`
 
 | Field | Java type | Validation |
 |---|---|---|
 | `startsAt` | `Instant` | NotNull |
 | `endsAt` | `Instant` | — |
-| `locationState` | `LocationState` | NotNull |
+| `locationState` | `LocationState` — enum: `required_resolved, required_missing, not_required, undecided` | NotNull |
 | `destinationName` | `String` | — |
 | `destinationLat` | `Double` | — |
 | `destinationLng` | `Double` | — |
 | `meetingUrl` | `String` | — |
 | `eventKind` | `String` | — |
-| `sourceType` | `SourceType` | NotNull |
+| `sourceType` | `SourceType` — enum: `INTERNAL, EXTERNAL, MAP_SEARCH` | NotNull |
 | `anchorMode` | `String` | — |
 | `originPlaceId` | `UUID` | — |
 | `selectedRouteOptionId` | `UUID` | — |
@@ -353,7 +371,7 @@
 | `actualPrepFinishedAt` | `Instant` | — |
 | `actualDepartedAt` | `Instant` | — |
 | `actualArrivedAt` | `Instant` | — |
-| `arrivalResult` | `ArrivalResult` | — |
+| `arrivalResult` | `ArrivalResult` — enum: `early, on_time, rushed, late, unknown` | — |
 | `resultSource` | `String` | — |
 | `actualOutdoorMinutes` | `Integer` | — |
 | `rushLoadScore` | `Short` | — |
@@ -363,18 +381,18 @@
 
 | Field | Java type | Validation |
 |---|---|---|
-| `prepTimingAssessment` | `PrepTimingAssessment` | NotNull |
-| `arrivalResult` | `ArrivalResult` | — |
-| `rushAssessment` | `RushAssessment` | — |
+| `prepTimingAssessment` | `PrepTimingAssessment` — enum: `too_early, appropriate, too_late, unknown` | NotNull |
+| `arrivalResult` | `ArrivalResult` — enum: `early, on_time, rushed, late, unknown` | — |
+| `rushAssessment` | `RushAssessment` — enum: `rushed, not_rushed, unknown` | — |
 
 ### `EventFeedbackResponse`
 
 | Field | Java type | Validation |
 |---|---|---|
 | `eventId` | `UUID` | — |
-| `prepTimingAssessment` | `PrepTimingAssessment` | — |
-| `arrivalResult` | `ArrivalResult` | — |
-| `rushAssessment` | `RushAssessment` | — |
+| `prepTimingAssessment` | `PrepTimingAssessment` — enum: `too_early, appropriate, too_late, unknown` | — |
+| `arrivalResult` | `ArrivalResult` — enum: `early, on_time, rushed, late, unknown` | — |
+| `rushAssessment` | `RushAssessment` — enum: `rushed, not_rushed, unknown` | — |
 
 ### `EventResponse`
 
@@ -385,13 +403,13 @@
 | `startsAt` | `Instant` | — |
 | `endsAt` | `Instant` | — |
 | `timezone` | `String` | — |
-| `locationState` | `LocationState` | — |
+| `locationState` | `LocationState` — enum: `required_resolved, required_missing, not_required, undecided` | — |
 | `destinationName` | `String` | — |
 | `destinationLat` | `Double` | — |
 | `destinationLng` | `Double` | — |
 | `meetingUrl` | `String` | — |
 | `eventKind` | `String` | — |
-| `status` | `EventStatus` | — |
+| `status` | `EventStatus` — enum: `planned, notified, preparing, enroute, arrived, closed, skipped, cancelled, unresolved` | — |
 | `autoManageExcluded` | `boolean` | — |
 | `plan` | `PlanResponse` | — |
 
@@ -408,7 +426,7 @@
 | Field | Java type | Validation |
 |---|---|---|
 | `eventId` | `UUID` | — |
-| `locationState` | `LocationState` | — |
+| `locationState` | `LocationState` — enum: `required_resolved, required_missing, not_required, undecided` | — |
 | `reviewClosed` | `boolean` | — |
 
 ### `EventUpdateRequest`
@@ -417,7 +435,7 @@
 |---|---|---|
 | `startsAt` | `Instant` | — |
 | `endsAt` | `Instant` | — |
-| `locationState` | `LocationState` | — |
+| `locationState` | `LocationState` — enum: `required_resolved, required_missing, not_required, undecided` | — |
 | `destinationName` | `String` | — |
 | `destinationLat` | `Double` | — |
 | `destinationLng` | `Double` | — |
@@ -518,7 +536,7 @@
 
 | Field | Java type | Validation |
 |---|---|---|
-| `placeType` | `PlaceType` | NotNull |
+| `placeType` | `PlaceType` — enum: `home, school, work, other` | NotNull |
 | `placeName` | `String` | NotBlank |
 | `address` | `String` | NotBlank |
 | `lat` | `Double` | NotNull |
@@ -530,7 +548,7 @@
 | Field | Java type | Validation |
 |---|---|---|
 | `placeId` | `UUID` | — |
-| `placeType` | `PlaceType` | — |
+| `placeType` | `PlaceType` — enum: `home, school, work, other` | — |
 | `placeName` | `String` | — |
 | `address` | `String` | — |
 | `lat` | `double` | — |
@@ -541,7 +559,7 @@
 
 | Field | Java type | Validation |
 |---|---|---|
-| `placeType` | `PlaceType` | — |
+| `placeType` | `PlaceType` — enum: `home, school, work, other` | — |
 | `placeName` | `String` | — |
 | `address` | `String` | — |
 | `lat` | `Double` | — |
@@ -590,7 +608,7 @@
 
 | Field | Java type | Validation |
 |---|---|---|
-| `completionStatus` | `PrepItemCompletionStatus` | NotNull |
+| `completionStatus` | `PrepItemCompletionStatus` — enum: `PENDING, COMPLETED` | NotNull |
 | `clientEventId` | `UUID` | — |
 
 ### `PrepItemResolveResponse`
@@ -606,9 +624,9 @@
 | Field | Java type | Validation |
 |---|---|---|
 | `ruleName` | `String` | NotBlank |
-| `ruleCategory` | `RuleCategory` | NotNull |
-| `actionType` | `ActionType` | NotNull |
-| `ruleTiming` | `RuleTiming` | NotNull |
+| `ruleCategory` | `RuleCategory` — enum: `supplement, medication, personal_item, routine, general_item` | NotNull |
+| `actionType` | `ActionType` — enum: `carry, consume, purchase, timed_routine` | NotNull |
+| `ruleTiming` | `RuleTiming` — enum: `pre_departure, post_arrival` | NotNull |
 | `defaultMinutes` | `Integer` | — |
 | `applyEventKind` | `String` | — |
 | `applyTimeBand` | `String` | — |
@@ -624,9 +642,9 @@
 |---|---|---|
 | `prepRuleId` | `UUID` | — |
 | `ruleName` | `String` | — |
-| `ruleCategory` | `RuleCategory` | — |
-| `actionType` | `ActionType` | — |
-| `ruleTiming` | `RuleTiming` | — |
+| `ruleCategory` | `RuleCategory` — enum: `supplement, medication, personal_item, routine, general_item` | — |
+| `actionType` | `ActionType` — enum: `carry, consume, purchase, timed_routine` | — |
+| `ruleTiming` | `RuleTiming` — enum: `pre_departure, post_arrival` | — |
 | `defaultMinutes` | `Integer` | — |
 | `applyEventKind` | `String` | — |
 | `applyTimeBand` | `String` | — |
@@ -674,7 +692,7 @@
 |---|---|---|
 | `installationId` | `UUID` | NotNull |
 | `currentToken` | `String` | NotBlank |
-| `platform` | `Platform` | NotNull |
+| `platform` | `Platform` — enum: `IOS, ANDROID, WEB` | NotNull |
 
 ### `ResendVerificationRequest`
 
@@ -770,6 +788,7 @@
 | `refreshToken` | `String` | — |
 | `expiresIn` | `long` | — |
 | `user` | `UserInfo` | — |
+| `consentRequired` | `List<String>` | — |
 
 ### `VerifyEmailRequest`
 
@@ -777,11 +796,30 @@
 |---|---|---|
 | `token` | `String` | NotBlank |
 
+### `WeeklySummaryResponse`
+
+| Field | Java type | Validation |
+|---|---|---|
+| `weekStart` | `LocalDate` | — |
+| `weekEnd` | `LocalDate` | — |
+| `managedEventCount` | `int` | — |
+| `onTimeRate` | `Double` | — |
+| `onTimeSampleCount` | `int` | — |
+| `averageSlackMinutes` | `Integer` | — |
+| `averageSlackSampleCount` | `int` | — |
+| `prepAccuracy` | `List<PrepAccuracyPoint>` | — |
+| `wellnessCompletionRate` | `Double` | — |
+| `wellnessProposedCount` | `int` | — |
+| `wellnessCompletedCount` | `int` | — |
+| `outdoorMinutes` | `int` | — |
+| `outdoorSampleCount` | `int` | — |
+| `outdoorSource` | `String` | — |
+
 ### `WellnessActionResolveRequest`
 
 | Field | Java type | Validation |
 |---|---|---|
-| `completionStatus` | `WellnessActionCompletionStatus` | NotNull |
+| `completionStatus` | `WellnessActionCompletionStatus` — enum: `PROPOSED, COMPLETED, DISMISSED` | NotNull |
 | `clientEventId` | `UUID` | — |
 
 ### `WellnessActionResolveResponse`
@@ -796,7 +834,7 @@
 
 | Field | Java type | Validation |
 |---|---|---|
-| `wellnessTopic` | `WellnessTopic` | — |
+| `wellnessTopic` | `WellnessTopic` — enum: `uv, pm, temp, rain, hydration` | — |
 | `isEnabled` | `boolean` | — |
 | `remindIntervalMinutes` | `Integer` | — |
 | `dailyEventCap` | `int` | — |
@@ -811,4 +849,6 @@
 
 - Controller mapping, DTO, validation, enum serialization 변경 시 generator를 실행하고 생성 diff를 같은 PR에 포함한다.
 - 이 문서는 runtime Swagger 대체물이 아니다. 현재 springdoc dependency가 없고 deployed Swagger endpoint는 auth boundary 뒤에 있으므로 controller/DTO source를 canonical contract로 사용한다.
-- FE 정적 `ApiClient` literal route 대조(기준 commit `ab47817`) 결과는 7/7 method/path match, missing 0이었다. 이후 FE/BE 변경 시 같은 대조를 갱신한다.
+- Enum wire value는 `@JsonValue` 유무로 결정된다. `@JsonValue` enum은 lower-snake-case, 없는 enum은 `name()` 그대로(대문자)다. 표에 대문자 enum이 보이면 의도한 것인지 확인한다.
+- 같은 이름의 type이 여러 package에 있으면(`ActionType` 등) 참조한 DTO의 import로 해석한다. 새 동명 type을 추가할 때 이 해석이 맞는지 확인한다.
+- FE 정적 `ApiClient` literal route 대조는 FE `origin/dev` 기준 64개 호출 전부 method/path match, missing 0이었다. 이후 FE/BE 변경 시 같은 대조를 갱신한다.
